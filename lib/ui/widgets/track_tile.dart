@@ -65,10 +65,16 @@ class TrackTile extends StatelessWidget {
 
     // Скрытые треки и чёрный список — полупрозрачные (играть не будут).
     final hidden = context.watch<WaveService>().isBlocked(track);
+    // На компьютере «в любимые» и «в плейлист» — кнопками в строке (видны при
+    // наведении), поэтому из меню их убираем.
+    final desktop = HutredTheme.desktop;
+    final store = context.read<LibraryStore>();
+    final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
     return TrackContextMenu(
       track: track,
+      compact: desktop,
       onRemoveFromPlaylist: onRemoveFromPlaylist,
-      child: Opacity(
+      child: _Hover(builder: (hovered) => Opacity(
         opacity: hidden ? 0.4 : 1,
         child: ListTile(
       // Как в Spotify: нажал на играющий трек ещё раз — пауза/продолжить.
@@ -104,7 +110,7 @@ class TrackTile extends StatelessWidget {
       ),
       subtitle: Row(
         children: [
-          if (track.favorite) ...[
+          if (track.favorite && !desktop) ...[
             Icon(Icons.favorite, size: 13, color: scheme.primary),
             const SizedBox(width: 4),
           ],
@@ -125,6 +131,23 @@ class TrackTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (desktop) ...[
+            _RowAction(
+              visible: hovered,
+              tooltip: 'Добавить в плейлист',
+              icon: Icons.add_circle_outline_rounded,
+              onTap: () => AppActions.addToPlaylistDialog(context, saved ?? track),
+            ),
+            if (saved != null)
+              _RowAction(
+                visible: hovered || saved.favorite,
+                tooltip: saved.favorite ? 'Убрать из любимых' : 'В любимые',
+                icon: saved.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: saved.favorite ? scheme.primary : null,
+                onTap: () => store.toggleFavorite(saved.id),
+              ),
+            const SizedBox(width: 8),
+          ],
           if (track.duration != null)
             Text(
               formatDuration(track.duration),
@@ -135,18 +158,20 @@ class TrackTile extends StatelessWidget {
             ),
           if (trailingAction != null) trailingAction!,
           TrackMenuButton(
-              track: track, onRemoveFromPlaylist: onRemoveFromPlaylist),
+              track: track,
+              compact: desktop,
+              onRemoveFromPlaylist: onRemoveFromPlaylist),
         ],
       ),
     ),
-      ),
+      )),
     );
   }
 }
 
 /// Пункты меню трека — одинаковые для «⋮» и для правого клика.
-List<PopupMenuEntry<String>> trackMenuItems(
-    BuildContext context, Track track, {bool canRemoveFromPlaylist = false}) {
+List<PopupMenuEntry<String>> trackMenuItems(BuildContext context, Track track,
+    {bool canRemoveFromPlaylist = false, bool compact = false}) {
   final store = context.read<LibraryStore>();
   final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
   final inLibrary = saved != null;
@@ -177,17 +202,15 @@ List<PopupMenuEntry<String>> trackMenuItems(
     else
       item('download', Icons.download_outlined, 'Скачать'),
     const PopupMenuDivider(),
-    item('playlist', Icons.add_circle_outline, 'Добавить в плейлист…'),
+    if (!compact) item('playlist', Icons.add_circle_outline, 'Добавить в плейлист…'),
     if (!inLibrary) item('library', Icons.library_add_outlined, 'Добавить в медиатеку'),
-    if (inLibrary)
+    if (inLibrary && !compact)
       item('fav', saved.favorite ? Icons.favorite : Icons.favorite_border,
           saved.favorite ? 'Убрать из любимых' : 'В любимые'),
     if (inLibrary) ...[
       const PopupMenuDivider(),
       item('edit', Icons.edit_outlined, 'Изменить сведения…'),
-      item('cover', Icons.image_search, 'Найти обложку и сведения'),
-      if (context.read<SettingsStore>().hasSpotifyKeys && track.source != TrackSource.spotify)
-        item('spotifyMeta', Icons.graphic_eq, 'Сведения из Spotify'),
+      item('refresh', Icons.refresh_rounded, 'Обновить трек'),
       if (acc.signedIn)
         item('hide', saved.hiddenFromFriends ? Icons.visibility : Icons.visibility_off_outlined,
             saved.hiddenFromFriends ? 'Показать друзьям' : 'Скрыть от друзей'),
@@ -279,6 +302,23 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
       }
     case 'edit':
       await AppActions.editTrackDialog(context, t);
+    case 'refresh':
+      // Сначала Spotify (точные название, альбом, обложка), если есть ключи;
+      // не нашёлся — обычный поиск обложки и сведений.
+      AppActions.toast(context, 'Обновляю «${t.title}»…');
+      if (context.read<SettingsStore>().hasSpotifyKeys && t.source != TrackSource.spotify) {
+        final n = await context.read<SpotifyCheck>().applyAll([t], (_, __) {});
+        if (n > 0) {
+          if (context.mounted) AppActions.toast(context, 'Сведения и обложка из Spotify');
+          return;
+        }
+      }
+      if (!context.mounted) return;
+      final found = await context.read<CoverService>().fetchFor(t);
+      if (context.mounted) {
+        AppActions.toast(
+            context, found != null ? 'Обложка и сведения из $found' : 'Ничего нового не нашлось');
+      }
     case 'cover':
       AppActions.toast(context, 'Ищу обложку…');
       final from = await context.read<CoverService>().fetchFor(t);
@@ -298,14 +338,14 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
 
 /// Меню трека в точке клика (правая кнопка мыши или долгое нажатие).
 Future<void> showTrackMenuAt(BuildContext context, Track track, Offset globalPosition,
-    {VoidCallback? onRemoveFromPlaylist}) async {
+    {VoidCallback? onRemoveFromPlaylist, bool compact = false}) async {
   final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
   final local = overlay.globalToLocal(globalPosition);
   final action = await showMenu<String>(
     context: context,
     position: RelativeRect.fromRect(local & const Size(1, 1), Offset.zero & overlay.size),
     items: trackMenuItems(context, track,
-        canRemoveFromPlaylist: onRemoveFromPlaylist != null),
+        canRemoveFromPlaylist: onRemoveFromPlaylist != null, compact: compact),
   );
   if (action != null && context.mounted) {
     await runTrackAction(context, track, action, onRemoveFromPlaylist: onRemoveFromPlaylist);
@@ -320,29 +360,32 @@ class TrackContextMenu extends StatelessWidget {
     required this.track,
     required this.child,
     this.onRemoveFromPlaylist,
+    this.compact = false,
   });
 
   final Track track;
   final Widget child;
   final VoidCallback? onRemoveFromPlaylist;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onSecondaryTapUp: (d) => showTrackMenuAt(context, track, d.globalPosition,
-            onRemoveFromPlaylist: onRemoveFromPlaylist),
+            onRemoveFromPlaylist: onRemoveFromPlaylist, compact: compact),
         onLongPressStart: (d) => showTrackMenuAt(context, track, d.globalPosition,
-            onRemoveFromPlaylist: onRemoveFromPlaylist),
+            onRemoveFromPlaylist: onRemoveFromPlaylist, compact: compact),
         child: child,
       );
 }
 
 class TrackMenuButton extends StatelessWidget {
   const TrackMenuButton(
-      {super.key, required this.track, this.onRemoveFromPlaylist});
+      {super.key, required this.track, this.onRemoveFromPlaylist, this.compact = false});
 
   final Track track;
   final VoidCallback? onRemoveFromPlaylist;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -352,11 +395,64 @@ class TrackMenuButton extends StatelessWidget {
       onSelected: (v) =>
           runTrackAction(context, track, v, onRemoveFromPlaylist: onRemoveFromPlaylist),
       itemBuilder: (_) => trackMenuItems(context, track,
-          canRemoveFromPlaylist: onRemoveFromPlaylist != null),
+          canRemoveFromPlaylist: onRemoveFromPlaylist != null, compact: compact),
     );
   }
 }
 
+
+/// Отдаёт в [builder], наведена ли мышь на строку.
+class _Hover extends StatefulWidget {
+  const _Hover({required this.builder});
+  final Widget Function(bool hovered) builder;
+
+  @override
+  State<_Hover> createState() => _HoverState();
+}
+
+class _HoverState extends State<_Hover> {
+  bool _h = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        onEnter: (_) => setState(() => _h = true),
+        onExit: (_) => setState(() => _h = false),
+        child: widget.builder(_h),
+      );
+}
+
+/// Маленькая кнопка в строке трека; скрытая всё равно занимает место,
+/// чтобы время не прыгало.
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.visible,
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+    this.color,
+  });
+
+  final bool visible;
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Visibility(
+        visible: visible,
+        maintainSize: true,
+        maintainAnimation: true,
+        maintainState: true,
+        child: IconButton(
+          tooltip: tooltip,
+          iconSize: 20,
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
+          icon: Icon(icon, color: color ?? Colors.white70),
+        ),
+      );
+}
 
 /// Прыгающие полоски на обложке играющего трека (как в Spotify).
 class EqualizerBars extends StatefulWidget {
