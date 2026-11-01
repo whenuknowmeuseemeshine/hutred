@@ -1,0 +1,71 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+/// Запуск внешней программы yt-dlp (только ПК). Она умеет скачивать звук
+/// с YouTube, SoundCloud и сотен других сайтов и быстро чинится,
+/// когда сайты что-то меняют.
+class YtDlp {
+  static bool? _available;
+
+  static bool get _desktop =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+  /// Где искать yt-dlp: в PATH, в папке проекта, рядом с hutred.exe
+  /// и в папке, куда его ставит winget.
+  static List<String> _candidates() => [
+        'yt-dlp',
+        '${Directory.current.path}${Platform.pathSeparator}yt-dlp.exe',
+        '${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}yt-dlp.exe',
+        if (Platform.environment['LOCALAPPDATA'] != null)
+          '${Platform.environment['LOCALAPPDATA']}\\Microsoft\\WinGet\\Links\\yt-dlp.exe',
+      ];
+
+  /// Скачивает звук по ссылке в [dir] под именем [baseName].<расширение>.
+  static Future<File?> download(
+    String url,
+    Directory dir,
+    String baseName, {
+    String cookiesBrowser = '',
+  }) async {
+    if (!_desktop || _available == false) return null;
+    for (final exe in _candidates()) {
+      if (exe != 'yt-dlp' && !File(exe).existsSync()) continue;
+      try {
+        final r = await Process.run(exe, [
+          if (cookiesBrowser.isNotEmpty) ...['--cookies-from-browser', cookiesBrowser],
+          '--no-playlist',
+          '--no-progress',
+          '-f', 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
+          '-o', '${dir.path}${Platform.pathSeparator}$baseName.%(ext)s',
+          url,
+        ]).timeout(const Duration(minutes: 3));
+        _available = true;
+        if (r.exitCode != 0) {
+          debugPrint('[yt-dlp] $url: ${r.stderr}');
+          return null;
+        }
+        return await findCached(dir, baseName);
+      } on ProcessException {
+        continue; // по этому пути yt-dlp нет
+      } catch (e) {
+        debugPrint('[yt-dlp] $url: $e');
+        return null;
+      }
+    }
+    _available = false;
+    debugPrint('[yt-dlp] не найден: установи его или положи yt-dlp.exe в папку проекта');
+    return null;
+  }
+
+  static const audioExts = ['m4a', 'mp3', 'webm', 'opus', 'ogg', 'aac'];
+
+  static Future<File?> findCached(Directory dir, String baseName) async {
+    for (final ext in audioExts) {
+      final f = File('${dir.path}${Platform.pathSeparator}$baseName.$ext');
+      if (await f.exists() && await f.length() > 0) return f;
+    }
+    return null;
+  }
+}

@@ -1,0 +1,317 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../models/remote.dart';
+import '../models/track.dart';
+import 'genius_service.dart';
+
+/// Поиск обложек через официальный Spotify Web API.
+/// Нужны Client ID и Client Secret своего приложения с developer.spotify.com.
+class SpotifyService {
+  final http.Client _client = http.Client();
+  String? _token;
+  DateTime _tokenExpires = DateTime.fromMillisecondsSinceEpoch(0);
+  String? _tokenFor;
+
+  Future<String?> _getToken(String id, String secret) async {
+    final key = '$id:$secret';
+    if (_token != null && _tokenFor == key && DateTime.now().isBefore(_tokenExpires)) {
+      return _token;
+    }
+    final res = await _client.post(
+      Uri.https('accounts.spotify.com', '/api/token'),
+      headers: {
+        'Authorization': 'Basic ${base64Encode(utf8.encode(key))}',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials',
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) {
+      throw Exception('Spotify не принял ключи (код ${res.statusCode})');
+    }
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    _token = j['access_token'] as String?;
+    _tokenFor = key;
+    final ttl = (j['expires_in'] as num?)?.toInt() ?? 3600;
+    _tokenExpires = DateTime.now().add(Duration(seconds: ttl - 60));
+    return _token;
+  }
+
+  /// Проверка ключей из настроек.
+  Future<void> checkKeys(String id, String secret) async {
+    _token = null;
+    await _getToken(id, secret);
+  }
+
+  /// Ссылка на обложку альбома (самую большую) или null.
+  Future<String?> findCover(
+      {required String id,
+      required String secret,
+      required String artist,
+      required String title}) async {
+    final token = await _getToken(id, secret);
+    if (token == null) return null;
+    final hasArtist = artist.isNotEmpty && artist != 'Неизвестный исполнитель';
+    final res = await _client.get(
+      Uri.https('api.spotify.com', '/v1/search', {
+        'q': hasArtist ? 'track:$title artist:$artist' : title,
+        'type': 'track',
+        'limit': '5',
+      }),
+      headers: {'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return null;
+    final data = jsonDecode(utf8.decode(res.bodyBytes));
+    final tracks = data is Map ? data['tracks'] : null;
+    final items = (tracks is Map ? tracks['items'] as List? : null) ?? const [];
+    String? best;
+    var bestScore = 0.0;
+    for (final it in items.whereType<Map>()) {
+      final name = it['name'] as String? ?? '';
+      final artists = (it['artists'] as List? ?? const [])
+          .whereType<Map>()
+          .map((a) => a['name'] as String? ?? '')
+          .join(' ');
+      final score = GeniusService.similar(title, name) * 2 +
+          (hasArtist ? GeniusService.similar(artist, artists) : 1);
+      final images = (it['album'] is Map ? it['album']['images'] : null) as List?;
+      if (images == null || images.isEmpty) continue;
+      if (score > bestScore) {
+        bestScore = score;
+        best = (images.first as Map)['url'] as String?;
+      }
+    }
+    return bestScore >= 2.3 ? best : null;
+  }
+}
+
+extension SpotifyImport on SpotifyService {
+  /// Лучшее совпадение в Spotify для трека (для сверки сведений) или null.
+  Future<Track?> bestMatch(
+      {required String id,
+      required String secret,
+      required String artist,
+      required String title,
+      int? durationMs}) async {
+    final hasArtist = artist.isNotEmpty && artist != Track.unknownArtist;
+    final page = await searchTracks(
+        id: id, secret: secret, query: hasArtist ? '$artist $title' : title);
+    Track? best;
+    var bestScore = 0.0;
+    for (final t in page.items.take(10)) {
+      if (durationMs != null && t.durationMs != null &&
+          (durationMs - t.durationMs!).abs() > 15000) {
+        continue;
+      }
+      // Сравниваем в обе стороны: «Song (Official Video)» и «Song».
+      final ts = [GeniusService.similar(title, t.title), GeniusService.similar(t.title, title)]
+          .reduce((a, b) => a > b ? a : b);
+      final ar = hasArtist
+          ? [
+              GeniusService.similar(t.artist, '$artist $title'),
+              GeniusService.similar(artist, t.artist),
+            ].reduce((a, b) => a > b ? a : b)
+          : 0.6;
+      final score = ts * 2 + ar;
+      if (score > bestScore) {
+        bestScore = score;
+        best = t;
+      }
+    }
+    return bestScore >= 2.4 ? best : null;
+  }
+
+  /// Поиск треков в каталоге Spotify (нужны ключи). Сведения и обложки
+  /// там самые точные — по ним лучше находятся тексты.
+  Future<Paged<Track>> searchTracks(
+      {required String id, required String secret, required String query, int offset = 0}) async {
+    final token = await _getToken(id, secret);
+    final res = await _client.get(
+      Uri.https('api.spotify.com', '/v1/search', {
+        'q': query,
+        'type': 'track',
+        // Spotify теперь отдаёт в поиске не больше 10 за раз.
+        'limit': '10',
+        'offset': '$offset',
+      }),
+      headers: {'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) throw Exception('Spotify ответил ${res.statusCode}');
+    final data = jsonDecode(utf8.decode(res.bodyBytes));
+    final tracks = data is Map ? data['tracks'] : null;
+    final items = (tracks is Map ? tracks['items'] as List? : null) ?? const [];
+    final out = <Track>[];
+    for (final it in items.whereType<Map>()) {
+      final tid = it['id'] as String?;
+      final name = it['name'] as String?;
+      if (tid == null || name == null) continue;
+      final album = it['album'] is Map ? it['album'] as Map : const {};
+      final images = album['images'] as List? ?? const [];
+      out.add(Track(
+        id: Track.newId(),
+        title: name,
+        artist: (it['artists'] as List? ?? const [])
+            .whereType<Map>()
+            .map((a) => '${a['name'] ?? ''}')
+            .where((a) => a.isNotEmpty)
+            .join(', '),
+        album: '${album['name'] ?? ''}',
+        source: TrackSource.spotify,
+        uri: tid,
+        durationMs: (it['duration_ms'] as num?)?.toInt(),
+        artworkUrl: images.isEmpty ? null : (images.first as Map)['url'] as String?,
+        coverChecked: true,
+        addedAt: DateTime.now(),
+      ));
+    }
+    final total = (tracks is Map ? tracks['total'] as num? : null)?.toInt() ?? 0;
+    final next = offset + items.length;
+    return Paged(
+      out,
+      items.isEmpty || next >= total || next >= 200
+          ? null
+          : () async => searchTracks(id: id, secret: secret, query: query, offset: next),
+    );
+  }
+
+  /// Без ключей: читаем открытую страницу-виджет Spotify (embed) —
+  /// там есть название, исполнители и длительность каждого трека.
+  Future<({String name, List<({String artist, String title, int? durationMs})> tracks})>
+      listFromEmbed(String url) async {
+    final m = RegExp(r'(playlist|album|track)[/:]([A-Za-z0-9]+)').firstMatch(url);
+    if (m == null) throw Exception('Не понял ссылку Spotify');
+    final res = await _client.get(
+      Uri.https('open.spotify.com', '/embed/${m.group(1)}/${m.group(2)}'),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+        'Accept-Language': 'en',
+      },
+    ).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      throw Exception('Spotify не открыл ссылку (код ${res.statusCode})');
+    }
+    final html = utf8.decode(res.bodyBytes);
+    final data = RegExp(
+            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+            dotAll: true)
+        .firstMatch(html);
+    if (data == null) throw Exception('Spotify изменил страницу — не смог прочитать треки');
+    final j = jsonDecode(data.group(1)!);
+    final e = j['props']?['pageProps']?['state']?['data']?['entity'];
+    if (e is! Map) throw Exception('Плейлист закрытый или удалён');
+    String clean(String s) => s.replaceAll('\u00a0', ' ').replaceAll('\u2060', '').trim();
+    final out = <({String artist, String title, int? durationMs})>[];
+    if (e['type'] == 'track') {
+      final artists = (e['artists'] as List? ?? const [])
+          .whereType<Map>()
+          .map((a) => '${a['name'] ?? ''}')
+          .where((a) => a.isNotEmpty)
+          .join(', ');
+      out.add((
+        artist: clean(artists.isNotEmpty ? artists : '${e['subtitle'] ?? ''}'),
+        title: clean('${e['title'] ?? e['name'] ?? ''}'),
+        durationMs: (e['duration'] as num?)?.toInt(),
+      ));
+    } else {
+      for (final t in (e['trackList'] as List? ?? const []).whereType<Map>()) {
+        final title = clean('${t['title'] ?? ''}');
+        if (title.isEmpty) continue;
+        out.add((
+          artist: clean('${t['subtitle'] ?? ''}'),
+          title: title,
+          durationMs: (t['duration'] as num?)?.toInt(),
+        ));
+      }
+    }
+    return (name: clean('${e['name'] ?? e['title'] ?? 'Из Spotify'}'), tracks: out);
+  }
+
+  /// Список «исполнитель — название» из плейлиста, альбома или трека Spotify.
+  Future<List<({String artist, String title, int? durationMs})>> listFromUrl(
+      {required String id, required String secret, required String url}) async {
+    final m = RegExp(r'(playlist|album|track)[/:]([A-Za-z0-9]+)').firstMatch(url);
+    if (m == null) throw Exception('Не понял ссылку Spotify');
+    final kind = m.group(1)!;
+    final itemId = m.group(2)!;
+    final token = await _getToken(id, secret);
+    final headers = {'Authorization': 'Bearer $token'};
+    final out = <({String artist, String title, int? durationMs})>[];
+
+    void addTrack(Map t) {
+      final name = t['name'] as String?;
+      if (name == null || name.isEmpty) return;
+      final artists = (t['artists'] as List? ?? const [])
+          .whereType<Map>()
+          .map((a) => a['name'] as String? ?? '')
+          .where((a) => a.isNotEmpty)
+          .join(', ');
+      out.add((artist: artists, title: name, durationMs: (t['duration_ms'] as num?)?.toInt()));
+    }
+
+    Future<dynamic> get(Uri u) async {
+      final res = await _client.get(u, headers: headers).timeout(const Duration(seconds: 15));
+      if (res.statusCode == 404) {
+        throw Exception('Spotify не отдал плейлист: он закрытый или это подборка самого Spotify');
+      }
+      if (res.statusCode != 200) throw Exception('Spotify ответил кодом ${res.statusCode}');
+      return jsonDecode(utf8.decode(res.bodyBytes));
+    }
+
+    if (kind == 'track') {
+      final t = await get(Uri.https('api.spotify.com', '/v1/tracks/$itemId'));
+      if (t is Map) addTrack(t);
+      return out;
+    }
+    Uri? next = kind == 'playlist'
+        ? Uri.https('api.spotify.com', '/v1/playlists/$itemId/tracks', {'limit': '100'})
+        : Uri.https('api.spotify.com', '/v1/albums/$itemId/tracks', {'limit': '50'});
+    while (next != null && out.length < 2000) {
+      final page = await get(next);
+      if (page is! Map) break;
+      for (final it in (page['items'] as List? ?? const []).whereType<Map>()) {
+        final t = kind == 'playlist' ? it['track'] : it;
+        if (t is Map) addTrack(t);
+      }
+      final n = page['next'] as String?;
+      next = n == null ? null : Uri.parse(n);
+    }
+    return out;
+  }
+}
+
+/// Обложки из каталога iTunes: бесплатно и без ключей, хорошее качество.
+class ItunesService {
+  final http.Client _client = http.Client();
+
+  Future<String?> findCover(String artist, String title) async {
+    final hasArtist = artist.isNotEmpty && artist != 'Неизвестный исполнитель';
+    final res = await _client.get(
+      Uri.https('itunes.apple.com', '/search', {
+        'term': hasArtist ? '$artist $title' : title,
+        'entity': 'song',
+        'limit': '8',
+      }),
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return null;
+    final results =
+        (jsonDecode(utf8.decode(res.bodyBytes))['results'] as List?) ?? const [];
+    String? best;
+    var bestScore = 0.0;
+    for (final r in results.whereType<Map>()) {
+      final art = r['artworkUrl100'] as String?;
+      if (art == null) continue;
+      final score = GeniusService.similar(title, r['trackName'] as String? ?? '') * 2 +
+          (hasArtist
+              ? GeniusService.similar(artist, r['artistName'] as String? ?? '')
+              : 1);
+      if (score > bestScore) {
+        bestScore = score;
+        // Та же картинка в большом размере.
+        best = art.replaceFirst('100x100bb', '1000x1000bb');
+      }
+    }
+    return bestScore >= 2.3 ? best : null;
+  }
+}

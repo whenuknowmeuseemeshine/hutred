@@ -1,0 +1,48 @@
+name: hutred
+description: "Hutred — музыкальный плеер: треки из любых источников, поиск и караоке-текст."
+publish_to: 'none'
+version: 1.4.0+5
+
+environment:
+  sdk: '>=3.6.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Воспроизведение (Android, iOS, macOS нативно; Windows/Linux через media_kit)
+  just_audio: ^0.9.42
+  just_audio_media_kit: ^2.0.6
+  media_kit_libs_linux: ^1.1.3
+  media_kit_libs_windows_audio: ^1.0.9
+  # Источники
+  youtube_explode_dart: ^3.1.0
+  file_picker: ^8.1.2
+  # Сеть, хранение, состояние
+  http: ^1.2.2
+  path_provider: ^2.1.4
+  provider: ^6.1.2
+  # Аккаунты и синхронизация медиатеки между устройствами
+  supabase_flutter: ^2.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png
+
+# Иконка приложения из логотипа: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/logo.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  windows:
+    generate: true
+    icon_size: 256
+  macos:
+    generate: true
