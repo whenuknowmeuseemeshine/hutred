@@ -44,6 +44,7 @@ const _sectionKeywords = {
   'Обновления': 'обновление версия сборка автозапуск автозагрузка windows трей',
   'Сеть': 'обход блокировок zapret vpn впн россия прокси проверить связь соединение',
   'YouTube': 'ютуб вход cookies браузер 18+',
+  'Версия': 'обновление обновить проверить версия сборка',
   'Загрузки и кэш': 'скачать скачанные офлайн без интернета кэш память место удалить',
 };
 
@@ -364,8 +365,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
           ],
-          const _Section('Обновления'),
-          const _UpdatesTiles(),
+          if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
+            const _Section('Обновления'),
+            const _UpdatesTiles(),
+          ],
           const _Section('Сеть'),
           SwitchListTile(
             secondary: const Icon(Icons.vpn_lock_outlined),
@@ -401,11 +404,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _Section('Загрузки и кэш'),
           const _DownloadsTile(),
           const _CacheTile(),
+          const _Section('Версия'),
+          const _UpdateCheckTile(),
           const _Footer(),
           ]),
         ],
       ),
     );
+  }
+}
+
+
+/// «Проверить обновления» — в самом низу настроек.
+class _UpdateCheckTile extends StatelessWidget {
+  const _UpdateCheckTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final u = context.watch<UpdateService>();
+    final status = !u.supported
+        ? 'Эта копия собрана вручную — сама не обновляется'
+        : u.checking
+            ? 'Проверяю…'
+            : u.progress != null
+                ? 'Скачиваю обновление… ${(u.progress! * 100).round()}%'
+                : u.readyToInstall
+                    ? 'Новая версия скачана — поставится при перезапуске'
+                    : u.available
+                        ? 'Доступна новая сборка ${u.latestBuild}'
+                        : u.error ?? 'У тебя последняя версия';
+    return ListTile(
+          leading: const Icon(Icons.system_update_alt),
+          title: Text(
+              'Hutred, сборка ${UpdateService.build == 0 ? 'локальная' : UpdateService.build}'),
+          subtitle: Text(status),
+          trailing: u.available
+              ? FilledButton(onPressed: u.updateNow, child: const Text('Обновить'))
+              : TextButton(
+                  onPressed:
+                      u.supported && !u.checking ? () => u.check(manual: true) : null,
+                  child: const Text('Проверить'),
+                ),
+        );
   }
 }
 
@@ -1248,34 +1288,9 @@ class _UpdatesTilesState extends State<_UpdatesTiles> {
 
   @override
   Widget build(BuildContext context) {
-    final u = context.watch<UpdateService>();
     final s = context.watch<SettingsStore>();
-    final status = !u.supported
-        ? 'Эта копия собрана вручную — сама не обновляется'
-        : u.checking
-            ? 'Проверяю…'
-            : u.progress != null
-                ? 'Скачиваю обновление… ${(u.progress! * 100).round()}%'
-                : u.readyToInstall
-                    ? 'Новая версия скачана — поставится при перезапуске'
-                    : u.available
-                        ? 'Доступна новая сборка ${u.latestBuild}'
-                        : u.error ?? 'У тебя последняя версия';
     return Column(
       children: [
-        ListTile(
-          leading: const Icon(Icons.system_update_alt),
-          title: Text(
-              'Hutred, сборка ${UpdateService.build == 0 ? 'локальная' : UpdateService.build}'),
-          subtitle: Text(status),
-          trailing: u.available
-              ? FilledButton(onPressed: u.updateNow, child: const Text('Обновить'))
-              : TextButton(
-                  onPressed:
-                      u.supported && !u.checking ? () => u.check(manual: true) : null,
-                  child: const Text('Проверить'),
-                ),
-        ),
         if (Platform.isWindows)
           SwitchListTile(
             secondary: const Icon(Icons.autorenew),
