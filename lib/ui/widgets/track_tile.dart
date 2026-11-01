@@ -308,14 +308,14 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
         }
       }
       if (!context.mounted) return;
-      final found = await context.read<CoverService>().fetchFor(t);
+      final found = await context.read<CoverService>().fetchFor(t, manual: true);
       if (context.mounted) {
         AppActions.toast(
             context, found != null ? 'Обложка и сведения из $found' : 'Ничего нового не нашлось');
       }
     case 'cover':
       AppActions.toast(context, 'Ищу обложку…');
-      final from = await context.read<CoverService>().fetchFor(t);
+      final from = await context.read<CoverService>().fetchFor(t, manual: true);
       if (context.mounted) {
         AppActions.toast(context, from != null ? 'Обложка и сведения из $from' : 'Ничего не нашлось');
       }

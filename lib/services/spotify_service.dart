@@ -152,7 +152,9 @@ extension SpotifyImport on SpotifyService {
       headers: {'Authorization': 'Bearer $token'},
     ).timeout(const Duration(seconds: 12));
     if (res.statusCode == 429) {
-      throw Exception('Spotify просит подождать: слишком много запросов. Попробуй позже');
+      final left = _PacedClient._blockedUntil.difference(DateTime.now());
+      throw Exception('Spotify просит подождать ещё ${_PacedClient._wait(left)}: '
+          'слишком много запросов с общих ключей');
     }
     if (res.statusCode != 200) throw Exception('Spotify ответил ${res.statusCode}');
     final data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -408,8 +410,11 @@ class _PacedClient extends http.BaseClient {
     return r;
   }
 
-  static String _wait(Duration d) =>
-      d.inMinutes >= 1 ? '${d.inMinutes + 1} мин' : '${d.inSeconds + 1} с';
+  static String _wait(Duration d) => d.inHours >= 1
+      ? '${d.inHours} ч ${d.inMinutes % 60} мин'
+      : d.inMinutes >= 1
+          ? '${d.inMinutes + 1} мин'
+          : '${d.inSeconds + 1} с';
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {

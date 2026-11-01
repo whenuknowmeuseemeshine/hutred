@@ -9,6 +9,7 @@ import '../services/dpi_bypass.dart';
 import '../services/settings_store.dart';
 import '../services/soundcloud_source.dart';
 import '../services/spotify_service.dart';
+import '../services/youtube_source.dart';
 import 'theme.dart';
 
 /// «Проверка связи»: что из сервисов открывается, а что нет.
@@ -43,6 +44,7 @@ class _NetCheckDialogState extends State<_NetCheckDialog> {
     final settings = context.read<SettingsStore>();
     final sc = context.read<SoundcloudSource>();
     final sp = context.read<SpotifyService>();
+    final yt = context.read<YoutubeSource>();
 
     Future<String> reach(String url) async {
       final r = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
@@ -70,7 +72,13 @@ class _NetCheckDialogState extends State<_NetCheckDialog> {
             .timeout(const Duration(seconds: 15));
         return 'нашёл ${r.items.length}${SpotifyService.viaRelay ? ', через облако Hutred' : ''}';
       }),
-      _Check('YouTube', () => reach('https://www.youtube.com/')),
+      _Check('YouTube — сайт', () => reach('https://www.youtube.com/')),
+      _Check('YouTube — звук', () async {
+        final r = await yt.search('lofi hip hop').timeout(const Duration(seconds: 20));
+        if (r.isEmpty) throw Exception('поиск ничего не дал');
+        final f = await yt.cachedAudio(r.first.uri).timeout(const Duration(seconds: 90));
+        return 'скачался (${(await f.length()) ~/ 1024} КБ)';
+      }),
     ];
     _runAll();
   }
@@ -104,7 +112,8 @@ class _NetCheckDialogState extends State<_NetCheckDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Обход блокировок: ${DpiBypass.enabled ? 'включён' : 'выключен'}',
+              'Обход блокировок: ${DpiBypass.enabled ? 'включён' : 'выключен'}'
+              '${DpiBypass.zapretRunning.value ? ' · работает zapret' : ''}',
               style: const TextStyle(color: HutredTheme.muted),
             ),
             const SizedBox(height: 8),

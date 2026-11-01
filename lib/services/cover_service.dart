@@ -55,7 +55,7 @@ class CoverService {
   /// Название сначала чистится от мусора («audiovk com», «mp3», «(Official)»),
   /// потом пробуются варианты: целиком, первые слова, только исполнитель.
   /// Слова сравниваются нечётко: «сн» подходит к «сна».
-  Future<String?> fetchFor(Track t) async {
+  Future<String?> fetchFor(Track t, {bool manual = false}) async {
     if (!_inFlight.add(t.id)) return null;
     try {
       final split = YoutubeSource.splitTitle(t.title, t.artist);
@@ -94,9 +94,14 @@ class CoverService {
         return true;
       }
 
+      // Ключи Spotify общие на всех, и у них лимит запросов. Сам по себе
+      // (при включении трека) спрашиваем Spotify один раз, а не по каждому варианту.
+      final spotifyOk = settings.hasSpotifyKeys &&
+          DateTime.now().isAfter(SpotifyService.coolingUntil);
+      var vi = 0;
       for (final v in variants) {
         if (art != null) break;
-        if (settings.hasSpotifyKeys) {
+        if (spotifyOk && (manual || vi++ == 0)) {
           await attempt('Spotify', () async {
             final page = await spotify.searchTracks(
                 id: settings.spotifyId,
@@ -141,7 +146,7 @@ class CoverService {
       final artistName = variants.map((v) => v.artist).firstWhere(
           (a) => a.isNotEmpty, orElse: () => '');
       if (art == null && artistName.isNotEmpty) {
-        if (settings.hasSpotifyKeys) {
+        if (spotifyOk && manual) {
           await attempt('Spotify', () async {
             final page = await spotify.searchTracks(
                 id: settings.spotifyId, secret: settings.spotifySecret, query: artistName);
