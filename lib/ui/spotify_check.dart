@@ -77,7 +77,10 @@ class SpotifyCheck {
   void _apply(Track t, Track m) {
     final stored = store.byId(t.id) ?? store.findBySource(t.source, t.uri);
     if (stored == null) return;
-    final changedName = m.title != stored.title || m.artist != stored.artist;
+    // Свой текст (вставленный или подогнанный ИИ) при переименовании не трогаем.
+    final changedName = (m.title != stored.title || m.artist != stored.artist) &&
+        stored.lyricsSource != 'custom' &&
+        stored.lyricsSource != 'ai';
     final updated = stored.copyWith(
       title: m.title,
       artist: m.artist,

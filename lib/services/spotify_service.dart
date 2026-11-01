@@ -291,7 +291,8 @@ class ItunesService {
   final http.Client _client = http.Client();
 
   /// Песни по запросу: название, исполнитель и обложка 1000×1000.
-  Future<List<({String title, String artist, String art})>> songs(String term) async {
+  Future<List<({String title, String artist, String album, String art})>> songs(
+      String term) async {
     final res = await _client.get(
       Uri.https('itunes.apple.com', '/search', {'term': term, 'entity': 'song', 'limit': '15'}),
     ).timeout(const Duration(seconds: 12));
@@ -304,6 +305,8 @@ class ItunesService {
           (
             title: '${r['trackName'] ?? ''}',
             artist: '${r['artistName'] ?? ''}',
+            album: '${r['collectionName'] ?? ''}'
+                .replaceAll(RegExp(r'\s*-\s*(Single|EP)$'), ''),
             art: (r['artworkUrl100'] as String).replaceFirst('100x100bb', '1000x1000bb'),
           ),
     ];

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'services/account_service.dart';
 import 'services/ai_sync_service.dart';
 import 'services/cover_service.dart';
+import 'services/desktop_tray.dart';
 import 'services/dpi_bypass.dart';
 import 'services/discord_presence.dart';
 import 'services/friends_service.dart';
@@ -28,7 +29,7 @@ import 'ui/theme.dart';
 /// Навигатор приложения — чтобы показывать диалоги из сервисов.
 final hutredNavigatorKey = GlobalKey<NavigatorState>();
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   // На Windows и Linux звук идёт через media_kit (libmpv);
   // на Android, iOS и macOS just_audio использует системный плеер.
@@ -88,6 +89,7 @@ Future<void> main() async {
     genius: genius,
     spotify: spotify,
     itunes: ItunesService(),
+    soundcloud: soundcloud,
     store: store,
     settings: settings,
     player: player,
@@ -114,6 +116,12 @@ Future<void> main() async {
   player.offlineAudio = offline.audioFor;
   player.isOffline = () => !offline.online;
   // Новые треки с YouTube/SoundCloud сверяем со Spotify (с вопросом).
+  // Трей: крестик прячет окно, при автозапуске окно вообще не показываем.
+  await DesktopTray.init(
+    player: player,
+    settings: settings,
+    startHidden: args.contains('--minimized'),
+  );
   // Автообновление (сборки из облака).
   final updates = UpdateService(settings: settings, player: player);
   await updates.start();

@@ -17,8 +17,73 @@ import '../home_shell.dart';
 import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+/// Слова, по которым находится раздел в поиске (кроме его названия).
+const _sectionKeywords = {
+  'Аккаунт': 'вход войти логин аватар аватарка почта пароль облако синхронизация файлы',
+  'Акцентный цвет': 'цвет тема оформление акцент',
+  'Фон': 'фон цвет тема оформление обои плеер подкрашивать',
+  'Медиатека': 'любимые избранное лайк добавленные',
+  'Порядок вкладок': 'вкладки меню навигация порядок',
+  'Тексты песен': 'текст караоке субтитры genius ии ai groq whisper тайминги',
+  'Обложки': 'обложка spotify itunes genius ключи сверять сведения превью',
+  'Админ': 'админ всем ключи раздать',
+  'Discord': 'дискорд статус активность rich presence слушает',
+  'Обновления': 'обновление версия сборка автозапуск автозагрузка windows трей',
+  'Сеть': 'обход блокировок zapret vpn впн россия прокси',
+  'YouTube': 'ютуб вход cookies браузер 18+',
+  'Загрузки и кэш': 'скачать скачанные офлайн без интернета кэш память место удалить',
+};
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final _search = TextEditingController();
+  String _q = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Оставляет только разделы, где совпало название или ключевые слова.
+  List<Widget> _filter(List<Widget> all) {
+    final q = _q.trim().toLowerCase();
+    if (q.isEmpty) return all;
+    final out = <Widget>[];
+    var title = 'Аккаунт';
+    var group = <Widget>[];
+    void flush() {
+      final words = '${title.toLowerCase()} ${_sectionKeywords[title] ?? ''}';
+      if (q.split(RegExp(r'\s+')).every(words.contains)) out.addAll(group);
+    }
+
+    for (final w in all) {
+      if (w is _Section) {
+        flush();
+        title = w.text;
+        group = [w];
+      } else if (w is _Footer) {
+        // Логотип внизу при поиске не нужен.
+      } else {
+        group.add(w);
+      }
+    }
+    flush();
+    if (out.isEmpty) {
+      out.add(const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(
+            child: Text('Ничего не нашлось', style: TextStyle(color: HutredTheme.muted))),
+      ));
+    }
+    return out;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +95,34 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
+          // Поиск по настройкам.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _search,
+              onChanged: (v) => setState(() => _q = v),
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search),
+                hintText: 'Поиск по настройкам',
+                suffixIcon: _q.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() {
+                          _search.clear();
+                          _q = '';
+                        }),
+                      ),
+                filled: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          ..._filter([
           const _AccountTile(),
           const _Section('Акцентный цвет'),
           Padding(
@@ -235,17 +328,29 @@ class SettingsScreen extends StatelessWidget {
           const _Section('Загрузки и кэш'),
           const _DownloadsTile(),
           const _CacheTile(),
-          const SizedBox(height: 24),
-          const Center(child: HutredLogo(size: 72)),
-          const SizedBox(height: 8),
-          const Center(
-            child: Text('Hutred 1.4',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          ),
+          const _Footer(),
+          ]),
         ],
       ),
     );
   }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  @override
+  Widget build(BuildContext context) => const Column(
+        children: [
+          SizedBox(height: 24),
+          Center(child: HutredLogo(size: 72)),
+          SizedBox(height: 8),
+          Center(
+            child: Text('Hutred',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ),
+        ],
+      );
 }
 
 class _Section extends StatelessWidget {
@@ -1107,11 +1212,20 @@ class _UpdatesTilesState extends State<_UpdatesTiles> {
             value: s.autoUpdate,
             onChanged: (v) => s.autoUpdate = v,
           ),
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+          SwitchListTile(
+            secondary: const Icon(Icons.close_fullscreen),
+            title: const Text('Крестик сворачивает в трей'),
+            subtitle: const Text(
+                'Окно прячется к часам, музыка играет дальше. Выйти — правой кнопкой по значку'),
+            value: s.closeToTray,
+            onChanged: (v) => s.closeToTray = v,
+          ),
         if (WindowsAutostart.supported)
           SwitchListTile(
             secondary: const Icon(Icons.power_settings_new),
             title: const Text('Запускать вместе с Windows'),
-            subtitle: const Text('Hutred открывается свёрнутым при включении компьютера'),
+            subtitle: const Text('Hutred тихо стартует в трее при включении компьютера'),
             value: _autostart ?? false,
             onChanged: _autostart == null
                 ? null

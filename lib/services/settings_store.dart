@@ -68,6 +68,7 @@ class SettingsStore extends ChangeNotifier {
   bool _discordPresence = true;
   bool? _dpiBypass;
   bool _autoUpdate = true;
+  bool _closeToTray = true;
   String _discordAppId = '';
   File? _file;
 
@@ -125,6 +126,13 @@ class SettingsStore extends ChangeNotifier {
           DateTime.now().timeZoneOffset == const Duration(hours: 3));
   set dpiBypass(bool v) {
     _dpiBypass = v;
+    _save();
+  }
+
+  /// Крестик прячет окно в трей, музыка продолжает играть.
+  bool get closeToTray => _closeToTray;
+  set closeToTray(bool v) {
+    _closeToTray = v;
     _save();
   }
 
@@ -385,6 +393,7 @@ class SettingsStore extends ChangeNotifier {
       _discordPresence = j['discordPresence'] as bool? ?? true;
       _dpiBypass = j['dpiBypass'] as bool?;
       _autoUpdate = j['autoUpdate'] as bool? ?? true;
+      _closeToTray = j['closeToTray'] as bool? ?? true;
       _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
       debugPrint('Не удалось прочитать настройки: $e');
@@ -409,6 +418,7 @@ class SettingsStore extends ChangeNotifier {
         'discordPresence': _discordPresence,
         if (_dpiBypass != null) 'dpiBypass': _dpiBypass,
         'autoUpdate': _autoUpdate,
+        'closeToTray': _closeToTray,
         'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
         'volume': _volume,

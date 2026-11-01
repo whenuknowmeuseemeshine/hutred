@@ -6,6 +6,7 @@ import 'library_store.dart';
 import 'meta_clean.dart';
 import 'player_service.dart';
 import 'settings_store.dart';
+import 'soundcloud_source.dart';
 import 'spotify_service.dart';
 import 'youtube_source.dart';
 
@@ -16,6 +17,7 @@ class CoverService {
     required this.genius,
     required this.spotify,
     required this.itunes,
+    required this.soundcloud,
     required this.store,
     required this.settings,
     required this.player,
@@ -26,6 +28,7 @@ class CoverService {
   final GeniusService genius;
   final SpotifyService spotify;
   final ItunesService itunes;
+  final SoundcloudSource soundcloud;
   final LibraryStore store;
   final SettingsStore settings;
   final PlayerService player;
@@ -45,7 +48,10 @@ class CoverService {
     if (wants) fetchFor(t);
   }
 
-  /// Ищет обложку и сохраняет её. Возвращает название источника или null.
+  /// Ищет трек и обновляет у него обложку, а также название, исполнителя
+  /// и альбом. Порядок: Spotify → SoundCloud → iTunes (у них есть сведения),
+  /// Genius — только обложка. Возвращает название источника или null.
+  ///
   /// Название сначала чистится от мусора («audiovk com», «mp3», «(Official)»),
   /// потом пробуются варианты: целиком, первые слова, только исполнитель.
   /// Слова сравниваются нечётко: «сн» подходит к «сна».
@@ -55,39 +61,41 @@ class CoverService {
       final split = YoutubeSource.splitTitle(t.title, t.artist);
       final variants = MetaClean.variants(split.artist, split.title);
 
-      String? art;
-      String? from;
+      // Найденное: обложка и (если источник их знает) сведения.
+      String? art, title, artist, album, from;
 
-      Future<void> attempt(String name, Future<String?> Function() f) async {
+      Future<void> attempt(String name, Future<bool> Function() f) async {
         if (art != null) return;
         try {
-          art = await f();
-          if (art != null) from = name;
+          if (await f()) from = name;
         } catch (e) {
           debugPrint('Обложка ($name): $e');
         }
       }
 
       // Подходит ли найденный трек: название и (если знаем) исполнитель.
-      bool fits(({String artist, String title}) v, String title, String artist) {
+      bool fits(({String artist, String title}) v, String ti, String ar) {
         if (v.artist.isEmpty) {
           // Исполнитель неизвестен — он мог попасть в название.
-          return MetaClean.fuzzy(v.title, '$artist $title') >= 0.75 &&
-              MetaClean.fuzzy(title, v.title) >= 0.5;
+          return MetaClean.fuzzy(v.title, '$ar $ti') >= 0.75 &&
+              MetaClean.fuzzy(ti, v.title) >= 0.5;
         }
-        final ts = [MetaClean.fuzzy(v.title, title), MetaClean.fuzzy(title, v.title)]
+        final ts = [MetaClean.fuzzy(v.title, ti), MetaClean.fuzzy(ti, v.title)]
             .reduce((a, b) => a > b ? a : b);
-        return ts >= 0.7 && MetaClean.fuzzy(v.artist, artist) >= 0.6;
+        return ts >= 0.7 && MetaClean.fuzzy(v.artist, ar) >= 0.6;
+      }
+
+      bool take(String? a, String ti, String ar, [String al = '']) {
+        if (a == null) return false;
+        art = a;
+        title = ti;
+        artist = ar;
+        album = al;
+        return true;
       }
 
       for (final v in variants) {
         if (art != null) break;
-        if (v.artist.isNotEmpty) {
-          await attempt('Genius', () async {
-            final song = await genius.findSong(v.artist, v.title);
-            return song?.artUrl;
-          });
-        }
         if (settings.hasSpotifyKeys) {
           await attempt('Spotify', () async {
             final page = await spotify.searchTracks(
@@ -95,20 +103,41 @@ class CoverService {
                 secret: settings.spotifySecret,
                 query: '${v.artist} ${v.title}'.trim());
             for (final c in page.items) {
-              if (c.artworkUrl != null && fits(v, c.title, c.artist)) return c.artworkUrl;
+              if (c.artworkUrl != null && fits(v, c.title, c.artist)) {
+                return take(c.artworkUrl, c.title, c.artist, c.album);
+              }
             }
-            return null;
+            return false;
           });
         }
+        await attempt('SoundCloud', () async {
+          for (final c in await soundcloud.search('${v.artist} ${v.title}'.trim(), limit: 10)) {
+            final a = c.artworkUrl;
+            // Аватар загрузившего вместо обложки не берём.
+            if (a != null && !a.contains('avatars-') && fits(v, c.title, c.artist)) {
+              return take(a, c.title, c.artist);
+            }
+          }
+          return false;
+        });
         await attempt('iTunes', () async {
           for (final c in await itunes.songs('${v.artist} ${v.title}'.trim())) {
-            if (fits(v, c.title, c.artist)) return c.art;
+            if (fits(v, c.title, c.artist)) return take(c.art, c.title, c.artist, c.album);
           }
-          return null;
+          return false;
         });
+        if (v.artist.isNotEmpty) {
+          await attempt('Genius', () async {
+            final song = await genius.findSong(v.artist, v.title);
+            final a = song?.artUrl;
+            if (a == null) return false;
+            art = a;
+            return true;
+          });
+        }
       }
 
-      // Последний шанс: обложка любого трека этого исполнителя.
+      // Последний шанс: обложка любого трека этого исполнителя (сведения не трогаем).
       final artistName = variants.map((v) => v.artist).firstWhere(
           (a) => a.isNotEmpty, orElse: () => '');
       if (art == null && artistName.isNotEmpty) {
@@ -118,25 +147,43 @@ class CoverService {
                 id: settings.spotifyId, secret: settings.spotifySecret, query: artistName);
             for (final c in page.items) {
               if (c.artworkUrl != null && MetaClean.fuzzy(artistName, c.artist) >= 0.99) {
-                return c.artworkUrl;
+                art = c.artworkUrl;
+                return true;
               }
             }
-            return null;
+            return false;
           });
         }
         await attempt('iTunes', () async {
           for (final c in await itunes.songs(artistName)) {
-            if (MetaClean.fuzzy(artistName, c.artist) >= 0.99) return c.art;
+            if (MetaClean.fuzzy(artistName, c.artist) >= 0.99) {
+              art = c.art;
+              return true;
+            }
           }
-          return null;
+          return false;
         });
       }
 
       final current = store.byId(t.id);
       if (current == null) return from;
+      final newTitle = (title ?? '').trim();
+      final newArtist = (artist ?? '').trim();
+      final renamed = newTitle.isNotEmpty &&
+          newArtist.isNotEmpty &&
+          (newTitle != current.title || newArtist != current.artist);
+      // Свой текст (вставленный или подогнанный ИИ) не трогаем.
+      final keepLyrics = !renamed ||
+          current.lyricsSource == 'custom' ||
+          current.lyricsSource == 'ai';
       final updated = current.copyWith(
         artworkUrl: art ?? current.artworkUrl,
         coverChecked: true,
+        title: renamed ? newTitle : null,
+        artist: renamed ? newArtist : null,
+        album: (album ?? '').trim().isNotEmpty ? album!.trim() : null,
+        lyrics: keepLyrics ? current.lyrics : null,
+        lyricsSource: keepLyrics ? current.lyricsSource : null,
       );
       store.updateTrack(updated);
       player.refreshTrack(updated);

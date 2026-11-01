@@ -29,10 +29,8 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    // Автозапуск с Windows (--minimized): окно сразу свёрнуто в панель задач.
-    if (wcsstr(::GetCommandLineW(), L"--minimized") != nullptr) {
-      ::ShowWindow(GetHandle(), SW_SHOWMINNOACTIVE);
-    } else {
+    // Автозапуск с Windows (--minimized): окно не показываем, Hutred в трее.
+    if (wcsstr(::GetCommandLineW(), L"--minimized") == nullptr) {
       this->Show();
     }
   });

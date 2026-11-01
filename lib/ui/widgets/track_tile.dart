@@ -173,7 +173,7 @@ List<PopupMenuEntry<String>> trackMenuItems(
     if (inLibrary) ...[
       const PopupMenuDivider(),
       item('edit', Icons.edit_outlined, 'Изменить сведения…'),
-      item('cover', Icons.image_search, 'Найти обложку'),
+      item('cover', Icons.image_search, 'Найти обложку и сведения'),
       if (context.read<SettingsStore>().hasSpotifyKeys && track.source != TrackSource.spotify)
         item('spotifyMeta', Icons.graphic_eq, 'Сведения из Spotify'),
       if (acc.signedIn)
@@ -236,7 +236,7 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
       AppActions.toast(context, 'Ищу обложку…');
       final from = await context.read<CoverService>().fetchFor(t);
       if (context.mounted) {
-        AppActions.toast(context, from != null ? 'Обложка взята из $from' : 'Обложка не нашлась');
+        AppActions.toast(context, from != null ? 'Обложка и сведения из $from' : 'Ничего не нашлось');
       }
     case 'unlist':
       onRemoveFromPlaylist?.call();
