@@ -85,10 +85,20 @@ jobs:
       - name: Упаковать в zip
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath Hutred-windows.zip
+      # Установщик: один Hutred-Setup.exe с ярлыком на рабочем столе.
+      - name: Собрать установщик
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $env:HUTRED_VERSION = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" windows\installer\hutred.iss
+          Move-Item build\installer\Hutred-Setup.exe Hutred-Setup.exe
       - uses: actions/upload-artifact@v4
         with:
           name: Hutred-windows
-          path: Hutred-windows.zip
+          path: |
+            Hutred-Setup.exe
+            Hutred-windows.zip
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -105,4 +115,5 @@ jobs:
           files: |
             Hutred.apk
             Hutred.ipa
+            Hutred-Setup.exe
             Hutred-windows.zip
