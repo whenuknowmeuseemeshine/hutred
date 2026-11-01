@@ -68,6 +68,8 @@ class SpotifyCheck {
         }
       } catch (e) {
         debugPrint('[Сверка со Spotify] ${t.title}: $e');
+        // Spotify попросил подождать — дальше не долбим, остальное потом.
+        if (DateTime.now().isBefore(SpotifyService.coolingUntil)) break;
       }
     }
     progress(tracks.length, tracks.length);
@@ -84,7 +86,7 @@ class SpotifyCheck {
     final updated = stored.copyWith(
       title: m.title,
       artist: m.artist,
-      album: m.album,
+      album: Track.sameAsTitle(m.album, m.title) ? '' : m.album,
       artworkUrl: m.artworkUrl ?? stored.artworkUrl,
       coverChecked: true,
       // Сведения поменялись — текст ищем заново, уже по точным данным.

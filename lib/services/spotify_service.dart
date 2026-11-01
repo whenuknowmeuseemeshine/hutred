@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -10,7 +11,10 @@ import 'meta_clean.dart';
 /// Поиск обложек через официальный Spotify Web API.
 /// Нужны Client ID и Client Secret своего приложения с developer.spotify.com.
 class SpotifyService {
-  final http.Client _client = http.Client();
+  final http.Client _client = _PacedClient();
+
+  /// Spotify попросил подождать (код 429) — до этого времени не спрашиваем.
+  static DateTime get coolingUntil => _PacedClient._blockedUntil;
   String? _token;
   DateTime _tokenExpires = DateTime.fromMillisecondsSinceEpoch(0);
   String? _tokenFor;
@@ -142,6 +146,9 @@ extension SpotifyImport on SpotifyService {
       }),
       headers: {'Authorization': 'Bearer $token'},
     ).timeout(const Duration(seconds: 12));
+    if (res.statusCode == 429) {
+      throw Exception('Spotify просит подождать: слишком много запросов. Попробуй позже');
+    }
     if (res.statusCode != 200) throw Exception('Spotify ответил ${res.statusCode}');
     final data = jsonDecode(utf8.decode(res.bodyBytes));
     final tracks = data is Map ? data['tracks'] : null;
@@ -340,5 +347,48 @@ class ItunesService {
       }
     }
     return bestScore >= 2.3 ? best : null;
+  }
+}
+
+
+/// Spotify ограничивает частоту запросов на одно приложение, а ключи у нас
+/// общие на всех. Поэтому: запросы идут по одному с паузой, а если Spotify
+/// ответил 429 «слишком часто» — ждём столько, сколько он сказал,
+/// и всё это время сразу отвечаем ошибкой, не дёргая его ещё сильнее.
+class _PacedClient extends http.BaseClient {
+  final http.Client _inner = http.Client();
+  static DateTime _blockedUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  static Future<void> _queue = Future.value();
+  static DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _gap = Duration(milliseconds: 400);
+
+  static String _wait(Duration d) =>
+      d.inMinutes >= 1 ? '${d.inMinutes + 1} мин' : '${d.inSeconds + 1} с';
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final now = DateTime.now();
+    if (now.isBefore(_blockedUntil)) {
+      throw Exception(
+          'Spotify просит подождать ещё ${_wait(_blockedUntil.difference(now))} (слишком много запросов)');
+    }
+    // Очередь: следующий запрос — не раньше чем через 0,4 с после прошлого.
+    final prev = _queue;
+    final done = Completer<void>();
+    _queue = done.future;
+    try {
+      await prev;
+      final since = DateTime.now().difference(_last);
+      if (since < _gap) await Future<void>.delayed(_gap - since);
+      _last = DateTime.now();
+    } finally {
+      done.complete();
+    }
+    final res = await _inner.send(request);
+    if (res.statusCode == 429) {
+      final ra = int.tryParse(res.headers['retry-after'] ?? '') ?? 30;
+      _blockedUntil = DateTime.now().add(Duration(seconds: ra.clamp(5, 24 * 3600)));
+    }
+    return res;
   }
 }
