@@ -342,9 +342,11 @@ class TransferService extends ChangeNotifier {
     await Future.wait([for (var i = 0; i < 3; i++) worker()]);
   }
 
-  Future<Track?> _match(TransferItem item) async {
+  /// [playable] — нужен трек, который реально играет (SoundCloud/YouTube),
+  /// а не запись из каталога Spotify.
+  Future<Track?> _match(TransferItem item, {bool playable = false}) async {
     final order = switch (searchFirst) {
-      'spotify' => [_matchSpotify, _matchSoundcloud, _matchYoutube],
+      'spotify' when !playable => [_matchSpotify, _matchSoundcloud, _matchYoutube],
       'youtube' => [_matchYoutube, _matchSoundcloud],
       _ => [_matchSoundcloud, _matchYoutube],
     };
@@ -436,7 +438,8 @@ class TransferService extends ChangeNotifier {
       final saved = _spotifyMatches[t.uri];
       if (saved != null) {
         final src = TrackSource.values.asNameMap()[saved['source']];
-        if (src != null) {
+        // Старые ошибочные записи «Spotify → Spotify» пропускаем.
+        if (src != null && src != TrackSource.spotify) {
           return Track(
             id: t.id,
             title: t.title,
@@ -447,8 +450,12 @@ class TransferService extends ChangeNotifier {
           );
         }
       }
-      final found = await _match(TransferItem(t.artist, t.title, durationMs: t.durationMs));
-      if (found == null) return null;
+      // Только SoundCloud/YouTube: иначе трек из Spotify «находился» бы
+      // снова в Spotify, и плеер искал бы его по кругу бесконечно.
+      final found = await _match(
+          TransferItem(t.artist, t.title, durationMs: t.durationMs),
+          playable: true);
+      if (found == null || found.source == TrackSource.spotify) return null;
       _spotifyMatches[t.uri] = {'source': found.source.name, 'uri': found.uri};
       try {
         await (await _matchesFile()).writeAsString(jsonEncode(_spotifyMatches));

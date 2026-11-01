@@ -243,7 +243,7 @@ class PlayerService extends ChangeNotifier {
       case TrackSource.spotify:
         // Spotify звук не отдаёт: играем тот же трек с SoundCloud/YouTube.
         final found = await resolveSpotify?.call(t);
-        if (found == null) {
+        if (found == null || found.source == TrackSource.spotify) {
           throw Exception('не нашёл этот трек на SoundCloud и YouTube');
         }
         return _sourceFor(found);

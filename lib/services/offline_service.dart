@@ -302,7 +302,9 @@ class OfflineService extends ChangeNotifier {
         return soundcloud.cachedAudio(t.uri);
       case TrackSource.spotify:
         final found = await resolveSpotify?.call(t);
-        return found == null ? null : _fetchAudio(found);
+        return found == null || found.source == TrackSource.spotify
+            ? null
+            : _fetchAudio(found);
       case TrackSource.local:
         if (File(t.uri).existsSync()) return File(t.uri);
         final p = await cloudFile?.call(t);
