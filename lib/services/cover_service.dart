@@ -142,6 +142,17 @@ class CoverService {
         }
       }
 
+      // Нашли трек, но источник не знает альбома (SoundCloud) или Spotify
+      // недоступен — спрашиваем альбом у Genius.
+      if (art != null && title != null && artist != null && (album ?? '').isEmpty) {
+        try {
+          final al = await genius.albumOf(artist!, title!);
+          if (al != null) album = al;
+        } catch (e) {
+          debugPrint('Альбом (Genius): $e');
+        }
+      }
+
       // Последний шанс: обложка любого трека этого исполнителя (сведения не трогаем).
       final artistName = variants.map((v) => v.artist).firstWhere(
           (a) => a.isNotEmpty, orElse: () => '');

@@ -9,7 +9,11 @@ class GeniusSong {
     required this.artist,
     required this.url,
     this.artUrl,
+    this.id,
   });
+
+  /// Номер песни на Genius (для подробностей: альбом и т.д.).
+  final int? id;
 
   final String title;
   final String artist;
@@ -83,6 +87,7 @@ class GeniusService {
             artist: rArtist,
             url: url,
             artUrl: (art == null || art.contains('default_cover')) ? null : art,
+            id: (r['id'] as num?)?.toInt(),
           );
         }
       }
@@ -91,6 +96,22 @@ class GeniusService {
     final result = bestScore >= 2.6 ? best : null;
     _cache[key] = result;
     return result;
+  }
+
+  /// Альбом песни по Genius: '' — у песни нет альбома (сингл), null — не удалось узнать.
+  Future<String?> albumOf(String artist, String title) async {
+    final song = await findSong(artist, title);
+    final id = song?.id;
+    if (id == null) return null;
+    final res = await _client
+        .get(Uri.https('genius.com', '/api/songs/$id'), headers: _headers)
+        .timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return null;
+    final data = jsonDecode(utf8.decode(res.bodyBytes));
+    final songJson = data is Map && data['response'] is Map ? data['response']['song'] : null;
+    if (songJson is! Map) return null;
+    final album = songJson['album'];
+    return album is Map ? ((album['name'] as String?) ?? '').trim() : '';
   }
 
   /// Текст песни со страницы Genius (без таймингов).
