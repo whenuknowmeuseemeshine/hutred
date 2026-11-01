@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../models/track.dart';
 import '../../services/import_service.dart';
 import '../../services/library_store.dart';
+import '../../services/settings_store.dart';
+import '../spotify_check.dart';
 import '../../services/offline_service.dart';
 import '../../services/player_service.dart';
 import '../actions.dart';
@@ -29,6 +31,31 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// Режим выбора: id выбранных треков (null — режим выключен).
   Set<String>? _sel;
+
+  /// Пробить выбранные треки по Spotify и подставить их сведения.
+  Future<void> _spotifyFix(List<Track> picked) async {
+    final check = context.read<SpotifyCheck>();
+    final messenger = ScaffoldMessenger.of(context);
+    final progress = ValueNotifier<String>('Сверяю со Spotify…');
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(minutes: 30),
+      content: ValueListenableBuilder<String>(
+        valueListenable: progress,
+        builder: (_, v, __) => Text(v),
+      ),
+    ));
+    final n = await check.applyAll(
+        picked, (d, t) => progress.value = 'Сверяю со Spotify… $d из $t');
+    messenger.hideCurrentSnackBar();
+    if (!mounted) return;
+    AppActions.toast(
+        context,
+        n == 0
+            ? 'В Spotify ничего не нашлось'
+            : 'Обновлены сведения: ${tracksWord(n)} из ${picked.length}. '
+                'Тексты для них найдутся заново при включении.');
+    setState(() => _sel = null);
+  }
 
   void _toggle(String id) => setState(() {
         if (!_sel!.remove(id)) _sel!.add(id);
@@ -70,6 +97,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 },
           icon: Icon(allFav ? Icons.favorite : Icons.favorite_border),
         ),
+        if (context.read<SettingsStore>().hasSpotifyKeys)
+          IconButton(
+            tooltip: 'Сведения из Spotify: точные название, исполнитель, альбом и обложка',
+            onPressed: none ? null : () => _spotifyFix(picked),
+            icon: const Icon(Icons.graphic_eq),
+          ),
         IconButton(
           tooltip: 'Добавить в плейлист',
           onPressed: none ? null : () => AppActions.addManyToPlaylistDialog(context, picked),

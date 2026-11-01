@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/track.dart';
 import '../services/library_store.dart';
+import '../services/meta_clean.dart';
 import '../services/player_service.dart';
 import '../services/settings_store.dart';
 import '../services/spotify_service.dart';
@@ -35,6 +36,62 @@ class SpotifyCheck {
   static String _n(String s) =>
       s.toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '');
 
+  /// Ищет трек в Spotify по очищенным вариантам названия.
+  Future<Track?> matchLoose(Track t) async {
+    for (final v in MetaClean.variants(t.artist, t.title)) {
+      final m = await spotify.bestMatch(
+        id: settings.spotifyId,
+        secret: settings.spotifySecret,
+        artist: v.artist,
+        title: v.title,
+        durationMs: t.durationMs,
+      );
+      if (m != null) return m;
+    }
+    return null;
+  }
+
+  /// Подставляет сведения из Spotify сразу многим трекам (без вопросов —
+  /// пользователь сам выбрал треки и нажал кнопку). Возвращает число исправленных.
+  Future<int> applyAll(List<Track> tracks, void Function(int done, int total) progress) async {
+    var fixed = 0;
+    for (var i = 0; i < tracks.length; i++) {
+      progress(i, tracks.length);
+      final t = tracks[i];
+      // Трек из Spotify и так с точными сведениями.
+      if (t.source == TrackSource.spotify) continue;
+      try {
+        final m = await matchLoose(t);
+        if (m != null) {
+          _apply(t, m);
+          fixed++;
+        }
+      } catch (e) {
+        debugPrint('[Сверка со Spotify] ${t.title}: $e');
+      }
+    }
+    progress(tracks.length, tracks.length);
+    return fixed;
+  }
+
+  void _apply(Track t, Track m) {
+    final stored = store.byId(t.id) ?? store.findBySource(t.source, t.uri);
+    if (stored == null) return;
+    final changedName = m.title != stored.title || m.artist != stored.artist;
+    final updated = stored.copyWith(
+      title: m.title,
+      artist: m.artist,
+      album: m.album,
+      artworkUrl: m.artworkUrl ?? stored.artworkUrl,
+      coverChecked: true,
+      // Сведения поменялись — текст ищем заново, уже по точным данным.
+      lyrics: changedName ? null : stored.lyrics,
+      lyricsSource: changedName ? null : stored.lyricsSource,
+    );
+    store.updateTrack(updated);
+    player.refreshTrack(updated);
+  }
+
   void _onAdded(List<Track> added) {
     if (!settings.spotifyCheck || !settings.hasSpotifyKeys) return;
     // Массовый перенос не трогаем — спрашивать про каждый трек было бы мучением.
@@ -50,13 +107,7 @@ class SpotifyCheck {
 
   Future<void> _check(Track t) async {
     try {
-      final m = await spotify.bestMatch(
-        id: settings.spotifyId,
-        secret: settings.spotifySecret,
-        artist: t.artist,
-        title: t.title,
-        durationMs: t.durationMs,
-      );
+      final m = await matchLoose(t);
       if (m == null) return;
       // Сведения и так совпадают — спрашивать незачем.
       if (_n(m.title) == _n(t.title) &&
@@ -82,23 +133,7 @@ class SpotifyCheck {
         context: ctx,
         builder: (d) => _Prompt(original: t, match: m),
       );
-      if (ok == true) {
-        final stored = store.byId(t.id) ?? store.findBySource(t.source, t.uri);
-        if (stored != null) {
-          final updated = stored.copyWith(
-            title: m.title,
-            artist: m.artist,
-            album: m.album,
-            artworkUrl: m.artworkUrl ?? stored.artworkUrl,
-            coverChecked: true,
-            // Сведения поменялись — текст ищем заново, уже по точным данным.
-            lyrics: null,
-            lyricsSource: null,
-          );
-          store.updateTrack(updated);
-          player.refreshTrack(updated);
-        }
-      }
+      if (ok == true) _apply(t, m);
     } finally {
       _asking = false;
       unawaited(_next());

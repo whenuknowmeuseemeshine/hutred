@@ -11,7 +11,9 @@ import '../../services/offline_service.dart';
 import '../../services/library_store.dart';
 import '../../services/player_service.dart';
 import '../../services/track_fixes.dart';
+import '../../services/settings_store.dart';
 import '../actions.dart';
+import '../spotify_check.dart';
 import '../screens/artist_screen.dart';
 import '../theme.dart';
 import 'artwork.dart';
@@ -172,6 +174,8 @@ List<PopupMenuEntry<String>> trackMenuItems(
       const PopupMenuDivider(),
       item('edit', Icons.edit_outlined, 'Изменить сведения…'),
       item('cover', Icons.image_search, 'Найти обложку'),
+      if (context.read<SettingsStore>().hasSpotifyKeys && track.source != TrackSource.spotify)
+        item('spotifyMeta', Icons.graphic_eq, 'Сведения из Spotify'),
       if (acc.signedIn)
         item('hide', saved.hiddenFromFriends ? Icons.visibility : Icons.visibility_off_outlined,
             saved.hiddenFromFriends ? 'Показать друзьям' : 'Скрыть от друзей'),
@@ -206,6 +210,12 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
       store.toggleFavorite(t.id);
     case 'artist':
       await openArtist(context, t.artist);
+    case 'spotifyMeta':
+      AppActions.toast(context, 'Ищу в Spotify…');
+      final n = await context.read<SpotifyCheck>().applyAll([t], (_, __) {});
+      if (context.mounted) {
+        AppActions.toast(context, n == 0 ? 'В Spotify не нашёлся' : 'Сведения обновлены из Spotify');
+      }
     case 'download':
       context.read<OfflineService>().downloadTrack(t);
       AppActions.toast(context, 'Скачиваю «${t.title}»');

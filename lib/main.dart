@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'services/account_service.dart';
 import 'services/ai_sync_service.dart';
 import 'services/cover_service.dart';
+import 'services/discord_presence.dart';
 import 'services/friends_service.dart';
 import 'services/genius_service.dart';
 import 'services/library_store.dart';
@@ -106,7 +107,9 @@ Future<void> main() async {
   player.offlineAudio = offline.audioFor;
   player.isOffline = () => !offline.online;
   // Новые треки с YouTube/SoundCloud сверяем со Spotify (с вопросом).
-  SpotifyCheck(
+  // Статус «Слушает Hutred» в Discord (на компьютере).
+  DiscordPresence(player: player, settings: settings);
+  final spotifyCheck = SpotifyCheck(
     navigatorKey: hutredNavigatorKey,
     store: store,
     settings: settings,
@@ -132,6 +135,7 @@ Future<void> main() async {
       Provider.value(value: covers),
       ChangeNotifierProvider.value(value: transfer),
       ChangeNotifierProvider.value(value: offline),
+      Provider.value(value: spotifyCheck),
       Provider(create: (_) => AiSyncService()),
       Provider(create: (_) => LyricsService(youtube: youtube, genius: genius)),
     ],

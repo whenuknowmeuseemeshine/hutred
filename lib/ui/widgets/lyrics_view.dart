@@ -14,6 +14,7 @@ import '../../services/settings_store.dart';
 import '../../services/soundcloud_source.dart';
 import '../../services/youtube_source.dart';
 import '../actions.dart';
+import '../spotify_check.dart';
 
 /// Панель текста: находит текст для трека и показывает его в режиме караоке.
 class LyricsPanel extends StatefulWidget {
@@ -116,12 +117,35 @@ class _LyricsPanelState extends State<LyricsPanel> {
       _error = null;
     });
     try {
-      final found = await context.read<LyricsService>().find(
-            track,
-            useYoutube: settings.youtubeLyrics,
-            useGenius: settings.geniusLyrics,
-            only: only,
-          );
+      final service = context.read<LyricsService>();
+      var found = await service.find(
+        track,
+        useYoutube: settings.youtubeLyrics,
+        useGenius: settings.geniusLyrics,
+        only: only,
+      );
+      // Не нашли или нашли без таймингов — ищем ещё раз по точному
+      // названию и исполнителю из Spotify (грязные названия часто мешают).
+      if (only == null &&
+          settings.hasSpotifyKeys &&
+          track.source != TrackSource.spotify &&
+          (found == null || !Lyrics.parse(found.text).synced) &&
+          mounted) {
+        try {
+          final m = await context.read<SpotifyCheck>().matchLoose(track);
+          if (m != null && (m.title != track.title || m.artist != track.artist)) {
+            final better = await service.find(
+              track.copyWith(title: m.title, artist: m.artist, album: m.album),
+              useYoutube: false,
+              useGenius: settings.geniusLyrics,
+            );
+            if (better != null &&
+                (found == null || Lyrics.parse(better.text).synced)) {
+              found = better;
+            }
+          }
+        } catch (_) {}
+      }
       if (!mounted || widget.track.id != track.id) return;
       if (found == null && only != null && _rawLyrics() != null) {
         // Поиск в конкретном источнике не удался — старый текст не трогаем.

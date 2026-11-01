@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/remote.dart';
 import '../models/track.dart';
 import 'genius_service.dart';
+import 'meta_clean.dart';
 
 /// Поиск обложек через официальный Spotify Web API.
 /// Нужны Client ID и Client Secret своего приложения с developer.spotify.com.
@@ -105,14 +106,18 @@ extension SpotifyImport on SpotifyService {
         continue;
       }
       // Сравниваем в обе стороны: «Song (Official Video)» и «Song».
-      final ts = [GeniusService.similar(title, t.title), GeniusService.similar(t.title, title)]
-          .reduce((a, b) => a > b ? a : b);
+      // Нечётко: «сн» подходит к «сна», опечатка в одну букву прощается.
+      final ts = [
+        MetaClean.fuzzy(title, t.title),
+        MetaClean.fuzzy(t.title, title),
+      ].reduce((a, b) => a > b ? a : b);
       final ar = hasArtist
           ? [
-              GeniusService.similar(t.artist, '$artist $title'),
-              GeniusService.similar(artist, t.artist),
+              MetaClean.fuzzy(t.artist, '$artist $title'),
+              MetaClean.fuzzy(artist, t.artist),
             ].reduce((a, b) => a > b ? a : b)
-          : 0.6;
+          // Исполнитель неизвестен — он мог оказаться в названии.
+          : (MetaClean.fuzzy(t.artist, title) >= 0.99 ? 1.0 : 0.6);
       final score = ts * 2 + ar;
       if (score > bestScore) {
         bestScore = score;
@@ -284,6 +289,25 @@ extension SpotifyImport on SpotifyService {
 /// Обложки из каталога iTunes: бесплатно и без ключей, хорошее качество.
 class ItunesService {
   final http.Client _client = http.Client();
+
+  /// Песни по запросу: название, исполнитель и обложка 1000×1000.
+  Future<List<({String title, String artist, String art})>> songs(String term) async {
+    final res = await _client.get(
+      Uri.https('itunes.apple.com', '/search', {'term': term, 'entity': 'song', 'limit': '15'}),
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return const [];
+    final results =
+        (jsonDecode(utf8.decode(res.bodyBytes))['results'] as List?) ?? const [];
+    return [
+      for (final r in results.whereType<Map>())
+        if (r['artworkUrl100'] is String)
+          (
+            title: '${r['trackName'] ?? ''}',
+            artist: '${r['artistName'] ?? ''}',
+            art: (r['artworkUrl100'] as String).replaceFirst('100x100bb', '1000x1000bb'),
+          ),
+    ];
+  }
 
   Future<String?> findCover(String artist, String title) async {
     final hasArtist = artist.isNotEmpty && artist != 'Неизвестный исполнитель';

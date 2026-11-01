@@ -65,6 +65,8 @@ class SettingsStore extends ChangeNotifier {
   bool _cloudFiles = true;
   bool _spotifyCheck = true;
   bool _autoFavorite = true;
+  bool _discordPresence = true;
+  String _discordAppId = '';
   File? _file;
 
   Color get accent => _accent;
@@ -111,6 +113,23 @@ class SettingsStore extends ChangeNotifier {
 
   /// Добавленные в медиатеку треки сразу отмечаются ♥ (как в Spotify).
   bool get autoFavorite => _autoFavorite;
+
+  /// Статус «Слушает Hutred» в Discord.
+  bool get discordPresence => _discordPresence;
+  set discordPresence(bool v) {
+    _discordPresence = v;
+    _save();
+  }
+
+  /// Application ID приложения в Discord Developer Portal
+  /// (свой или тот, что админ раздал всем).
+  String get discordAppId =>
+      _discordAppId.isNotEmpty ? _discordAppId : _sharedStr('discord', 'appId');
+  String get ownDiscordAppId => _discordAppId;
+  set discordAppId(String v) {
+    _discordAppId = v.trim();
+    _save();
+  }
   set autoFavorite(bool v) {
     _autoFavorite = v;
     _save();
@@ -342,6 +361,8 @@ class SettingsStore extends ChangeNotifier {
       _cloudFiles = j['cloudFiles'] as bool? ?? true;
       _spotifyCheck = j['spotifyCheck'] as bool? ?? true;
       _autoFavorite = j['autoFavorite'] as bool? ?? true;
+      _discordPresence = j['discordPresence'] as bool? ?? true;
+      _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
       debugPrint('Не удалось прочитать настройки: $e');
     }
@@ -362,6 +383,8 @@ class SettingsStore extends ChangeNotifier {
         'cloudFiles': _cloudFiles,
         'spotifyCheck': _spotifyCheck,
         'autoFavorite': _autoFavorite,
+        'discordPresence': _discordPresence,
+        'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
         'volume': _volume,
         'waveBackground': _waveBackground,

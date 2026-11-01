@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/solvers.dart';
@@ -31,14 +33,127 @@ class YoutubeSource {
   static bool isPlaylistUrl(String s) =>
       s.contains('list=') && !s.contains('v=') && !s.contains('youtu.be/');
 
-  Future<List<Track>> search(String query) async {
-    final results = await _yt.search.search(query);
-    return results.take(25).map(_toTrack).toList();
+  Future<List<Track>> search(String query) async =>
+      (await searchPaged(query)).items.take(25).toList();
+
+  /// Поиск с подгрузкой следующих страниц. Сначала свой запрос к YouTube
+  /// (он не ломается от изменений вёрстки), при ошибке — через библиотеку.
+  Future<Paged<Track>> searchPaged(String query) async {
+    try {
+      final page = await _innertubeSearch(query);
+      if (page.items.isNotEmpty) return page;
+    } catch (e) {
+      debugPrint('[YouTube поиск] $e');
+    }
+    return _wrap(await _yt.search.search(query));
   }
 
-  /// Поиск с подгрузкой следующих страниц.
-  Future<Paged<Track>> searchPaged(String query) async =>
-      _wrap(await _yt.search.search(query));
+  final _http = http.Client();
+
+  /// Поиск видео через внутренний API YouTube (тот же, что у сайта).
+  Future<Paged<Track>> _innertubeSearch(String query, {String? continuation}) async {
+    final body = <String, dynamic>{
+      'context': {
+        'client': {
+          'clientName': 'WEB',
+          'clientVersion': '2.20251101.00.00',
+          'hl': 'ru',
+          'gl': 'RU',
+        }
+      },
+      if (continuation == null) 'query': query,
+      // Фильтр «только видео».
+      if (continuation == null) 'params': 'EgIQAQ%3D%3D',
+      if (continuation != null) 'continuation': continuation,
+    };
+    final res = await _http
+        .post(
+          Uri.parse('https://www.youtube.com/youtubei/v1/search?prettyPrint=false'),
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+          },
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) throw Exception('YouTube ответил ${res.statusCode}');
+    final j = jsonDecode(utf8.decode(res.bodyBytes));
+
+    final tracks = <Track>[];
+    String? next;
+    void walk(dynamic o) {
+      if (o is List) {
+        for (final x in o) {
+          walk(x);
+        }
+      } else if (o is Map) {
+        final v = o['videoRenderer'];
+        if (v is Map) {
+          final t = _fromRenderer(v);
+          if (t != null) tracks.add(t);
+          return;
+        }
+        final c = o['continuationItemRenderer'];
+        if (c is Map) {
+          final token = c['continuationEndpoint']?['continuationCommand']?['token'];
+          if (token is String) next = token;
+          return;
+        }
+        for (final x in o.values) {
+          walk(x);
+        }
+      }
+    }
+
+    walk(j);
+    final token = next;
+    return Paged(
+      tracks,
+      token == null || tracks.isEmpty
+          ? null
+          : () async => _innertubeSearch(query, continuation: token),
+    );
+  }
+
+  static String _text(dynamic t) {
+    if (t is! Map) return '';
+    if (t['simpleText'] is String) return t['simpleText'] as String;
+    final runs = t['runs'];
+    if (runs is List) return runs.map((r) => r is Map ? '${r['text'] ?? ''}' : '').join();
+    return '';
+  }
+
+  Track? _fromRenderer(Map v) {
+    final id = v['videoId'];
+    if (id is! String) return null;
+    final title = _text(v['title']);
+    if (title.isEmpty) return null;
+    final author = _text(v['longBylineText']).isNotEmpty
+        ? _text(v['longBylineText'])
+        : _text(v['ownerText']);
+    // «3:04» или «1:02:03» → миллисекунды; у трансляций длительности нет.
+    int? ms;
+    final len = _text(v['lengthText']);
+    if (len.isNotEmpty) {
+      var sec = 0;
+      for (final p in len.split(':')) {
+        sec = sec * 60 + (int.tryParse(p.trim()) ?? 0);
+      }
+      ms = sec * 1000;
+    }
+    final parsed = splitTitle(title, author);
+    return Track(
+      id: Track.newId(),
+      title: parsed.title,
+      artist: parsed.artist,
+      source: TrackSource.youtube,
+      uri: id,
+      durationMs: ms,
+      artworkUrl: 'https://i.ytimg.com/vi/$id/hqdefault.jpg',
+      addedAt: DateTime.now(),
+    );
+  }
 
   Paged<Track> _wrap(VideoSearchList list) => Paged(
         list.map(_toTrack).toList(),

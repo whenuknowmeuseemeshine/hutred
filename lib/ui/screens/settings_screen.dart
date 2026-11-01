@@ -188,6 +188,34 @@ class SettingsScreen extends StatelessWidget {
             const _Section('Админ'),
             const _AdminTiles(),
           ],
+          if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
+            const _Section('Discord'),
+            SwitchListTile(
+              secondary: const Icon(Icons.headset_mic_outlined),
+              title: const Text('Показывать трек в Discord'),
+              subtitle: Text(s.discordAppId.isEmpty
+                  ? 'Нужен Application ID — нажми ниже'
+                  : 'Как у Spotify: «Слушает Hutred», трек, обложка и время. Discord должен быть открыт'),
+              value: s.discordPresence,
+              onChanged: (v) => s.discordPresence = v,
+            ),
+            if (acc.isAdmin)
+              ListTile(
+                leading: const Icon(Icons.key_outlined),
+                title: const Text('Application ID для Discord'),
+                subtitle: Text(s.ownDiscordAppId.isEmpty
+                    ? 'Не задан. discord.com/developers → New Application «Hutred» → скопируй Application ID'
+                    : s.ownDiscordAppId),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final v = await AppActions.askText(context,
+                      title: 'Application ID Discord',
+                      hint: 'Например 1234567890123456789',
+                      initial: s.ownDiscordAppId);
+                  if (v != null) s.discordAppId = v;
+                },
+              ),
+          ],
           const _Section('YouTube'),
           const _YoutubeLoginTile(),
           const _Section('Загрузки и кэш'),
@@ -912,6 +940,14 @@ class _AdminTiles extends StatelessWidget {
             'key': s.ownAiKey,
             'model': s.ownAiModel,
           }, 'Ключи ИИ разосланы всем'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.cloud_upload_outlined),
+          title: const Text('Применить мой Discord ID для всех'),
+          subtitle: const Text('У всех появится статус «Слушает Hutred» в Discord'),
+          enabled: s.ownDiscordAppId.isNotEmpty,
+          onTap: () => push('discord', {'appId': s.ownDiscordAppId},
+              'Discord ID разослан всем'),
         ),
         ListTile(
           leading: const Icon(Icons.cloud_upload_outlined),
