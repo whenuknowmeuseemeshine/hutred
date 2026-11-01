@@ -122,7 +122,6 @@ class TrackFixes {
           .maybeSingle();
       if (row == null) return null;
       final at = '${row['updated_at']}';
-      if (_applied[key] == at) return null;
       final d = row['data'];
       if (d is! Map) return null;
       final stored = store.byId(t.id) ?? store.findBySource(t.source, t.uri);
@@ -140,6 +139,15 @@ class TrackFixes {
       );
       _applied[key] = at;
       unawaited(_saveApplied());
+      // Правка админа главнее своей: если у тебя трек отличается
+      // (например, сам подогнал текст), всё равно ставим версию админа.
+      final same = fixed.title == base.title &&
+          fixed.artist == base.artist &&
+          fixed.album == base.album &&
+          fixed.lyrics == base.lyrics &&
+          fixed.lyricsOffsetMs == base.lyricsOffsetMs &&
+          fixed.artworkUrl == base.artworkUrl;
+      if (same) return null;
       if (stored != null) store.updateTrack(fixed);
       return fixed;
     } catch (e) {

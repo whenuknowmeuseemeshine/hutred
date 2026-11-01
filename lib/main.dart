@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -49,6 +50,12 @@ Future<void> main(List<String> args) async {
   DpiBypass.enabled = settings.dpiBypass;
   settings.addListener(() => DpiBypass.enabled = settings.dpiBypass);
   await account.init();
+  // Админ поменял ключи Spotify/ИИ/Discord — они сразу уходят всем.
+  Timer? keysDebounce;
+  settings.addListener(() {
+    keysDebounce?.cancel();
+    keysDebounce = Timer(const Duration(seconds: 2), account.shareAdminKeys);
+  });
   // Добавленные треки сразу в любимые (можно выключить в настройках).
   store.autoFavorite = settings.autoFavorite;
   settings.addListener(() => store.autoFavorite = settings.autoFavorite);

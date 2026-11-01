@@ -136,6 +136,8 @@ class AccountService extends ChangeNotifier {
       debugPrint('[Общие настройки] $e');
     }
     notifyListeners();
+    // Админ зашёл — его ключи сразу у всех.
+    unawaited(shareAdminKeys());
   }
 
   static final _usernameRe = RegExp(r'^[A-Za-z0-9_.]{3,24}$');
@@ -231,6 +233,34 @@ class AccountService extends ChangeNotifier {
     await folder.create(recursive: true);
     final copy = await File(filePath).copy('${folder.path}$sep${trackId}_$stamp.$ext');
     return copy.path;
+  }
+
+  /// Админ: свои ключи Spotify и ИИ (и Discord ID) сразу раздаются всем,
+  /// без отдельной кнопки. ИИ-подгонка текста тоже включается всем.
+  Future<void> shareAdminKeys() async {
+    final s = settings;
+    if (s == null || !enabled || !signedIn || !isAdmin) return;
+    bool differs(String group, Map<String, dynamic> want) {
+      final have = _config[group];
+      if (have is! Map) return true;
+      return want.entries.any((e) => '${have[e.key] ?? ''}' != '${e.value}');
+    }
+
+    if (s.ownSpotifyId.isNotEmpty) {
+      final want = {'id': s.ownSpotifyId, 'secret': s.ownSpotifySecret};
+      if (differs('spotify', want)) await pushConfig('spotify', want);
+    }
+    if (s.ownAiKey.isNotEmpty) {
+      final want = {'baseUrl': s.ownAiBaseUrl, 'key': s.ownAiKey, 'model': s.ownAiModel};
+      if (differs('ai', want)) await pushConfig('ai', want);
+      if (differs('features', {'aiForEveryone': true})) {
+        await pushConfig('features', {'aiForEveryone': true});
+      }
+    }
+    if (s.ownDiscordAppId.isNotEmpty) {
+      final want = {'appId': s.ownDiscordAppId};
+      if (differs('discord', want)) await pushConfig('discord', want);
+    }
   }
 
   /// Админ: сохранить общую настройку для всех пользователей.

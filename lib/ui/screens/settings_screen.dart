@@ -1056,7 +1056,7 @@ class _AdminTiles extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.cloud_upload_outlined),
           title: const Text('Применить мои ключи ИИ для всех'),
-          subtitle: const Text('Другие будут пользоваться твоим ключом Groq/OpenAI'),
+          subtitle: const Text('Раздаются всем автоматически, как только ты их вводишь. Кнопка — разослать заново'),
           enabled: s.ownAiKey.isNotEmpty,
           onTap: () => push('ai', {
             'baseUrl': s.ownAiBaseUrl,
@@ -1067,7 +1067,7 @@ class _AdminTiles extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.cloud_upload_outlined),
           title: const Text('Применить мой Discord ID для всех'),
-          subtitle: const Text('У всех появится статус «Слушает Hutred» в Discord'),
+          subtitle: const Text('Раздаётся всем автоматически. Кнопка — разослать заново'),
           enabled: s.ownDiscordAppId.isNotEmpty,
           onTap: () => push('discord', {'appId': s.ownDiscordAppId},
               'Discord ID разослан всем'),
@@ -1075,7 +1075,7 @@ class _AdminTiles extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.cloud_upload_outlined),
           title: const Text('Применить мои ключи Spotify для всех'),
-          subtitle: const Text('Обложки из Spotify появятся у всех'),
+          subtitle: const Text('Раздаются всем автоматически. Кнопка — разослать заново'),
           enabled: s.ownSpotifyId.isNotEmpty,
           onTap: () => push('spotify', {
             'id': s.ownSpotifyId,
