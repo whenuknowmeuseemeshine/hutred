@@ -71,7 +71,8 @@ class TrackTile extends StatelessWidget {
       child: Opacity(
         opacity: hidden ? 0.4 : 1,
         child: ListTile(
-      onTap: onTap,
+      // Как в Spotify: нажал на играющий трек ещё раз — пауза/продолжить.
+      onTap: isCurrent ? player.togglePlay : onTap,
       leading: Stack(
         children: [
           Artwork(track: track, size: 48, radius: 4),
@@ -112,9 +113,9 @@ class TrackTile extends StatelessWidget {
           const SizedBox(width: 4),
           Expanded(
             child: Text(
-              track.album.isEmpty
+              track.shownAlbum.isEmpty
                   ? track.artist
-                  : '${track.artist} · ${track.album}',
+                  : '${track.artist} · ${track.shownAlbum}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

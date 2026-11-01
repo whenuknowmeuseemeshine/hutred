@@ -211,9 +211,19 @@ class HutredApp extends StatelessWidget {
       home: const HomeShell(),
       builder: (context, child) {
         if (!HutredTheme.desktop || !Platform.isWindows) return child!;
-        return Column(children: [
-          const HutredTitleBar(),
-          Expanded(child: child!),
+        // Приложение занимает всё окно, полоса лежит поверх него, а
+        // содержимому сообщаем «отступ сверху», как для строки состояния.
+        final mq = MediaQuery.of(context);
+        const h = HutredTitleBar.height;
+        return Stack(children: [
+          MediaQuery(
+            data: mq.copyWith(
+              padding: mq.padding.copyWith(top: mq.padding.top + h),
+              viewPadding: mq.viewPadding.copyWith(top: mq.viewPadding.top + h),
+            ),
+            child: child!,
+          ),
+          const Positioned(top: 0, left: 0, right: 0, child: HutredTitleBar()),
         ]);
       },
     );

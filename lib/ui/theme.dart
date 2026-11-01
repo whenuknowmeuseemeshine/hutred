@@ -132,14 +132,22 @@ class HutredTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white.withValues(alpha: 0.06),
-        border: OutlineInputBorder(
+        contentPadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        border: UnderlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
         ),
-        focusedBorder: OutlineInputBorder(
+        enabledBorder: UnderlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.white54),
+          borderSide: BorderSide.none,
         ),
+        focusedBorder: UnderlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: accent, width: 2),
+        ),
+        labelStyle: const TextStyle(color: muted),
+        floatingLabelStyle: TextStyle(color: accent),
+        hintStyle: TextStyle(color: muted.withValues(alpha: 0.7)),
       ),
       scrollbarTheme: ScrollbarThemeData(
         thickness: const WidgetStatePropertyAll(6),

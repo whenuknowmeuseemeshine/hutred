@@ -181,7 +181,12 @@ class CoverService {
         coverChecked: true,
         title: renamed ? newTitle : null,
         artist: renamed ? newArtist : null,
-        album: (album ?? '').trim().isNotEmpty ? album!.trim() : null,
+        // У синглов «альбом» = название трека — такой не записываем.
+        album: (album ?? '').trim().isNotEmpty
+            ? (Track.sameAsTitle(album!, newTitle.isNotEmpty ? newTitle : current.title)
+                ? ''
+                : album!.trim())
+            : null,
         lyrics: keepLyrics ? current.lyrics : null,
         lyricsSource: keepLyrics ? current.lyricsSource : null,
       );

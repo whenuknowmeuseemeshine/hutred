@@ -205,8 +205,8 @@ class VolumeSlider extends StatelessWidget {
   }
 }
 
-/// Значок перемешивания как в Spotify: стрелки, при умном перемешивании —
-/// маленькая звёздочка сверху справа, а когда включено — точка снизу.
+/// Значок перемешивания: две плавные перекрещённые стрелки,
+/// при умном перемешивании — звёздочка слева сверху, когда включено — точка снизу.
 class ShuffleIcon extends StatelessWidget {
   const ShuffleIcon({
     super.key,
@@ -226,52 +226,92 @@ class ShuffleIcon extends StatelessWidget {
     final accent = Theme.of(context).colorScheme.primary;
     final c = color ?? (on ? accent : Colors.white70);
     return SizedBox(
-      width: size + 6,
-      height: size + 8,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
+      width: size,
+      height: size + 7,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.shuffle_rounded, size: size, color: c),
-          if (smart)
-            Positioned(
-              right: -1,
-              top: 0,
-              child: CustomPaint(size: Size.square(size * 0.42), painter: _SparklePainter(c)),
+          CustomPaint(size: Size.square(size), painter: _ShufflePainter(c, smart)),
+          const SizedBox(height: 3),
+          Container(
+            width: 4,
+            height: 4,
+            decoration: BoxDecoration(
+              color: on ? c : Colors.transparent,
+              shape: BoxShape.circle,
             ),
-          if (on)
-            Positioned(
-              bottom: 0,
-              child: Container(
-                width: 4,
-                height: 4,
-                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-              ),
-            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// Четырёхлучевая звёздочка (как у умного перемешивания Spotify).
-class _SparklePainter extends CustomPainter {
-  _SparklePainter(this.color);
+class _ShufflePainter extends CustomPainter {
+  _ShufflePainter(this.color, this.smart);
   final Color color;
+  final bool smart;
 
   @override
   void paint(Canvas canvas, Size s) {
-    final w = s.width, h = s.height, cx = w / 2, cy = h / 2;
-    final p = Path()
-      ..moveTo(cx, 0)
-      ..quadraticBezierTo(cx + w * 0.08, cy - h * 0.08, w, cy)
-      ..quadraticBezierTo(cx + w * 0.08, cy + h * 0.08, cx, h)
-      ..quadraticBezierTo(cx - w * 0.08, cy + h * 0.08, 0, cy)
-      ..quadraticBezierTo(cx - w * 0.08, cy - h * 0.08, cx, 0)
-      ..close();
-    canvas.drawPath(p, Paint()..color = color);
+    canvas.scale(s.width / 24, s.height / 24);
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.9
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    // Снизу-слева вверх-вправо — сплошная.
+    canvas.drawPath(
+      Path()
+        ..moveTo(2, 18)
+        ..lineTo(5, 18)
+        ..cubicTo(10, 18, 11, 6, 16, 6)
+        ..lineTo(21, 6),
+      line,
+    );
+    // Сверху-слева вниз-вправо — с разрывом на перекрестье.
+    // Со звёздочкой начинается правее, чтобы освободить ей угол.
+    canvas.drawPath(
+      Path()
+        ..moveTo(smart ? 7.5 : 2, 6)
+        ..lineTo(5, 6)
+        ..cubicTo(6.8, 6, 8, 7.6, 9, 9.6),
+      line,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(12.6, 14.6)
+        ..cubicTo(13.6, 16.6, 14.6, 18, 16, 18)
+        ..lineTo(21, 18),
+      line,
+    );
+    // Наконечники.
+    for (final y in [6.0, 18.0]) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(18, y - 3)
+          ..lineTo(21, y)
+          ..lineTo(18, y + 3),
+        line,
+      );
+    }
+    if (smart) {
+      // Четырёхлучевая звёздочка в левом верхнем углу.
+      const cx = 3.2, cy = 2.6, r = 3.2, k = 0.55;
+      canvas.drawPath(
+        Path()
+          ..moveTo(cx, cy - r)
+          ..quadraticBezierTo(cx + k, cy - k, cx + r, cy)
+          ..quadraticBezierTo(cx + k, cy + k, cx, cy + r)
+          ..quadraticBezierTo(cx - k, cy + k, cx - r, cy)
+          ..quadraticBezierTo(cx - k, cy - k, cx, cy - r)
+          ..close(),
+        Paint()..color = color,
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(_SparklePainter old) => old.color != color;
+  bool shouldRepaint(_ShufflePainter old) => old.color != color || old.smart != smart;
 }

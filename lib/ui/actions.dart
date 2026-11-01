@@ -432,7 +432,7 @@ class AppActions {
     final account = context.read<AccountService>();
     final title = TextEditingController(text: t.title);
     final artist = TextEditingController(text: t.artist);
-    final album = TextEditingController(text: t.album);
+    final album = TextEditingController(text: t.shownAlbum);
     // Обложка: новая картинка с диска (путь) или null — убрать.
     String? pickedCover;
     var removeCover = false;
@@ -486,16 +486,19 @@ class AppActions {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               TextField(
                   controller: title,
                   decoration: const InputDecoration(labelText: 'Название')),
+              const SizedBox(height: 10),
               TextField(
                   controller: artist,
                   decoration: const InputDecoration(labelText: 'Исполнитель')),
+              const SizedBox(height: 10),
               TextField(
                   controller: album,
-                  decoration: const InputDecoration(labelText: 'Альбом')),
+                  decoration: const InputDecoration(
+                      labelText: 'Альбом', hintText: 'Нет — оставь пустым')),
             ],
           ),
         ),

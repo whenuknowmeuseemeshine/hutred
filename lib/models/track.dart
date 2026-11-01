@@ -33,6 +33,18 @@ class Track {
   final String title;
   final String artist;
   final String album;
+
+  /// Альбом для показа: у синглов альбом называется как сам трек — это не альбом.
+  String get shownAlbum => sameAsTitle(album, title) ? '' : album;
+
+  static bool sameAsTitle(String album, String title) {
+    String n(String s) => s
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s*[-–]\s*(single|ep|сингл)\s*$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '');
+    final a = n(album);
+    return a.isEmpty || a == n(title);
+  }
   final TrackSource source;
 
   /// Путь к файлу, прямая ссылка или id видео YouTube.

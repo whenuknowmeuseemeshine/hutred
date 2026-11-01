@@ -191,6 +191,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       clipBehavior: Clip.antiAlias,
       constraints: const BoxConstraints(minWidth: 220),
+      // Подсветка при наведении — по форме кнопки, а не квадратом.
+      borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(

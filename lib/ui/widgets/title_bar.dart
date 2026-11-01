@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -42,8 +44,12 @@ class _HutredTitleBarState extends State<HutredTitleBar> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
+    // Полупрозрачная, с лёгким размытием: фон приложения виден и под ней.
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Material(
+      color: Colors.black.withValues(alpha: 0.10),
       child: SizedBox(
         height: HutredTitleBar.height,
         child: Row(children: [
@@ -74,6 +80,8 @@ class _HutredTitleBarState extends State<HutredTitleBar> with WindowListener {
             onTap: () => windowManager.close(),
           ),
         ]),
+      ),
+        ),
       ),
     );
   }
