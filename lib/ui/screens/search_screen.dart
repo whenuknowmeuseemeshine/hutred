@@ -169,7 +169,11 @@ class _SearchScreenState extends State<SearchScreen> {
         }
       } catch (e) {
         if (!mounted || token != _token) return;
-        setState(() => r.error = 'Поиск не удался. Проверь подключение.');
+        // Для Spotify показываем настоящую причину (например, «просит подождать»).
+        final msg = '$e'.replaceFirst('Exception: ', '');
+        setState(() => r.error = msg.startsWith('Spotify')
+            ? msg
+            : 'Поиск не удался. Проверь подключение.');
       } finally {
         if (mounted && token == _token) setState(() => r.loading = false);
       }

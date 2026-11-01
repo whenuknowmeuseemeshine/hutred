@@ -114,13 +114,28 @@ class _HomeShellState extends State<HomeShell> {
           SystemNavigator.pop();
         }
       },
-      child: Column(
-        children: [
-          const _OfflineBanner(),
-          const _UpdateBanner(),
-          Expanded(child: _KeyboardShortcuts(child: _stack(settings.waveBackground))),
-        ],
-      ),
+      child: Builder(builder: (context) {
+        // Полоски сверху не должны залезать под кнопки окна: если хоть одна
+        // показана, отступ сверху берут они, а содержимое под ними — без отступа.
+        final u = context.watch<UpdateService>();
+        final banner = !context.watch<OfflineService>().online ||
+            u.readyToInstall ||
+            (u.available && !Platform.isWindows);
+        final top = MediaQuery.paddingOf(context).top;
+        final body = _KeyboardShortcuts(child: _stack(settings.waveBackground));
+        return Column(
+          children: [
+            if (banner) SizedBox(height: top),
+            const _OfflineBanner(),
+            const _UpdateBanner(),
+            Expanded(
+              child: banner
+                  ? MediaQuery.removePadding(context: context, removeTop: true, child: body)
+                  : body,
+            ),
+          ],
+        );
+      }),
     );
 
     if (wide) {

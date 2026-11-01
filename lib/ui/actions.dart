@@ -497,8 +497,7 @@ class AppActions {
               const SizedBox(height: 10),
               TextField(
                   controller: album,
-                  decoration: const InputDecoration(
-                      labelText: 'Альбом', hintText: 'Нет — оставь пустым')),
+                  decoration: const InputDecoration(labelText: 'Альбом')),
             ],
           ),
         ),

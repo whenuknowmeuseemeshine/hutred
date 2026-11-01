@@ -399,7 +399,15 @@ class _PacedClient extends http.BaseClient {
       ..remove('authorization')
       ..['apikey'] = HutredConfig.supabaseAnonKey;
     if (auth != null) r.headers['x-spotify-auth'] = auth;
-    return _inner.send(r).timeout(const Duration(seconds: 20));
+    final res = await _inner.send(r).timeout(const Duration(seconds: 20));
+    if (res.statusCode == 401 || res.statusCode == 404 || res.statusCode >= 500) {
+      // Облачный ретранслятор недоступен (или не настроен) — не застреваем
+      // на нём: в следующий раз снова пробуем напрямую.
+      viaRelay = false;
+      throw Exception('Spotify недоступен ни напрямую, ни через облако '
+          '(облако ответило ${res.statusCode})');
+    }
+    return res;
   }
 
   static http.Request _copy(http.Request src, Uri url) {
