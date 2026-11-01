@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <cwchar>
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -28,7 +29,12 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    // Автозапуск с Windows (--minimized): окно сразу свёрнуто в панель задач.
+    if (wcsstr(::GetCommandLineW(), L"--minimized") != nullptr) {
+      ::ShowWindow(GetHandle(), SW_SHOWMINNOACTIVE);
+    } else {
+      this->Show();
+    }
   });
 
   // Flutter can complete the first frame before the "show window" callback is

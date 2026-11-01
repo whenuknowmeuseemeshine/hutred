@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../services/account_service.dart';
 import '../../services/offline_service.dart';
 import '../../services/settings_store.dart';
+import '../../services/update_service.dart';
 import '../../services/soundcloud_source.dart';
 import '../../services/spotify_service.dart';
 import '../../services/youtube_source.dart';
@@ -216,6 +217,8 @@ class SettingsScreen extends StatelessWidget {
                 },
               ),
           ],
+          const _Section('Обновления'),
+          const _UpdatesTiles(),
           const _Section('Сеть'),
           SwitchListTile(
             secondary: const Icon(Icons.vpn_lock_outlined),
@@ -1041,6 +1044,83 @@ class _NavOrderEditor extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Версия, автообновление и автозапуск вместе с Windows.
+class _UpdatesTiles extends StatefulWidget {
+  const _UpdatesTiles();
+
+  @override
+  State<_UpdatesTiles> createState() => _UpdatesTilesState();
+}
+
+class _UpdatesTilesState extends State<_UpdatesTiles> {
+  bool? _autostart;
+
+  @override
+  void initState() {
+    super.initState();
+    WindowsAutostart.isEnabled().then((v) {
+      if (mounted) setState(() => _autostart = v);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = context.watch<UpdateService>();
+    final s = context.watch<SettingsStore>();
+    final status = !u.supported
+        ? 'Эта копия собрана вручную — сама не обновляется'
+        : u.checking
+            ? 'Проверяю…'
+            : u.progress != null
+                ? 'Скачиваю обновление… ${(u.progress! * 100).round()}%'
+                : u.readyToInstall
+                    ? 'Новая версия скачана — поставится при перезапуске'
+                    : u.available
+                        ? 'Доступна новая сборка ${u.latestBuild}'
+                        : u.error ?? 'У тебя последняя версия';
+    return Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.system_update_alt),
+          title: Text(
+              'Hutred, сборка ${UpdateService.build == 0 ? 'локальная' : UpdateService.build}'),
+          subtitle: Text(status),
+          trailing: u.available
+              ? FilledButton(onPressed: u.updateNow, child: const Text('Обновить'))
+              : TextButton(
+                  onPressed:
+                      u.supported && !u.checking ? () => u.check(manual: true) : null,
+                  child: const Text('Проверить'),
+                ),
+        ),
+        if (Platform.isWindows)
+          SwitchListTile(
+            secondary: const Icon(Icons.autorenew),
+            title: const Text('Обновляться автоматически'),
+            subtitle: const Text(
+                'Новая версия скачивается сама и ставится, когда музыка не играет'),
+            value: s.autoUpdate,
+            onChanged: (v) => s.autoUpdate = v,
+          ),
+        if (WindowsAutostart.supported)
+          SwitchListTile(
+            secondary: const Icon(Icons.power_settings_new),
+            title: const Text('Запускать вместе с Windows'),
+            subtitle: const Text('Hutred открывается свёрнутым при включении компьютера'),
+            value: _autostart ?? false,
+            onChanged: _autostart == null
+                ? null
+                : (v) async {
+                    await WindowsAutostart.set(v);
+                    final now = await WindowsAutostart.isEnabled();
+                    if (mounted) setState(() => _autostart = now);
+                  },
+          ),
       ],
     );
   }

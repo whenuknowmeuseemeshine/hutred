@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../services/account_service.dart';
 import '../services/offline_service.dart';
+import '../services/update_service.dart';
 import '../services/player_service.dart';
 import '../services/settings_store.dart';
 import 'screens/friends_screen.dart';
@@ -114,6 +117,7 @@ class _HomeShellState extends State<HomeShell> {
       child: Column(
         children: [
           const _OfflineBanner(),
+          const _UpdateBanner(),
           Expanded(child: _KeyboardShortcuts(child: _stack(settings.waveBackground))),
         ],
       ),
@@ -306,6 +310,46 @@ class _OfflineBanner extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// Полоска «Вышла новая версия» (Android) или «Новая версия скачана» (Windows).
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final u = context.watch<UpdateService>();
+    final show = u.readyToInstall || (u.available && !Platform.isWindows);
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      child: !show
+          ? const SizedBox(width: double.infinity)
+          : Material(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.system_update_alt, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        u.readyToInstall
+                            ? 'Новая версия Hutred скачана'
+                            : 'Вышла новая версия Hutred',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: u.updateNow,
+                      child: Text(u.readyToInstall ? 'Перезапустить' : 'Скачать'),
+                    ),
+                  ],
                 ),
               ),
             ),

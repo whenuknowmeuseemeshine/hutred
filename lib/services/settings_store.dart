@@ -67,6 +67,7 @@ class SettingsStore extends ChangeNotifier {
   bool _autoFavorite = true;
   bool _discordPresence = true;
   bool? _dpiBypass;
+  bool _autoUpdate = true;
   String _discordAppId = '';
   File? _file;
 
@@ -124,6 +125,13 @@ class SettingsStore extends ChangeNotifier {
           DateTime.now().timeZoneOffset == const Duration(hours: 3));
   set dpiBypass(bool v) {
     _dpiBypass = v;
+    _save();
+  }
+
+  /// Обновляться автоматически (на Windows — тихо ставить новую версию).
+  bool get autoUpdate => _autoUpdate;
+  set autoUpdate(bool v) {
+    _autoUpdate = v;
     _save();
   }
 
@@ -376,6 +384,7 @@ class SettingsStore extends ChangeNotifier {
       _autoFavorite = j['autoFavorite'] as bool? ?? true;
       _discordPresence = j['discordPresence'] as bool? ?? true;
       _dpiBypass = j['dpiBypass'] as bool?;
+      _autoUpdate = j['autoUpdate'] as bool? ?? true;
       _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
       debugPrint('Не удалось прочитать настройки: $e');
@@ -399,6 +408,7 @@ class SettingsStore extends ChangeNotifier {
         'autoFavorite': _autoFavorite,
         'discordPresence': _discordPresence,
         if (_dpiBypass != null) 'dpiBypass': _dpiBypass,
+        'autoUpdate': _autoUpdate,
         'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
         'volume': _volume,
