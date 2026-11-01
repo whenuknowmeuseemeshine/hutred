@@ -65,8 +65,8 @@ class TrackTile extends StatelessWidget {
 
     // Скрытые треки и чёрный список — полупрозрачные (играть не будут).
     final hidden = context.watch<WaveService>().isBlocked(track);
-    // На компьютере «в любимые» и «в плейлист» — кнопками в строке (видны при
-    // наведении), поэтому из меню их убираем.
+    // На компьютере «в любимые» — кнопкой в строке (видна при наведении),
+    // поэтому из меню её убираем.
     final desktop = HutredTheme.desktop;
     final store = context.read<LibraryStore>();
     final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
@@ -132,12 +132,6 @@ class TrackTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (desktop) ...[
-            _RowAction(
-              visible: hovered,
-              tooltip: 'Добавить в плейлист',
-              icon: Icons.add_circle_outline_rounded,
-              onTap: () => AppActions.addToPlaylistDialog(context, saved ?? track),
-            ),
             if (saved != null)
               _RowAction(
                 visible: hovered || saved.favorite,
@@ -202,7 +196,7 @@ List<PopupMenuEntry<String>> trackMenuItems(BuildContext context, Track track,
     else
       item('download', Icons.download_outlined, 'Скачать'),
     const PopupMenuDivider(),
-    if (!compact) item('playlist', Icons.add_circle_outline, 'Добавить в плейлист…'),
+    item('playlist', Icons.add_circle_outline, 'Добавить в плейлист…'),
     if (!inLibrary) item('library', Icons.library_add_outlined, 'Добавить в медиатеку'),
     if (inLibrary && !compact)
       item('fav', saved.favorite ? Icons.favorite : Icons.favorite_border,
