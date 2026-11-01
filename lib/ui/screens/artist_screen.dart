@@ -5,6 +5,7 @@ import '../../models/track.dart';
 import '../../services/library_store.dart';
 import '../../services/player_service.dart';
 import '../../services/soundcloud_source.dart';
+import '../../services/wave_service.dart';
 import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
@@ -189,7 +190,9 @@ class _ArtistScreenState extends State<ArtistScreen> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+            child: Wrap(
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 IconButton.filled(
                   tooltip: 'Слушать',
@@ -199,6 +202,18 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       : () => player.playAll(mine.isNotEmpty ? mine : suggested),
                   icon: const Icon(Icons.play_arrow_rounded),
                 ),
+                const SizedBox(width: 12),
+                Builder(builder: (context) {
+                  final wave = context.watch<WaveService>();
+                  final blocked = wave.isArtistBlocked(widget.name);
+                  return OutlinedButton.icon(
+                    onPressed: () => blocked
+                        ? wave.unblockArtist(widget.name)
+                        : wave.blockArtist(widget.name),
+                    icon: Icon(blocked ? Icons.check_circle_outline : Icons.block),
+                    label: Text(blocked ? 'Вернуть исполнителя' : 'В чёрный список'),
+                  );
+                }),
                 const SizedBox(width: 12),
                 if (suggested.isNotEmpty)
                   OutlinedButton.icon(

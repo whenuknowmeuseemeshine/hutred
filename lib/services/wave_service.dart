@@ -27,6 +27,10 @@ class WaveService extends ChangeNotifier {
   final _rand = Random();
   final Set<String> _disliked = {};
   final Map<String, int> _dislikedArtists = {};
+
+  /// Чёрный список: исполнители, которых не должно быть нигде, даже на фитах.
+  final Set<String> _blocked = {};
+  final Map<String, String> _blockedNames = {};
   final Set<String> _suggested = {};
   final Map<String, String?> _scIdCache = {};
   File? _file;
@@ -53,6 +57,10 @@ class WaveService extends ChangeNotifier {
       (j['dislikedArtists'] as Map? ?? const {}).forEach((k, v) {
         _dislikedArtists['$k'] = (v as num).toInt();
       });
+      for (final name in List<String>.from(j['blockedArtists'] as List? ?? const [])) {
+        _blocked.add(_norm(name));
+        _blockedNames[_norm(name)] = name;
+      }
     } catch (e) {
       debugPrint('Волна: не удалось прочитать настройки: $e');
     }
@@ -63,8 +71,69 @@ class WaveService extends ChangeNotifier {
       await _file?.writeAsString(jsonEncode({
         'disliked': _disliked.toList(),
         'dislikedArtists': _dislikedArtists,
+        'blockedArtists': _blockedNames.values.toList(),
       }));
     } catch (_) {}
+  }
+
+  static String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll('ё', 'е')
+      .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '');
+
+  static final _split = RegExp(
+    r'\s*[,&;]\s*|\s+(?:feat\.?|ft\.?|x|при участии|featuring)\s+',
+    caseSensitive: false,
+  );
+
+  /// Все исполнители трека: из поля «исполнитель» и из «(feat. …)» в названии.
+  static List<String> artistsOf(Track t) {
+    final names = t.artist.split(_split).toList();
+    final feat = RegExp(r'(?:feat\.?|ft\.?|при участии|w/)\s+([^\)\]]+)', caseSensitive: false)
+        .firstMatch(t.title);
+    if (feat != null) names.addAll(feat.group(1)!.split(_split));
+    return names.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  }
+
+  bool isDisliked(Track t) => _disliked.contains(_key(t));
+
+  /// Трек скрыт («не нравится») или кто-то из его исполнителей в чёрном списке.
+  bool isBlocked(Track t) =>
+      isDisliked(t) || (_blocked.isNotEmpty && artistsOf(t).any((a) => _blocked.contains(_norm(a))));
+
+  bool isArtistBlocked(String name) => _blocked.contains(_norm(name));
+
+  /// Чёрный список исполнителей (как их написали).
+  List<String> get blockedArtists => _blockedNames.values.toList()..sort();
+
+  Future<void> blockArtist(String name) async {
+    final n = _norm(name);
+    if (n.isEmpty) return;
+    _blocked.add(n);
+    _blockedNames[n] = name.trim();
+    await _save();
+    notifyListeners();
+    final cur = player.current;
+    if (cur != null && isBlocked(cur)) await player.next();
+  }
+
+  Future<void> unblockArtist(String name) async {
+    final n = _norm(name);
+    _blocked.remove(n);
+    _blockedNames.remove(n);
+    await _save();
+    notifyListeners();
+  }
+
+  /// 👎 у трека: скрыть его (не будет играть в очередях и волне) или вернуть.
+  Future<void> toggleDislike(Track t) async {
+    final k = _key(t);
+    if (_disliked.remove(k)) {
+      await _save();
+      notifyListeners();
+      return;
+    }
+    await dislike(t);
   }
 
   /// Треки, от которых отталкивается волна: лайки и часто слушаемые.
@@ -135,7 +204,7 @@ class WaveService extends ChangeNotifier {
     for (final t in candidates) {
       final k = _key(t);
       final artist = t.artist.toLowerCase();
-      if (_suggested.contains(k) || _disliked.contains(k)) continue;
+      if (_suggested.contains(k) || isBlocked(t)) continue;
       if ((_dislikedArtists[artist] ?? 0) >= 2) continue;
       if (store.findBySource(t.source, t.uri) != null) continue;
       if ((perArtist[artist] ?? 0) >= 2) continue;

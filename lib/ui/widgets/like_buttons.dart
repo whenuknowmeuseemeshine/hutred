@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
 import '../../services/library_store.dart';
+import '../../services/wave_service.dart';
 import '../actions.dart';
 
 /// Сердечко и «Добавить в плейлист» рядом, как в Spotify.
@@ -41,6 +42,24 @@ class LikeButtons extends StatelessWidget {
             color: liked ? scheme.primary : null,
           ),
         ),
+        // 👎 — скрыть трек: он не будет играть в очередях, плейлистах и волне.
+        Builder(builder: (context) {
+          final wave = context.watch<WaveService>();
+          final hidden = wave.isDisliked(track);
+          return IconButton(
+            tooltip: hidden ? 'Вернуть трек' : 'Не нравится — больше не играть',
+            iconSize: size,
+            onPressed: () {
+              wave.toggleDislike(track);
+              AppActions.toast(context,
+                  hidden ? 'Трек снова будет играть' : 'Трек скрыт и больше не попадётся');
+            },
+            icon: Icon(
+              hidden ? Icons.thumb_down : Icons.thumb_down_outlined,
+              color: hidden ? scheme.error : null,
+            ),
+          );
+        }),
         IconButton(
           tooltip: 'Добавить в плейлист',
           iconSize: size,

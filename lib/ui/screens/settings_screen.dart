@@ -7,6 +7,7 @@ import '../../services/account_service.dart';
 import '../../services/offline_service.dart';
 import '../../services/settings_store.dart';
 import '../../services/update_service.dart';
+import '../../services/wave_service.dart';
 import '../../services/soundcloud_source.dart';
 import '../../services/spotify_service.dart';
 import '../../services/youtube_source.dart';
@@ -31,6 +32,7 @@ const _sectionKeywords = {
   'Фон': 'фон цвет тема оформление обои плеер подкрашивать',
   'Медиатека': 'любимые избранное лайк добавленные',
   'Порядок вкладок': 'вкладки меню навигация порядок',
+  'Чёрный список': 'черный блок заблокировать исполнитель скрытые не нравится дизлайк',
   'Тексты песен': 'текст караоке субтитры genius ии ai groq whisper тайминги',
   'Обложки': 'обложка spotify itunes genius ключи сверять сведения превью',
   'Админ': 'админ всем ключи раздать',
@@ -208,6 +210,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.autoFavorite,
             onChanged: (v) => s.autoFavorite = v,
           ),
+          const _Section('Чёрный список'),
+          const _BlacklistTiles(),
           const _Section('Порядок вкладок'),
           const _NavOrderEditor(),
           const _Section('Тексты песен'),
@@ -1235,6 +1239,49 @@ class _UpdatesTilesState extends State<_UpdatesTiles> {
                     if (mounted) setState(() => _autostart = now);
                   },
           ),
+      ],
+    );
+  }
+}
+
+
+/// Исполнители в чёрном списке и скрытые треки.
+class _BlacklistTiles extends StatelessWidget {
+  const _BlacklistTiles();
+
+  @override
+  Widget build(BuildContext context) {
+    final wave = context.watch<WaveService>();
+    final names = wave.blockedArtists;
+    return Column(
+      children: [
+        if (names.isEmpty)
+          const ListTile(
+            leading: Icon(Icons.block),
+            title: Text('Исполнителей в чёрном списке нет'),
+            subtitle: Text('Добавить — в меню трека «Не показывать исполнителя…» '
+                'или на странице исполнителя'),
+          )
+        else
+          for (final n in names)
+            ListTile(
+              leading: const Icon(Icons.block),
+              title: Text(n),
+              subtitle: const Text('Не играет нигде, даже на фитах'),
+              trailing: TextButton(
+                onPressed: () => wave.unblockArtist(n),
+                child: const Text('Вернуть'),
+              ),
+            ),
+        ListTile(
+          leading: const Icon(Icons.thumb_down_outlined),
+          title: Text('Скрытых треков: ${wave.dislikedCount}'),
+          subtitle: const Text('Треки с 👎 не играют в очередях, плейлистах и волне'),
+          trailing: TextButton(
+            onPressed: wave.dislikedCount == 0 ? null : wave.resetDislikes,
+            child: const Text('Вернуть все'),
+          ),
+        ),
       ],
     );
   }

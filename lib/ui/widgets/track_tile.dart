@@ -11,6 +11,7 @@ import '../../services/offline_service.dart';
 import '../../services/library_store.dart';
 import '../../services/player_service.dart';
 import '../../services/track_fixes.dart';
+import '../../services/wave_service.dart';
 import '../../services/settings_store.dart';
 import '../actions.dart';
 import '../spotify_check.dart';
@@ -62,10 +63,14 @@ class TrackTile extends StatelessWidget {
             player.current!.uri == track.uri);
     final scheme = Theme.of(context).colorScheme;
 
+    // Скрытые треки и чёрный список — полупрозрачные (играть не будут).
+    final hidden = context.watch<WaveService>().isBlocked(track);
     return TrackContextMenu(
       track: track,
       onRemoveFromPlaylist: onRemoveFromPlaylist,
-      child: ListTile(
+      child: Opacity(
+        opacity: hidden ? 0.4 : 1,
+        child: ListTile(
       onTap: onTap,
       leading: Stack(
         children: [
@@ -133,6 +138,7 @@ class TrackTile extends StatelessWidget {
         ],
       ),
     ),
+      ),
     );
   }
 }
@@ -160,6 +166,11 @@ List<PopupMenuEntry<String>> trackMenuItems(
     item('next', Icons.playlist_play, 'Играть следующим'),
     item('queue', Icons.queue_music, 'Добавить в очередь'),
     if (hasArtist) item('artist', Icons.person_outline, 'К исполнителю'),
+    if (context.read<WaveService>().isDisliked(track))
+      item('undislike', Icons.thumb_down, 'Вернуть трек (снова играть)')
+    else
+      item('dislike', Icons.thumb_down_outlined, 'Не нравится — скрыть'),
+    if (hasArtist) item('block', Icons.block, 'Не показывать исполнителя…'),
     if (context.read<OfflineService>().isDownloaded(track))
       item('undownload', Icons.download_done, 'Удалить загрузку')
     else
@@ -210,6 +221,41 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
       store.toggleFavorite(t.id);
     case 'artist':
       await openArtist(context, t.artist);
+    case 'dislike':
+    case 'undislike':
+      await context.read<WaveService>().toggleDislike(t);
+      if (context.mounted) {
+        AppActions.toast(context,
+            action == 'dislike' ? 'Трек скрыт и больше не попадётся' : 'Трек снова будет играть');
+      }
+    case 'block':
+      final names = WaveService.artistsOf(t);
+      var name = names.isEmpty ? t.artist : names.first;
+      if (names.length > 1) {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (d) => SimpleDialog(
+            title: const Text('Кого не показывать?'),
+            children: [
+              for (final n in names)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(d, n),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Text(n, style: const TextStyle(fontSize: 16)),
+                  ),
+                ),
+            ],
+          ),
+        );
+        if (picked == null) return;
+        name = picked;
+      }
+      if (!context.mounted) return;
+      await context.read<WaveService>().blockArtist(name);
+      if (context.mounted) {
+        AppActions.toast(context, '«$name» в чёрном списке — его треки больше не будут играть');
+      }
     case 'spotifyMeta':
       AppActions.toast(context, 'Ищу в Spotify…');
       final n = await context.read<SpotifyCheck>().applyAll([t], (_, __) {});

@@ -110,10 +110,12 @@ class PlayerService extends ChangeNotifier {
     _unshuffled = List.of(tracks);
     _queue = List.of(tracks);
     _index = start.clamp(0, tracks.length - 1);
+    // Трек, на который нажали сами, играет, даже если он скрыт.
+    _allowId = _queue[_index].id;
     // Режим перемешивания действует при любом запуске, в том числе по нажатию на трек.
     if (_shuffle) _shuffleRest();
     final load = _loadCurrent();
-    if (_smart) unawaited(_injectRecommendations());
+    if (_smart) unawaited(_ensureRecsAhead());
     await load;
   }
 
@@ -129,9 +131,30 @@ class PlayerService extends ChangeNotifier {
     await playTracks(tracks, start: Random().nextInt(tracks.length));
   }
 
+  /// Трек скрыт («не нравится») или исполнитель в чёрном списке.
+  bool Function(Track track)? isBlocked;
+  String? _allowId;
+
   Future<void> _loadCurrent({bool autoplay = true}) async {
-    final t = current;
+    var t = current;
     if (t == null) return;
+    // Скрытые треки пропускаем (кроме того, на который нажали сами).
+    final blocked = isBlocked;
+    if (blocked != null && t.id != _allowId && blocked(t)) {
+      var j = _index + 1;
+      while (j < _queue.length && blocked(_queue[j])) {
+        j++;
+      }
+      if (j >= _queue.length) {
+        _error = 'Дальше в очереди только скрытые треки';
+        await _player.pause();
+        notifyListeners();
+        return;
+      }
+      _index = j;
+      t = _queue[j];
+    }
+    _allowId = null;
     final token = ++_loadToken;
     _loading = true;
     _pauseRequested = false;
@@ -159,6 +182,8 @@ class PlayerService extends ChangeNotifier {
       if (autoplay && !_pauseRequested) unawaited(_player.play());
       _failedInRow = 0;
       onStarted?.call(t);
+      // Умное перемешивание: держим рекомендации на несколько треков вперёд.
+      if (_smart) unawaited(_ensureRecsAhead());
       _prefetchNext();
       final low = onQueueLow;
       if (low != null && _queue.length - _index <= 3) unawaited(low());
@@ -302,6 +327,7 @@ class PlayerService extends ChangeNotifier {
   Future<void> jumpTo(int i) async {
     if (i < 0 || i >= _queue.length) return;
     _index = i;
+    _allowId = _queue[i].id;
     await _loadCurrent();
   }
 
@@ -366,38 +392,120 @@ class PlayerService extends ChangeNotifier {
   /// Источник рекомендаций: по трекам очереди подбирает похожие.
   Future<List<Track>> Function(List<Track> seeds, int count)? recommend;
 
-  /// Каждый третий трек после текущего — рекомендация.
-  Future<void> _injectRecommendations() async {
+  /// Включение умного перемешивания.
+  Future<void> _injectRecommendations() => _ensureRecsAhead();
+
+  bool _recFetching = false;
+
+  /// Как в Spotify: после каждых двух своих треков — одна рекомендация из
+  /// «Моей волны». Заполняем на ~20 позиций вперёд и докладываем по мере
+  /// прослушивания, так что рекомендации не кончаются.
+  Future<void> _ensureRecsAhead() async {
     final rec = recommend;
-    if (rec == null || _index < 0) return;
-    final seeds = (_queue.where((t) => !_recommended.contains(t.id)).toList()..shuffle())
-        .take(5)
-        .toList();
-    List<Track> found;
+    if (rec == null || !_smart || _recFetching || _index < 0) return;
+    // Куда вставить: после каждой пары своих треков, где ещё нет рекомендации.
+    final spots = <int>[];
+    var own = 0;
+    for (var i = _index + 1; i < _queue.length && i <= _index + 20; i++) {
+      if (_recommended.contains(_queue[i].id)) {
+        own = 0;
+        continue;
+      }
+      own++;
+      if (own == 2) {
+        spots.add(i + 1);
+        own = 0;
+      }
+    }
+    if (spots.isEmpty) return;
+    _recFetching = true;
     try {
-      found = await rec(seeds, 8);
-    } catch (_) {
-      return;
+      // Похожее подбираем по своим трекам рядом с текущим.
+      final near = _queue
+          .skip(_index)
+          .take(12)
+          .where((t) => !_recommended.contains(t.id))
+          .toList()
+        ..shuffle(_rand);
+      final found = await rec(near.take(5).toList(), spots.length);
+      if (!_smart || found.isEmpty) return;
+      final known = {for (final t in _queue) '${t.source.name}:${t.uri}'};
+      final fresh = found
+          .where((t) => !known.contains('${t.source.name}:${t.uri}'))
+          .where((t) => isBlocked?.call(t) != true)
+          .toList();
+      // Вставляем с конца, чтобы не сбивать номера позиций.
+      final n = min(fresh.length, spots.length);
+      for (var k = n - 1; k >= 0; k--) {
+        final pos = min(spots[k], _queue.length);
+        _queue.insert(pos, fresh[k]);
+        _unshuffled.add(fresh[k]);
+        _recommended.add(fresh[k].id);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[Умное перемешивание] $e');
+    } finally {
+      _recFetching = false;
     }
-    if (!_smart || found.isEmpty) return;
-    var pos = _index + 3;
-    for (final t in found) {
-      if (pos > _queue.length) break;
-      _queue.insert(pos, t);
-      _unshuffled.add(t);
-      _recommended.add(t.id);
-      pos += 3;
-    }
-    notifyListeners();
   }
 
-  /// Перемешивает всё, что идёт после текущего трека (как в Spotify).
+  final _rand = Random();
+
+  /// Перемешивает всё после текущего трека, но «ровно», как в Spotify:
+  /// треки одного исполнителя разносятся по всей очереди, а не идут подряд.
   void _shuffleRest() {
     if (_index < 0) return;
-    final rest = _queue.sublist(_index + 1)..shuffle();
-    final before = _queue.sublist(0, _index)..shuffle();
-    _queue = [_queue[_index], ...rest, ...before];
+    final rest = [..._queue.sublist(_index + 1), ..._queue.sublist(0, _index)];
+    _queue = [_queue[_index], ..._balancedShuffle(rest, after: _queue[_index])];
     _index = 0;
+  }
+
+  static String _artistKey(Track t) =>
+      t.artist
+          .toLowerCase()
+          .split(RegExp(r'\s*[,&;]\s*|\s+(?:feat\.?|ft\.?|x)\s+'))
+          .first
+          .trim();
+
+  /// Каждой группе (исполнителю) — позиции, равномерно разбросанные по
+  /// всей длине со случайным сдвигом; потом убираем повторы подряд.
+  List<Track> _balancedShuffle(List<Track> tracks, {Track? after}) {
+    if (tracks.length < 3) return tracks..shuffle(_rand);
+    final groups = <String, List<Track>>{};
+    for (final t in tracks) {
+      groups.putIfAbsent(_artistKey(t), () => []).add(t);
+    }
+    final placed = <({double pos, Track t})>[];
+    for (final g in groups.values) {
+      g.shuffle(_rand);
+      final step = 1.0 / g.length;
+      final offset = _rand.nextDouble() * step;
+      for (var i = 0; i < g.length; i++) {
+        // Небольшой разброс, чтобы порядок не был механическим.
+        final jitter = (_rand.nextDouble() - 0.5) * step * 0.4;
+        placed.add((pos: offset + i * step + jitter, t: g[i]));
+      }
+    }
+    placed.sort((a, b) => a.pos.compareTo(b.pos));
+    final out = placed.map((e) => e.t).toList();
+    // Если два одинаковых исполнителя всё же рядом — меняем второй с дальним соседом.
+    String? prev = after == null ? null : _artistKey(after);
+    for (var i = 0; i < out.length; i++) {
+      if (_artistKey(out[i]) == prev) {
+        for (var j = i + 1; j < out.length; j++) {
+          if (_artistKey(out[j]) != prev &&
+              (i == 0 || _artistKey(out[j]) != _artistKey(out[i - 1]))) {
+            final tmp = out[i];
+            out[i] = out[j];
+            out[j] = tmp;
+            break;
+          }
+        }
+      }
+      prev = _artistKey(out[i]);
+    }
+    return out;
   }
 
   void cycleRepeat() {

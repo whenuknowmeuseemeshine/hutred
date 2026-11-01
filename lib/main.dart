@@ -99,6 +99,8 @@ Future<void> main(List<String> args) async {
   await wave.load();
   // Умное перемешивание берёт похожие треки из «Моей волны».
   player.recommend = (seeds, count) => wave.recommendFrom(seeds, size: count);
+  // Скрытые треки и исполнители из чёрного списка не играют.
+  player.isBlocked = wave.isBlocked;
   final transfer = TransferService(
     store: store,
     settings: settings,
