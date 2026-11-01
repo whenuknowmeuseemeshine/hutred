@@ -21,6 +21,34 @@ class DpiBypass {
   /// Включён ли обход (переключается из настроек на лету).
   static bool enabled = false;
 
+  /// На компьютере запущен zapret (winws.exe) — он уже обходит блокировки
+  /// для всей системы, свой обход тогда выключаем, чтобы они не мешали друг другу.
+  static final zapretRunning = ValueNotifier<bool>(false);
+
+  static Timer? _zapretTimer;
+
+  /// [wanted] — включён ли обход в настройках.
+  static void watchZapret(bool Function() wanted) {
+    if (kIsWeb || !Platform.isWindows) {
+      enabled = wanted();
+      return;
+    }
+    Future<void> check() async {
+      try {
+        final r = await Process.run('tasklist', ['/FI', 'IMAGENAME eq winws.exe', '/NH']);
+        zapretRunning.value = '${r.stdout}'.toLowerCase().contains('winws.exe');
+      } catch (_) {}
+      enabled = wanted() && !zapretRunning.value;
+    }
+
+    enabled = wanted();
+    check();
+    _zapretTimer ??= Timer.periodic(const Duration(seconds: 30), (_) => check());
+  }
+
+  /// Настройку переключили.
+  static void refresh(bool wanted) => enabled = wanted && !zapretRunning.value;
+
   static ServerSocket? _server;
   static int? _port;
 

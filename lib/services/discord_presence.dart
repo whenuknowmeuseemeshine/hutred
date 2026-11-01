@@ -30,6 +30,9 @@ class DiscordPresence {
   static bool get _supported =>
       !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
+  /// Что сейчас с Discord — показывается в настройках.
+  static final status = ValueNotifier<String>('');
+
   _IpcConnection? _conn;
   String? _connectedFor;
   Timer? _debounce;
@@ -68,15 +71,24 @@ class DiscordPresence {
         _conn = await _IpcConnection.connect(appId);
         if (_conn == null) {
           // Discord не запущен — попробуем позже.
-          _retryAfter = DateTime.now().add(const Duration(seconds: 30));
+          status.value = _IpcConnection.lastProblem ??
+              'Не вижу Discord. Нужно приложение Discord на компьютере (не браузер), '
+                  'запущенное без «от имени администратора»';
+          _retryAfter = DateTime.now().add(const Duration(seconds: 15));
           return;
         }
         _connectedFor = appId;
       }
       await _send(activity);
       _lastSent = key;
+      status.value = lastError != null
+          ? 'Discord ответил: $lastError'
+          : activity == null
+              ? 'Подключено. Статус появится, когда заиграет музыка'
+              : 'Подключено: статус показывается';
     } catch (e) {
       debugPrint('[Discord] $e');
+      status.value = 'Ошибка связи с Discord: $e';
       await _close();
     } finally {
       _busy = false;
@@ -152,7 +164,11 @@ class DiscordPresence {
 
 /// Одно соединение с Discord: кадры [op:uint32][длина:uint32][JSON].
 abstract class _IpcConnection {
+  /// Почему не удалось подключиться (например, Discord отверг Application ID).
+  static String? lastProblem;
+
   static Future<_IpcConnection?> connect(String clientId) async {
+    lastProblem = null;
     for (var i = 0; i < 10; i++) {
       _IpcConnection? c;
       try {
@@ -173,6 +189,8 @@ abstract class _IpcConnection {
         // Рукопожатие: Discord отвечает событием READY.
         final ready = await c.request(0, {'v': 1, 'client_id': clientId});
         if (ready['evt'] == 'READY') return c;
+        lastProblem = 'Discord не принял Application ID: '
+            '${(ready['data'] as Map?)?['message'] ?? ready}';
         await c.close();
       } catch (_) {
         await c?.close();

@@ -68,7 +68,7 @@ class _NetCheckDialogState extends State<_NetCheckDialog> {
         final r = await sp
             .searchTracks(id: settings.spotifyId, secret: settings.spotifySecret, query: 'test')
             .timeout(const Duration(seconds: 15));
-        return 'нашёл ${r.items.length}';
+        return 'нашёл ${r.items.length}${SpotifyService.viaRelay ? ', через облако Hutred' : ''}';
       }),
       _Check('YouTube', () => reach('https://www.youtube.com/')),
     ];

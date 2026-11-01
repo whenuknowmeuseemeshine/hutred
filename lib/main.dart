@@ -49,8 +49,8 @@ Future<void> main(List<String> args) async {
   final account = AccountService(store: store, settings: settings);
   // Аккаунт решает, чью медиатеку открыть (без входа — локальную).
   await settings.load();
-  DpiBypass.enabled = settings.dpiBypass;
-  settings.addListener(() => DpiBypass.enabled = settings.dpiBypass);
+  DpiBypass.watchZapret(() => settings.dpiBypass);
+  settings.addListener(() => DpiBypass.refresh(settings.dpiBypass));
   await account.init();
   // Админ поменял ключи Spotify/ИИ/Discord — они сразу уходят всем.
   Timer? keysDebounce;

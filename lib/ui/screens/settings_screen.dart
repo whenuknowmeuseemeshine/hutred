@@ -12,6 +12,8 @@ import '../../services/soundcloud_source.dart';
 import '../../services/spotify_service.dart';
 import '../../services/youtube_source.dart';
 import '../actions.dart';
+import '../../services/discord_presence.dart';
+import '../../services/dpi_bypass.dart';
 import '../net_check.dart';
 import '../theme.dart';
 import '../widgets/logo.dart';
@@ -334,6 +336,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: s.discordPresence,
               onChanged: (v) => s.discordPresence = v,
             ),
+            if (s.discordPresence && s.discordAppId.isNotEmpty)
+              ValueListenableBuilder<String>(
+                valueListenable: DiscordPresence.status,
+                builder: (_, st, __) => st.isEmpty
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+                        child: Text(st,
+                            style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
+                      ),
+              ),
             if (acc.isAdmin)
               ListTile(
                 leading: const Icon(Icons.key_outlined),
@@ -363,6 +376,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Если включён VPN — можно выключить'),
             value: s.dpiBypass,
             onChanged: (v) => s.dpiBypass = v,
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: DpiBypass.zapretRunning,
+            builder: (_, z, __) => !z
+                ? const SizedBox.shrink()
+                : const Padding(
+                    padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
+                    child: Text(
+                        'Запущен zapret — он уже обходит блокировки, встроенный обход отключён',
+                        style: TextStyle(color: HutredTheme.muted, fontSize: 13)),
+                  ),
           ),
           ListTile(
             leading: const Icon(Icons.network_check_rounded),

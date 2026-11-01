@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../config.dart';
 import '../models/remote.dart';
 import '../models/track.dart';
 import 'genius_service.dart';
@@ -15,6 +17,9 @@ class SpotifyService {
 
   /// Spotify попросил подождать (код 429) — до этого времени не спрашиваем.
   static DateTime get coolingUntil => _PacedClient._blockedUntil;
+
+  /// Spotify открывается только через облако Hutred.
+  static bool get viaRelay => _PacedClient.viaRelay;
   String? _token;
   DateTime _tokenExpires = DateTime.fromMillisecondsSinceEpoch(0);
   String? _tokenFor;
@@ -362,6 +367,47 @@ class _PacedClient extends http.BaseClient {
   static DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
   static const _gap = Duration(milliseconds: 400);
 
+  /// Spotify напрямую не открывается (Россия: подменённый сертификат,
+  /// замедление) — дальше ходим через облако Hutred.
+  static bool viaRelay = false;
+
+  static Uri? get _relay => HutredConfig.cloudEnabled
+      ? Uri.parse('${HutredConfig.supabaseUrl}/functions/v1/spotify')
+      : null;
+
+  Future<http.StreamedResponse> _sendSmart(http.BaseRequest request) async {
+    final relay = _relay;
+    if (!viaRelay || relay == null || request is! http.Request) {
+      if (relay == null || request is! http.Request) return _inner.send(request);
+      try {
+        return await _inner.send(_copy(request, request.url));
+      } on Exception catch (e) {
+        // Сертификат подменили / соединение рвётся — пробуем через облако.
+        if (e is! HandshakeException && e is! SocketException && e is! TlsException &&
+            e is! http.ClientException && e is! TimeoutException) {
+          rethrow;
+        }
+        viaRelay = true;
+      }
+    }
+    final r = _copy(request, relay.replace(queryParameters: {'u': request.url.toString()}));
+    final auth = request.headers['Authorization'] ?? request.headers['authorization'];
+    r.headers
+      ..remove('Authorization')
+      ..remove('authorization')
+      ..['apikey'] = HutredConfig.supabaseAnonKey;
+    if (auth != null) r.headers['x-spotify-auth'] = auth;
+    return _inner.send(r).timeout(const Duration(seconds: 20));
+  }
+
+  static http.Request _copy(http.Request src, Uri url) {
+    final r = http.Request(src.method, url)
+      ..headers.addAll(src.headers)
+      ..followRedirects = src.followRedirects;
+    if (src.bodyBytes.isNotEmpty) r.bodyBytes = src.bodyBytes;
+    return r;
+  }
+
   static String _wait(Duration d) =>
       d.inMinutes >= 1 ? '${d.inMinutes + 1} мин' : '${d.inSeconds + 1} с';
 
@@ -384,7 +430,7 @@ class _PacedClient extends http.BaseClient {
     } finally {
       done.complete();
     }
-    final res = await _inner.send(request);
+    final res = await _sendSmart(request);
     if (res.statusCode == 429) {
       final ra = int.tryParse(res.headers['retry-after'] ?? '') ?? 30;
       _blockedUntil = DateTime.now().add(Duration(seconds: ra.clamp(5, 24 * 3600)));
