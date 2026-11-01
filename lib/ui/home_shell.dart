@@ -356,13 +356,19 @@ class _UpdateBanner extends StatelessWidget {
                       child: Text(
                         u.readyToInstall
                             ? 'Новая версия Hutred скачана'
-                            : 'Вышла новая версия Hutred',
+                            : Platform.isIOS
+                                ? 'Вышла новая версия Hutred — обнови в SideStore'
+                                : 'Вышла новая версия Hutred',
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
                     TextButton(
                       onPressed: u.updateNow,
-                      child: Text(u.readyToInstall ? 'Перезапустить' : 'Скачать'),
+                      child: Text(u.readyToInstall
+                          ? 'Перезапустить'
+                          : Platform.isIOS
+                              ? 'Открыть'
+                              : 'Скачать'),
                     ),
                   ],
                 ),

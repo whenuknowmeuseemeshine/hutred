@@ -63,7 +63,7 @@ jobs:
           cache: true
       - run: flutter pub get
       # Без подписи: подписывает SideStore/Sideloadly твоим Apple ID при установке.
-      - run: flutter build ios --release --no-codesign --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} --dart-define=HUTRED_BUILD=${{ github.run_number }} --build-number=${{ github.run_number }}
+      - run: flutter build ios --release --no-codesign --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} --dart-define=HUTRED_BUILD=${{ github.run_number }} --build-number=${{ github.run_number }} --build-name=1.4.${{ github.run_number }}
       - name: Собрать .ipa
         run: |
           mkdir -p Payload
@@ -156,6 +156,71 @@ jobs:
           PY
           up latest.json latest.json application/json
           echo "Обновление $BUILD выложено"
+
+          # iPhone: .ipa и «источник» для SideStore — новые версии Hutred
+          # появляются в SideStore как обновления.
+          if up Hutred.ipa "ios/Hutred-$BUILD.ipa" application/octet-stream; then
+            IPA_SIZE=$(stat -c%s Hutred.ipa)
+            python3 - <<PY
+          import json, os, datetime
+          url = "$PUB/ios/Hutred-$BUILD.ipa"
+          ver = "1.4.$BUILD"
+          now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+          notes = (os.environ.get("MSG") or "").split("\n")[0]
+          app = {
+            "name": "Hutred",
+            "bundleIdentifier": "ru.hutred.hutred",
+            "developerName": "Hutred",
+            "subtitle": "Музыка из любых источников",
+            "localizedDescription": "Медиатека, SoundCloud, YouTube, Spotify, караоке-тексты.",
+            "iconURL": "$PUB/discord/logo.png",
+            "tintColor": "#8E5CF5",
+            "versions": [{
+              "version": ver, "buildVersion": "$BUILD", "date": now,
+              "localizedDescription": notes, "downloadURL": url,
+              "size": $IPA_SIZE, "minOSVersion": "13.0",
+            }],
+            # Старые поля — для старых версий SideStore.
+            "version": ver, "versionDate": now, "versionDescription": notes,
+            "downloadURL": url, "size": $IPA_SIZE,
+          }
+          json.dump({"name": "Hutred", "identifier": "ru.hutred.source",
+                     "iconURL": "$PUB/discord/logo.png",
+                     "apps": [app], "news": []},
+                    open("sidestore.json", "w"), ensure_ascii=False)
+          PY
+            up sidestore.json sidestore.json application/json
+            echo "SideStore: версия 1.4.$BUILD"
+          else
+            echo "Не удалось выложить .ipa (может, слишком большой для хранилища)"
+          fi
+
+          # Старые сборки удаляем, оставляем две последние: место в облаке не бесконечное.
+          for dir in windows android ios; do
+            curl -sS -X POST "$SB_URL/storage/v1/object/list/releases" \
+              -H "Authorization: Bearer $SB_KEY" -H "apikey: $SB_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"prefix\":\"$dir/\",\"limit\":1000}" > list.json || continue
+            python3 - "$dir" "$BUILD" > old.json <<'PY'
+          import json, re, sys
+          d, build = sys.argv[1], int(sys.argv[2])
+          try:
+              items = json.load(open("list.json"))
+          except Exception:
+              items = []
+          old = []
+          for it in items if isinstance(items, list) else []:
+              m = re.search(r"-(\d+)\.", it.get("name", ""))
+              if m and int(m.group(1)) < build - 1:
+                  old.append(f"{d}/{it['name']}")
+          print(json.dumps({"prefixes": old}))
+          PY
+            if [ "$(cat old.json)" != '{"prefixes": []}' ]; then
+              curl -sS -X DELETE "$SB_URL/storage/v1/object/releases" \
+                -H "Authorization: Bearer $SB_KEY" -H "apikey: $SB_KEY" \
+                -H "Content-Type: application/json" -d @old.json > /dev/null || true
+            fi
+          done
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}

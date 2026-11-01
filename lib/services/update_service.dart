@@ -195,6 +195,13 @@ class UpdateService extends ChangeNotifier {
       }
       return;
     }
+    if (Platform.isIOS) {
+      // На iPhone Hutred обновляется через SideStore (источник Hutred).
+      try {
+        await launchUrl(Uri.parse('sidestore://'), mode: LaunchMode.externalApplication);
+      } catch (_) {}
+      return;
+    }
     final url = _androidUrl;
     if (url != null) {
       // APK скачает браузер, потом Android предложит установить поверх.
