@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:provider/provider.dart';
 
@@ -101,6 +105,8 @@ Future<void> main(List<String> args) async {
   player.recommend = (seeds, count) => wave.recommendFrom(seeds, size: count);
   // Скрытые треки и исполнители из чёрного списка не играют.
   player.isBlocked = wave.isBlocked;
+  // Не советовать то, что уже есть в медиатеке (в том числе с другой площадки).
+  player.isDuplicate = wave.isOwnedLike;
   final transfer = TransferService(
     store: store,
     settings: settings,
@@ -124,6 +130,21 @@ Future<void> main(List<String> args) async {
     settings: settings,
     startHidden: args.contains('--minimized'),
   );
+  // Медиаклавиши Windows (Fn+F9 и т.п.) работают и при свёрнутом окне.
+  if (!kIsWeb && Platform.isWindows) {
+    const MethodChannel('hutred/media_keys').setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'playPause':
+          await player.togglePlay();
+        case 'next':
+          await player.next();
+        case 'previous':
+          await player.previous();
+        case 'stop':
+          if (player.playing) await player.togglePlay();
+      }
+    });
+  }
   // Автообновление (сборки из облака).
   final updates = UpdateService(settings: settings, player: player);
   await updates.start();

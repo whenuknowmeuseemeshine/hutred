@@ -8,7 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import '../models/track.dart';
 import 'library_store.dart';
 import 'player_service.dart';
+import 'meta_clean.dart';
 import 'soundcloud_source.dart';
+import 'youtube_source.dart';
 
 /// «Моя волна»: бесконечный поток похожей музыки по твоим лайкам
 /// и прослушиваниям. Похожие треки берутся из рекомендаций SoundCloud,
@@ -96,6 +98,36 @@ class WaveService extends ChangeNotifier {
   }
 
   bool isDisliked(Track t) => _disliked.contains(_key(t));
+
+  // Название (без мусора) → исполнители: чтобы не советовать то, что уже есть,
+  // даже если у тебя этот трек с другой площадки.
+  Map<String, Set<String>>? _owned;
+  int _ownedFor = -1;
+
+  static String _titleKey(String title) => _norm(MetaClean.clean(
+      YoutubeSource.searchTitle(title)));
+
+  /// Такой трек уже есть в медиатеке (или его версия с другой площадки).
+  bool isOwnedLike(Track t) {
+    if (store.findBySource(t.source, t.uri) != null) return true;
+    if (_owned == null || _ownedFor != store.tracks.length) {
+      _ownedFor = store.tracks.length;
+      _owned = {};
+      for (final o in store.tracks) {
+        _owned!.putIfAbsent(_titleKey(o.title), () => {}).addAll(artistsOf(o).map(_norm));
+      }
+    }
+    final key = _titleKey(t.title);
+    if (key.isEmpty) return false;
+    final mine = _owned![key];
+    if (mine == null) return false;
+    final theirs = artistsOf(t).map(_norm).toSet();
+    // Совпало название и хоть один исполнитель (или исполнитель неизвестен).
+    return mine.isEmpty ||
+        theirs.isEmpty ||
+        mine.contains(_norm(Track.unknownArtist)) ||
+        mine.intersection(theirs).isNotEmpty;
+  }
 
   /// Трек скрыт («не нравится») или кто-то из его исполнителей в чёрном списке.
   bool isBlocked(Track t) =>
@@ -206,7 +238,7 @@ class WaveService extends ChangeNotifier {
       final artist = t.artist.toLowerCase();
       if (_suggested.contains(k) || isBlocked(t)) continue;
       if ((_dislikedArtists[artist] ?? 0) >= 2) continue;
-      if (store.findBySource(t.source, t.uri) != null) continue;
+      if (isOwnedLike(t)) continue;
       if ((perArtist[artist] ?? 0) >= 2) continue;
       if (t.durationMs != null && t.durationMs! < 60000) continue; // не сниппеты
       perArtist[artist] = (perArtist[artist] ?? 0) + 1;

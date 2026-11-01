@@ -397,13 +397,12 @@ class PlayerService extends ChangeNotifier {
 
   bool _recFetching = false;
 
-  /// Как в Spotify: после каждых двух своих треков — одна рекомендация из
-  /// «Моей волны». Заполняем на ~20 позиций вперёд и докладываем по мере
-  /// прослушивания, так что рекомендации не кончаются.
-  Future<void> _ensureRecsAhead() async {
-    final rec = recommend;
-    if (rec == null || !_smart || _recFetching || _index < 0) return;
-    // Куда вставить: после каждой пары своих треков, где ещё нет рекомендации.
+  /// Трек уже есть у тебя (тот же трек, хоть и с другой площадки).
+  bool Function(Track track)? isDuplicate;
+
+  /// Позиции, куда должна встать рекомендация: после каждой пары своих
+  /// треков в ближайших 20, где её ещё нет.
+  List<int> _recSpots() {
     final spots = <int>[];
     var own = 0;
     for (var i = _index + 1; i < _queue.length && i <= _index + 20; i++) {
@@ -417,7 +416,17 @@ class PlayerService extends ChangeNotifier {
         own = 0;
       }
     }
-    if (spots.isEmpty) return;
+    return spots;
+  }
+
+  /// Как в Spotify: после каждых двух своих треков — одна рекомендация из
+  /// «Моей волны». Держим их на ~20 позиций вперёд и докладываем по мере
+  /// прослушивания, так что рекомендации не кончаются.
+  Future<void> _ensureRecsAhead() async {
+    final rec = recommend;
+    if (rec == null || !_smart || _recFetching || _index < 0) return;
+    final need = _recSpots().length;
+    if (need == 0) return;
     _recFetching = true;
     try {
       // Похожее подбираем по своим трекам рядом с текущим.
@@ -427,20 +436,35 @@ class PlayerService extends ChangeNotifier {
           .where((t) => !_recommended.contains(t.id))
           .toList()
         ..shuffle(_rand);
-      final found = await rec(near.take(5).toList(), spots.length);
+      final found = await rec(near.take(5).toList(), need + 4);
       if (!_smart || found.isEmpty) return;
       final known = {for (final t in _queue) '${t.source.name}:${t.uri}'};
-      final fresh = found
-          .where((t) => !known.contains('${t.source.name}:${t.uri}'))
-          .where((t) => isBlocked?.call(t) != true)
-          .toList();
-      // Вставляем с конца, чтобы не сбивать номера позиций.
-      final n = min(fresh.length, spots.length);
-      for (var k = n - 1; k >= 0; k--) {
-        final pos = min(spots[k], _queue.length);
-        _queue.insert(pos, fresh[k]);
-        _unshuffled.add(fresh[k]);
-        _recommended.add(fresh[k].id);
+      final artists = <String>{};
+      final fresh = <Track>[];
+      for (final t in found) {
+        if (known.contains('${t.source.name}:${t.uri}')) continue;
+        if (isBlocked?.call(t) == true || isDuplicate?.call(t) == true) continue;
+        // В одной пачке — не больше одного трека исполнителя.
+        if (!artists.add(_artistKey(t))) continue;
+        fresh.add(t);
+      }
+      // Позиции считаем заново: пока искали, могли переключить трек.
+      for (final t in fresh) {
+        final spots = _recSpots();
+        if (spots.isEmpty) break;
+        var pos = spots.first;
+        // Не ставим рядом с треком того же исполнителя, если есть выбор.
+        for (final sp in spots) {
+          final prev = sp - 1 >= 0 ? _artistKey(_queue[sp - 1]) : null;
+          final next = sp < _queue.length ? _artistKey(_queue[sp]) : null;
+          if (prev != _artistKey(t) && next != _artistKey(t)) {
+            pos = sp;
+            break;
+          }
+        }
+        _queue.insert(min(pos, _queue.length), t);
+        _unshuffled.add(t);
+        _recommended.add(t.id);
       }
       notifyListeners();
     } catch (e) {
