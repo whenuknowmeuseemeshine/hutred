@@ -187,11 +187,16 @@ class CoverService {
         title: renamed ? newTitle : null,
         artist: renamed ? newArtist : null,
         // У синглов «альбом» = название трека — такой не записываем.
-        album: (album ?? '').trim().isNotEmpty
-            ? (Track.sameAsTitle(album!, newTitle.isNotEmpty ? newTitle : current.title)
+        // Источник знает сведения о треке (Spotify, SoundCloud, iTunes):
+        // альбом берём его, а если у него альбома нет (или это сингл) —
+        // стираем старый, например «123» из тегов файла. Genius даёт только
+        // обложку — тогда альбом не трогаем.
+        album: album == null
+            ? null
+            : (album!.trim().isEmpty ||
+                    Track.sameAsTitle(album!, newTitle.isNotEmpty ? newTitle : current.title))
                 ? ''
-                : album!.trim())
-            : null,
+                : album!.trim(),
         lyrics: keepLyrics ? current.lyrics : null,
         lyricsSource: keepLyrics ? current.lyricsSource : null,
       );
