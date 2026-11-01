@@ -100,8 +100,10 @@ jobs:
             Hutred-Setup.exe
             Hutred-windows.zip
 
+  # Готовые файлы выкладываются на страницу Releases → «Hutred — последняя сборка»:
+  # оттуда их удобно скачивать (и оттуда же потом будет брать обновления приложение).
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     needs: [android, ios, windows]
     runs-on: ubuntu-latest
     permissions:
@@ -112,6 +114,12 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'Hutred — последняя сборка' }}
+          body: |
+            Собрано из коммита ${{ github.sha }}.
+            Windows — Hutred-Setup.exe, Android — Hutred.apk, iPhone — Hutred.ipa (ставится через SideStore/Sideloadly).
+          make_latest: true
           files: |
             Hutred.apk
             Hutred.ipa
