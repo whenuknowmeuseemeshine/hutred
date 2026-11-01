@@ -216,6 +216,17 @@ class SettingsScreen extends StatelessWidget {
                 },
               ),
           ],
+          const _Section('Сеть'),
+          SwitchListTile(
+            secondary: const Icon(Icons.vpn_lock_outlined),
+            title: const Text('Обход блокировок (для России)'),
+            subtitle: const Text(
+                'Как zapret, но только для Hutred и без прав администратора: '
+                'YouTube, SoundCloud и обложки открываются без VPN. '
+                'Если включён VPN — можно выключить'),
+            value: s.dpiBypass,
+            onChanged: (v) => s.dpiBypass = v,
+          ),
           const _Section('YouTube'),
           const _YoutubeLoginTile(),
           const _Section('Загрузки и кэш'),

@@ -66,6 +66,7 @@ class SettingsStore extends ChangeNotifier {
   bool _spotifyCheck = true;
   bool _autoFavorite = true;
   bool _discordPresence = true;
+  bool? _dpiBypass;
   String _discordAppId = '';
   File? _file;
 
@@ -113,6 +114,18 @@ class SettingsStore extends ChangeNotifier {
 
   /// Добавленные в медиатеку треки сразу отмечаются ♥ (как в Spotify).
   bool get autoFavorite => _autoFavorite;
+
+  /// Обход блокировок (как zapret) для трафика Hutred.
+  /// По умолчанию включён, если похоже, что компьютер в России
+  /// (русский язык системы и московское время).
+  bool get dpiBypass =>
+      _dpiBypass ??
+      (Platform.localeName.toLowerCase().contains('ru') &&
+          DateTime.now().timeZoneOffset == const Duration(hours: 3));
+  set dpiBypass(bool v) {
+    _dpiBypass = v;
+    _save();
+  }
 
   /// Статус «Слушает Hutred» в Discord.
   bool get discordPresence => _discordPresence;
@@ -362,6 +375,7 @@ class SettingsStore extends ChangeNotifier {
       _spotifyCheck = j['spotifyCheck'] as bool? ?? true;
       _autoFavorite = j['autoFavorite'] as bool? ?? true;
       _discordPresence = j['discordPresence'] as bool? ?? true;
+      _dpiBypass = j['dpiBypass'] as bool?;
       _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
       debugPrint('Не удалось прочитать настройки: $e');
@@ -384,6 +398,7 @@ class SettingsStore extends ChangeNotifier {
         'spotifyCheck': _spotifyCheck,
         'autoFavorite': _autoFavorite,
         'discordPresence': _discordPresence,
+        if (_dpiBypass != null) 'dpiBypass': _dpiBypass,
         'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
         'volume': _volume,

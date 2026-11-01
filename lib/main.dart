@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'services/account_service.dart';
 import 'services/ai_sync_service.dart';
 import 'services/cover_service.dart';
+import 'services/dpi_bypass.dart';
 import 'services/discord_presence.dart';
 import 'services/friends_service.dart';
 import 'services/genius_service.dart';
@@ -32,11 +33,16 @@ Future<void> main() async {
   // на Android, iOS и macOS just_audio использует системный плеер.
   JustAudioMediaKit.ensureInitialized(linux: true, windows: true);
 
+  // Обход блокировок: ставится до создания любых сетевых клиентов.
+  await DpiBypass.install();
   final settings = SettingsStore();
   final store = LibraryStore();
   final account = AccountService(store: store, settings: settings);
   // Аккаунт решает, чью медиатеку открыть (без входа — локальную).
-  await Future.wait([settings.load(), account.init()]);
+  await settings.load();
+  DpiBypass.enabled = settings.dpiBypass;
+  settings.addListener(() => DpiBypass.enabled = settings.dpiBypass);
+  await account.init();
   // Добавленные треки сразу в любимые (можно выключить в настройках).
   store.autoFavorite = settings.autoFavorite;
   settings.addListener(() => store.autoFavorite = settings.autoFavorite);
