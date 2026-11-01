@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import 'services/account_service.dart';
@@ -27,6 +28,7 @@ import 'services/update_service.dart';
 import 'services/transfer_service.dart';
 import 'services/wave_service.dart';
 import 'services/youtube_source.dart';
+import 'services/yt_dlp.dart';
 import 'ui/home_shell.dart';
 import 'ui/missing_file.dart';
 import 'ui/spotify_check.dart';
@@ -136,6 +138,8 @@ Future<void> main(List<String> args) async {
   player.isOffline = () => !offline.online;
   // Новые треки с YouTube/SoundCloud сверяем со Spotify (с вопросом).
   // Трей: крестик прячет окно, при автозапуске окно вообще не показываем.
+  // Свой yt-dlp (Windows) раз в сутки обновляется в фоне.
+  unawaited(getApplicationSupportDirectory().then(YtDlp.selfUpdate));
   await DesktopTray.init(
     player: player,
     settings: settings,

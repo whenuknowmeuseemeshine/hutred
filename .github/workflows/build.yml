@@ -84,6 +84,11 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build windows --release --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} --dart-define=HUTRED_BUILD=${{ github.run_number }} --build-number=${{ github.run_number }}
+      # yt-dlp рядом с hutred.exe: через него играет YouTube, когда YouTube
+      # ломает библиотеку. Дальше Hutred сам обновляет его раз в день.
+      - name: Добавить yt-dlp
+        shell: pwsh
+        run: Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile build/windows/x64/runner/Release/yt-dlp.exe
       - name: Упаковать в zip
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath Hutred-windows.zip

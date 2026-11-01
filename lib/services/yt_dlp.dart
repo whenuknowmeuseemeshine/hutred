@@ -15,12 +15,38 @@ class YtDlp {
   /// Где искать yt-dlp: в PATH, в папке проекта, рядом с hutred.exe
   /// и в папке, куда его ставит winget.
   static List<String> _candidates() => [
+        if (Platform.isWindows) bundled,
         'yt-dlp',
         '${Directory.current.path}${Platform.pathSeparator}yt-dlp.exe',
         '${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}yt-dlp.exe',
         if (Platform.environment['LOCALAPPDATA'] != null)
           '${Platform.environment['LOCALAPPDATA']}\\Microsoft\\WinGet\\Links\\yt-dlp.exe',
       ];
+
+  /// Свой yt-dlp, который ставится вместе с Hutred (Windows).
+  static String get bundled =>
+      '${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}yt-dlp.exe';
+
+  /// Есть ли yt-dlp, которым точно можно пользоваться.
+  static bool get hasBundled => Platform.isWindows && File(bundled).existsSync();
+
+  /// Раз в сутки обновляет свой yt-dlp: YouTube часто всё ломает,
+  /// а yt-dlp чинят за день-два.
+  static Future<void> selfUpdate(Directory stateDir) async {
+    if (!hasBundled) return;
+    try {
+      final stamp = File('${stateDir.path}${Platform.pathSeparator}yt-dlp.updated');
+      if (await stamp.exists()) {
+        final last = await stamp.lastModified();
+        if (DateTime.now().difference(last) < const Duration(hours: 20)) return;
+      }
+      final r = await Process.run(bundled, ['-U']).timeout(const Duration(minutes: 2));
+      debugPrint('[yt-dlp] обновление: ${r.stdout}'.trim());
+      await stamp.writeAsString(DateTime.now().toIso8601String());
+    } catch (e) {
+      debugPrint('[yt-dlp] не удалось обновить: $e');
+    }
+  }
 
   /// Скачивает звук по ссылке в [dir] под именем [baseName].<расширение>.
   static Future<File?> download(

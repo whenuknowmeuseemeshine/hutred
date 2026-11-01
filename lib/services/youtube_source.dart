@@ -262,6 +262,14 @@ class YoutubeSource {
     if (_deadVideos.contains(videoId)) {
       throw Exception('YouTube не отдал звук этого видео');
     }
+    // Библиотека уже подводила, а yt-dlp справился — сразу идём к нему,
+    // не тратя по полминуты на заведомо сломанные способы.
+    if (_preferYtDlp) {
+      final quick = await YtDlp.download(
+          'https://www.youtube.com/watch?v=$videoId', dir, videoId,
+          cookiesBrowser: cookiesBrowser?.call() ?? '');
+      if (quick != null) return quick;
+    }
     // Сначала тот способ, что сработал в прошлый раз: обычно он и сейчас работает.
     final order = [
       if (_goodClient != null) _goodClient!,
@@ -294,16 +302,23 @@ class YoutubeSource {
       }
     }
     // Самый надёжный вариант на ПК: yt-dlp, если он установлен.
-    final viaYtDlp = await YtDlp.download(
-        'https://www.youtube.com/watch?v=$videoId', dir, videoId,
-        cookiesBrowser: cookiesBrowser?.call() ?? '');
-    if (viaYtDlp != null) return viaYtDlp;
+    final viaYtDlp = _preferYtDlp
+        ? null
+        : await YtDlp.download('https://www.youtube.com/watch?v=$videoId', dir, videoId,
+            cookiesBrowser: cookiesBrowser?.call() ?? '');
+    if (viaYtDlp != null) {
+      _preferYtDlp = true;
+      return viaYtDlp;
+    }
     // Не мучаем это видео повторно до перезапуска программы.
     _deadVideos.add(videoId);
     throw lastError ?? Exception('YouTube не отдал звук');
   }
 
   YoutubeApiClient? _goodClient;
+
+  /// Библиотека не справилась, а yt-dlp — да: до перезапуска качаем через него.
+  bool _preferYtDlp = false;
   final Set<String> _deadVideos = {};
 
   static final _clients = [
