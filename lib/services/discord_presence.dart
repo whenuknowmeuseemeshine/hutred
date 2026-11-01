@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import '../config.dart';
 import '../models/track.dart';
 import 'player_service.dart';
 import 'settings_store.dart';
@@ -98,20 +99,46 @@ class DiscordPresence {
         if (dur != null && dur > pos) 'end': now - pos + dur,
       },
       'assets': {
-        if (art != null && art.startsWith('http')) 'large_image': art,
-        'large_text': cut(t.album.isNotEmpty ? t.album : t.title),
+        // Обложка по ссылке; у своих файлов её нет — тогда логотип Hutred.
+        if (art != null && art.startsWith('http') && art.length < 250)
+          'large_image': art
+        else if (_logoUrl != null)
+          'large_image': _logoUrl,
+        'large_text': cut(t.shownAlbum.isNotEmpty ? t.shownAlbum : t.title),
+        if (_logoUrl != null && art != null && art.startsWith('http'))
+          'small_image': _logoUrl,
+        if (_logoUrl != null) 'small_text': 'Hutred',
       },
     };
   }
 
+  /// Логотип для статуса (выкладывается вместе с обновлениями).
+  static final String? _logoUrl = HutredConfig.supabaseUrl.isEmpty
+      ? null
+      : '${HutredConfig.supabaseUrl}/storage/v1/object/public/releases/discord/logo.png';
+
+  /// Последняя ошибка Discord (показывается в настройках).
+  static String? lastError;
+
   Future<void> _send(Map<String, dynamic>? activity) async {
     final c = _conn;
     if (c == null) return;
-    await c.request(1, {
-      'cmd': 'SET_ACTIVITY',
-      'args': {'pid': pid, 'activity': activity},
-      'nonce': '${DateTime.now().microsecondsSinceEpoch}${Random().nextInt(1 << 20)}',
-    });
+    Future<Map<String, dynamic>> go(Map<String, dynamic>? a) => c.request(1, {
+          'cmd': 'SET_ACTIVITY',
+          'args': {'pid': pid, 'activity': a},
+          'nonce': '${DateTime.now().microsecondsSinceEpoch}${Random().nextInt(1 << 20)}',
+        });
+    var res = await go(activity);
+    if (res['evt'] == 'ERROR' && activity != null) {
+      // Discord не принял что-то из статуса (чаще всего картинку) —
+      // пробуем проще, чтобы хотя бы трек и время показывались.
+      lastError = '${(res['data'] as Map?)?['message'] ?? res['data']}';
+      debugPrint('[Discord] $lastError');
+      final simple = Map<String, dynamic>.of(activity)..remove('assets');
+      res = await go(simple);
+    } else {
+      lastError = null;
+    }
   }
 
   Future<void> _close() async {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
@@ -340,10 +341,93 @@ class SoundcloudSource {
   }
 
   Future<void> _downloadPlain(Uri url, IOSink sink) async {
+    sink.add(await getBytes(url));
+  }
+
+  // ---------- Обход «замедления» зарубежных CDN ----------
+  //
+  // В России соединения с некоторыми зарубежными серверами (CloudFront,
+  // Cloudflare и др.) замирают примерно после 16 КБ: поиск работает (ответы
+  // маленькие), а звук не качается. Тогда скачиваем файл маленькими кусками,
+  // каждый — отдельным соединением, по несколько сразу.
+
+  /// Соединения уже замирали — сразу качаем кусками.
+  static bool throttled = false;
+
+  static const _chunk = 9 * 1024;
+
+  Future<List<int>> getBytes(Uri url) async {
+    if (!throttled) {
+      try {
+        return await _getWhole(url);
+      } on TimeoutException {
+        throttled = true;
+        debugPrint('[SoundCloud] соединение замерло — качаю кусками');
+      }
+    }
+    return _getChunked(url);
+  }
+
+  Future<List<int>> _getWhole(Uri url) async {
     final req = http.Request('GET', url)..headers.addAll(_headers);
-    final res = await _client.send(req).timeout(const Duration(seconds: 20));
+    final res = await _client.send(req).timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) throw Exception('код ${res.statusCode}');
-    await sink.addStream(res.stream);
+    final b = BytesBuilder(copy: false);
+    // Нет новых данных 7 секунд — соединение «замерло».
+    await res.stream.timeout(const Duration(seconds: 7)).forEach(b.add);
+    return b.takeBytes();
+  }
+
+  Future<(List<int>, int?)> _range(Uri url, int start) async {
+    Object? last;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+      try {
+        final req = await c.getUrl(url);
+        _headers.forEach(req.headers.set);
+        req.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-${start + _chunk - 1}');
+        req.persistentConnection = false;
+        final res = await req.close().timeout(const Duration(seconds: 10));
+        if (res.statusCode != 206 && res.statusCode != 200) {
+          throw Exception('код ${res.statusCode}');
+        }
+        final b = BytesBuilder(copy: false);
+        await res.timeout(const Duration(seconds: 8)).forEach(b.add);
+        final bytes = b.takeBytes();
+        final cr = res.headers.value(HttpHeaders.contentRangeHeader);
+        final total = res.statusCode == 200
+            ? bytes.length
+            : int.tryParse(cr?.split('/').last ?? '');
+        return (bytes, total);
+      } catch (e) {
+        last = e;
+      } finally {
+        c.close(force: true);
+      }
+    }
+    throw Exception('кусок не скачался: $last');
+  }
+
+  Future<List<int>> _getChunked(Uri url) async {
+    final first = await _range(url, 0);
+    final total = first.$2 ?? first.$1.length;
+    if (first.$1.length >= total) return first.$1;
+    final parts = List<List<int>?>.filled((total + _chunk - 1) ~/ _chunk, null);
+    parts[0] = first.$1;
+    var next = 1;
+    Future<void> worker() async {
+      while (next < parts.length) {
+        final i = next++;
+        parts[i] = (await _range(url, i * _chunk)).$1;
+      }
+    }
+
+    await Future.wait(List.generate(12, (_) => worker()));
+    final out = BytesBuilder(copy: false);
+    for (final p in parts) {
+      out.add(p!);
+    }
+    return out.takeBytes();
   }
 
   /// HLS: плейлист из кусочков. Скачиваем кусочки по порядку в один файл.
@@ -371,11 +455,7 @@ class SoundcloudSource {
     ];
     if (segments.isEmpty) throw Exception('пустой плейлист');
     for (final seg in segments) {
-      final r = await _client
-          .get(url.resolve(seg), headers: _headers)
-          .timeout(const Duration(seconds: 20));
-      if (r.statusCode != 200) throw Exception('кусок: код ${r.statusCode}');
-      sink.add(r.bodyBytes);
+      sink.add(await getBytes(url.resolve(seg)));
     }
   }
 

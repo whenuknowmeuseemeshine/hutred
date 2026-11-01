@@ -111,6 +111,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+          sparse-checkout: assets
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
@@ -133,6 +137,7 @@ jobs:
           }
           up Hutred-Setup.exe "windows/Hutred-Setup-$BUILD.exe" application/octet-stream
           up Hutred.apk "android/Hutred-$BUILD.apk" application/vnd.android.package-archive
+          up src/assets/logo.png discord/logo.png image/png
           PUB="$SB_URL/storage/v1/object/public/releases"
           python3 - <<PY
           import json, os

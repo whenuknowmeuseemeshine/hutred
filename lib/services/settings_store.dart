@@ -69,6 +69,9 @@ class SettingsStore extends ChangeNotifier {
   bool? _dpiBypass;
   bool _autoUpdate = true;
   bool _closeToTray = true;
+  bool _crossfade = false;
+  int _crossfadeSec = 6;
+  bool _fadePause = true;
   String _discordAppId = '';
   File? _file;
 
@@ -126,6 +129,27 @@ class SettingsStore extends ChangeNotifier {
           DateTime.now().timeZoneOffset == const Duration(hours: 3));
   set dpiBypass(bool v) {
     _dpiBypass = v;
+    _save();
+  }
+
+  /// Плавный переход между треками, как в Spotify.
+  bool get crossfade => _crossfade;
+  set crossfade(bool v) {
+    _crossfade = v;
+    _save();
+  }
+
+  /// Длительность перехода, секунды (1–12).
+  int get crossfadeSec => _crossfadeSec;
+  set crossfadeSec(int v) {
+    _crossfadeSec = v.clamp(1, 12);
+    _save();
+  }
+
+  /// Пауза и продолжение плавно, без резкого обрыва звука.
+  bool get fadePause => _fadePause;
+  set fadePause(bool v) {
+    _fadePause = v;
     _save();
   }
 
@@ -394,6 +418,9 @@ class SettingsStore extends ChangeNotifier {
       _dpiBypass = j['dpiBypass'] as bool?;
       _autoUpdate = j['autoUpdate'] as bool? ?? true;
       _closeToTray = j['closeToTray'] as bool? ?? true;
+      _crossfade = j['crossfade'] as bool? ?? false;
+      _crossfadeSec = ((j['crossfadeSec'] as num?)?.toInt() ?? 6).clamp(1, 12);
+      _fadePause = j['fadePause'] as bool? ?? true;
       _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
       debugPrint('Не удалось прочитать настройки: $e');
@@ -419,6 +446,9 @@ class SettingsStore extends ChangeNotifier {
         if (_dpiBypass != null) 'dpiBypass': _dpiBypass,
         'autoUpdate': _autoUpdate,
         'closeToTray': _closeToTray,
+        'crossfade': _crossfade,
+        'crossfadeSec': _crossfadeSec,
+        'fadePause': _fadePause,
         'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
         'volume': _volume,

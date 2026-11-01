@@ -8,6 +8,7 @@ import '../screens/now_playing_screen.dart';
 import '../theme.dart';
 import '../../models/track.dart';
 import 'artwork.dart';
+import 'track_tile.dart';
 import 'controls.dart';
 import 'like_buttons.dart';
 
@@ -55,7 +56,8 @@ class MiniPlayer extends StatelessWidget {
                 children: [
                   Hero(
                     tag: 'artwork',
-                    child: Artwork(track: track, size: 46, radius: 4),
+                    child: TrackContextMenu(
+                        track: track, child: Artwork(track: track, size: 46, radius: 4)),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -155,7 +157,11 @@ class PlayerBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
                 child: Row(
                   children: [
-                    Hero(tag: 'artwork', child: Artwork(track: track, size: 60, radius: 6)),
+                    TrackContextMenu(
+                      track: track,
+                      child: Hero(
+                          tag: 'artwork', child: Artwork(track: track, size: 60, radius: 6)),
+                    ),
                     const SizedBox(width: 12),
                     Flexible(
                       child: Column(

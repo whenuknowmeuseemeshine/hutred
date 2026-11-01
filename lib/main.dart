@@ -97,6 +97,8 @@ Future<void> main(List<String> args) async {
   );
   // Громкость с прошлого запуска.
   await player.setVolume(settings.volume, remember: false);
+  player.crossfadeSeconds = () => settings.crossfade ? settings.crossfadeSec : 0;
+  player.fadeOnPause = () => settings.fadePause;
 
   final covers = CoverService(
     genius: genius,

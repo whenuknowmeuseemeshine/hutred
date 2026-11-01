@@ -12,6 +12,7 @@ import '../../services/soundcloud_source.dart';
 import '../../services/spotify_service.dart';
 import '../../services/youtube_source.dart';
 import '../actions.dart';
+import '../net_check.dart';
 import '../theme.dart';
 import '../widgets/logo.dart';
 import '../home_shell.dart';
@@ -31,6 +32,7 @@ const _sectionKeywords = {
   'Акцентный цвет': 'цвет тема оформление акцент',
   'Фон': 'фон цвет тема оформление обои плеер подкрашивать',
   'Медиатека': 'любимые избранное лайк добавленные',
+  'Воспроизведение': 'плавный переход crossfade кроссфейд пауза затихание громкость',
   'Порядок вкладок': 'вкладки меню навигация порядок',
   'Чёрный список': 'черный блок заблокировать исполнитель скрытые не нравится дизлайк',
   'Тексты песен': 'текст караоке субтитры genius ии ai groq whisper тайминги',
@@ -38,7 +40,7 @@ const _sectionKeywords = {
   'Админ': 'админ всем ключи раздать',
   'Discord': 'дискорд статус активность rich presence слушает',
   'Обновления': 'обновление версия сборка автозапуск автозагрузка windows трей',
-  'Сеть': 'обход блокировок zapret vpn впн россия прокси',
+  'Сеть': 'обход блокировок zapret vpn впн россия прокси проверить связь соединение',
   'YouTube': 'ютуб вход cookies браузер 18+',
   'Загрузки и кэш': 'скачать скачанные офлайн без интернета кэш память место удалить',
 };
@@ -210,6 +212,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.autoFavorite,
             onChanged: (v) => s.autoFavorite = v,
           ),
+          const _Section('Воспроизведение'),
+          SwitchListTile(
+            secondary: const Icon(Icons.swap_horiz_rounded),
+            title: const Text('Плавный переход между треками'),
+            subtitle: Text(s.crossfade
+                ? 'Конец трека затихает, следующий нарастает: ${s.crossfadeSec} с'
+                : 'Как в Spotify: треки перетекают друг в друга без тишины'),
+            value: s.crossfade,
+            onChanged: (v) => s.crossfade = v,
+          ),
+          if (s.crossfade)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(56, 0, 16, 8),
+              child: Row(children: [
+                const Text('1 с', style: TextStyle(color: HutredTheme.muted)),
+                Expanded(
+                  child: Slider(
+                    min: 1,
+                    max: 12,
+                    divisions: 11,
+                    value: s.crossfadeSec.toDouble(),
+                    label: '${s.crossfadeSec} с',
+                    onChanged: (v) => s.crossfadeSec = v.round(),
+                  ),
+                ),
+                const Text('12 с', style: TextStyle(color: HutredTheme.muted)),
+              ]),
+            ),
+          SwitchListTile(
+            secondary: const Icon(Icons.volume_down_rounded),
+            title: const Text('Плавная пауза'),
+            subtitle: const Text('При паузе звук за полсекунды затихает, при продолжении — нарастает'),
+            value: s.fadePause,
+            onChanged: (v) => s.fadePause = v,
+          ),
           const _Section('Чёрный список'),
           const _BlacklistTiles(),
           const _Section('Порядок вкладок'),
@@ -326,6 +363,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Если включён VPN — можно выключить'),
             value: s.dpiBypass,
             onChanged: (v) => s.dpiBypass = v,
+          ),
+          ListTile(
+            leading: const Icon(Icons.network_check_rounded),
+            title: const Text('Проверить связь'),
+            subtitle: const Text(
+                'Что открывается, а что нет: SoundCloud, Spotify, YouTube, облако. '
+                'Если что-то не играет — пришли скриншот'),
+            onTap: () => showNetCheck(context),
           ),
           const _Section('YouTube'),
           const _YoutubeLoginTile(),

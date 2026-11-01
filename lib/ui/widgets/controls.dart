@@ -261,6 +261,12 @@ class _ShufflePainter extends CustomPainter {
       ..strokeWidth = 1.9
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
+    if (smart) {
+      // Стрелки чуть меньше и правее-ниже — звёздочке нужен свой угол.
+      canvas.save();
+      canvas.translate(4.5, 4.5);
+      canvas.scale(0.81);
+    }
     // Снизу-слева вверх-вправо — сплошная.
     canvas.drawPath(
       Path()
@@ -271,10 +277,9 @@ class _ShufflePainter extends CustomPainter {
       line,
     );
     // Сверху-слева вниз-вправо — с разрывом на перекрестье.
-    // Со звёздочкой начинается правее, чтобы освободить ей угол.
     canvas.drawPath(
       Path()
-        ..moveTo(smart ? 7.5 : 2, 6)
+        ..moveTo(2, 6)
         ..lineTo(5, 6)
         ..cubicTo(6.8, 6, 8, 7.6, 9, 9.6),
       line,
@@ -297,8 +302,9 @@ class _ShufflePainter extends CustomPainter {
       );
     }
     if (smart) {
+      canvas.restore();
       // Четырёхлучевая звёздочка в левом верхнем углу.
-      const cx = 3.2, cy = 2.6, r = 3.2, k = 0.55;
+      const cx = 3.6, cy = 3.6, r = 3.6, k = 0.6;
       canvas.drawPath(
         Path()
           ..moveTo(cx, cy - r)

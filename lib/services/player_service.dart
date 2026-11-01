@@ -32,24 +32,154 @@ class PlayerService extends ChangeNotifier {
     this.onStarted,
     this.onVolumeChanged,
   }) {
-    _subs.add(_player.playerStateStream.listen((s) {
-      if (s.processingState == ProcessingState.completed && !_completing) {
-        _completing = true;
-        _onCompleted().whenComplete(() => _completing = false);
+    // Два плеера: пока один доигрывает и затихает, второй уже начинает
+    // следующий трек (плавный переход). События слушаем только у текущего.
+    for (final p in [_a, _b]) {
+      _subs.add(p.playerStateStream.listen((s) {
+        if (p != _player) return;
+        if (s.processingState == ProcessingState.completed && !_completing) {
+          _completing = true;
+          _onCompleted().whenComplete(() => _completing = false);
+        }
+        notifyListeners();
+      }));
+      _subs.add(p.durationStream.listen((d) {
+        if (p != _player) return;
+        final t = current;
+        if (d != null && t != null && t.durationMs == null) {
+          onDurationKnown?.call(t, d);
+        }
+        notifyListeners();
+      }));
+      _subs.add(p.playbackEventStream.listen((_) {}, onError: (Object e) {
+        if (p != _player) return;
+        _error = 'Ошибка воспроизведения: $e';
+        notifyListeners();
+      }));
+      _subs.add(p.positionStream.listen((d) {
+        if (p == _player) _pos.add(d);
+      }));
+      _subs.add(p
+          .createPositionStream(
+            steps: 4000,
+            minPeriod: const Duration(milliseconds: 16),
+            maxPeriod: const Duration(milliseconds: 50),
+          )
+          .listen((d) {
+        if (p == _player) _smoothPos.add(d);
+      }));
+    }
+    _xfTimer = Timer.periodic(const Duration(milliseconds: 250), (_) => _checkCrossfade());
+  }
+
+  // ---------- Плавность ----------
+
+  /// Плавный переход между треками (секунды; 0 — выключен).
+  int Function() crossfadeSeconds = () => 0;
+
+  /// Пауза и продолжение плавно (затихание ~0,5 с).
+  bool Function() fadeOnPause = () => true;
+
+  final AudioPlayer _a = AudioPlayer();
+  final AudioPlayer _b = AudioPlayer();
+  late AudioPlayer _player = _a;
+  AudioPlayer get _other => identical(_player, _a) ? _b : _a;
+
+  final _pos = StreamController<Duration>.broadcast();
+  final _smoothPos = StreamController<Duration>.broadcast();
+  Timer? _xfTimer;
+  bool _xfRunning = false;
+  int _fadeToken = 0;
+
+  /// Громкость, которую выбрал пользователь (плавности меняют её временно).
+  double _userVolume = 1;
+
+  /// Плавно меняет громкость плеера. Прерывается, если началась другая плавность.
+  Future<bool> _ramp(AudioPlayer p, double from, double to, Duration d,
+      {int? token}) async {
+    const steps = 20;
+    final t = token ?? ++_fadeToken;
+    for (var i = 1; i <= steps; i++) {
+      if (t != _fadeToken) return false;
+      final k = i / steps;
+      await p.setVolume((from + (to - from) * k).clamp(0.0, 1.0));
+      await Future<void>.delayed(d ~/ steps);
+    }
+    return t == _fadeToken;
+  }
+
+  /// Глушит второй (затихающий) плеер — например, если переключили трек.
+  Future<void> _killOther() async {
+    final o = _other;
+    if (o.playing || o.processingState != ProcessingState.idle) {
+      try {
+        await o.stop();
+      } catch (_) {}
+    }
+  }
+
+  /// Следующий трек, который заиграет сам (с учётом скрытых).
+  int? _autoNextIndex() {
+    if (_repeat == RepeatSetting.one) return null;
+    var j = _index + 1;
+    final blocked = isBlocked;
+    while (j < _queue.length && blocked != null && blocked(_queue[j])) {
+      j++;
+    }
+    if (j < _queue.length) return j;
+    if (_repeat == RepeatSetting.all && _queue.isNotEmpty) return 0;
+    return null;
+  }
+
+  Future<void> _checkCrossfade() async {
+    final secs = crossfadeSeconds();
+    if (secs <= 0 || _xfRunning || _loading || !_player.playing) return;
+    final dur = _player.duration;
+    if (dur == null || dur.inSeconds < secs * 2 + 5) return;
+    final left = dur - _player.position;
+    if (left > Duration(seconds: secs) || left <= const Duration(milliseconds: 600)) return;
+    final j = _autoNextIndex();
+    if (j == null) return;
+    _xfRunning = true;
+    final token = _loadToken;
+    final next = _queue[j];
+    try {
+      // Следующий трек заранее скачан (_prefetchNext), обычно это мгновенно.
+      final source = await _sourceFor(next).timeout(const Duration(seconds: 2));
+      if (token != _loadToken || !_player.playing) return;
+      final incoming = _other;
+      await incoming.setVolume(0);
+      await incoming.setAudioSource(source).timeout(const Duration(seconds: 4));
+      if (token != _loadToken) {
+        await incoming.stop();
+        return;
       }
+      final outgoing = _player;
+      final fadeLen = _player.duration! - _player.position;
+      // Переключаемся: теперь «текущий» — новый трек.
+      _player = incoming;
+      _index = j;
+      ++_loadToken;
+      unawaited(incoming.play());
+      onStarted?.call(next);
       notifyListeners();
-    }));
-    _subs.add(_player.durationStream.listen((d) {
-      final t = current;
-      if (d != null && t != null && t.durationMs == null) {
-        onDurationKnown?.call(t, d);
-      }
-      notifyListeners();
-    }));
-    _subs.add(_player.playbackEventStream.listen((_) {}, onError: (Object e) {
-      _error = 'Ошибка воспроизведения: $e';
-      notifyListeners();
-    }));
+      if (_smart) unawaited(_ensureRecsAhead());
+      _prefetchNext();
+      final low = onQueueLow;
+      if (low != null && _queue.length - _index <= 3) unawaited(low());
+      final t = ++_fadeToken;
+      await Future.wait([
+        _ramp(incoming, 0, _userVolume, fadeLen, token: t),
+        _ramp(outgoing, _userVolume, 0, fadeLen, token: t),
+      ]);
+      await outgoing.stop();
+      await outgoing.setVolume(_userVolume);
+      if (t == _fadeToken) await incoming.setVolume(_userVolume);
+    } catch (e) {
+      debugPrint('[Переход] $e');
+    } finally {
+      _xfRunning = false;
+    }
   }
 
   final YoutubeSource youtube;
@@ -65,7 +195,6 @@ class PlayerService extends ChangeNotifier {
   /// Вызывается, когда в очереди осталось мало треков (подгрузка «Волны»).
   Future<void> Function()? onQueueLow;
 
-  final AudioPlayer _player = AudioPlayer();
   final List<StreamSubscription<dynamic>> _subs = [];
 
   List<Track> _queue = [];
@@ -87,20 +216,14 @@ class PlayerService extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
   bool get playing => _player.playing;
-  double get volume => _player.volume;
+  double get volume => _userVolume;
   Duration get position => _player.position;
   Duration? get duration => _player.duration ?? current?.duration;
 
-  Stream<Duration> get positionStream => _player.positionStream;
+  Stream<Duration> get positionStream => _pos.stream;
 
   /// Частый поток позиции — для плавной заливки караоке.
-  late final Stream<Duration> smoothPositionStream = _player
-      .createPositionStream(
-        steps: 4000,
-        minPeriod: const Duration(milliseconds: 16),
-        maxPeriod: const Duration(milliseconds: 50),
-      )
-      .asBroadcastStream();
+  Stream<Duration> get smoothPositionStream => _smoothPos.stream;
 
   // ---------- Запуск ----------
 
@@ -165,9 +288,12 @@ class PlayerService extends ChangeNotifier {
     notifyListeners();
     // Сразу глушим прошлый трек: если новый не загрузится,
     // старый не должен продолжать играть.
+    ++_fadeToken;
     try {
+      await _killOther();
       // После сбоя плеер иногда «залипает», поэтому ждём не дольше 3 секунд.
       await _player.stop().timeout(const Duration(seconds: 3));
+      await _player.setVolume(_userVolume);
     } catch (_) {}
     if (token != _loadToken) return;
     try {
@@ -291,7 +417,7 @@ class PlayerService extends ChangeNotifier {
       return;
     }
     if (_player.playing) {
-      await _player.pause();
+      await pause();
     } else {
       if (_player.processingState == ProcessingState.completed) {
         await _player.seek(Duration.zero);
@@ -300,7 +426,37 @@ class PlayerService extends ChangeNotifier {
         await _loadCurrent();
         return;
       }
-      unawaited(_player.play());
+      await resume();
+    }
+  }
+
+  /// Пауза: как в Spotify, звук не обрывается, а быстро затихает.
+  Future<void> pause() async {
+    if (!_player.playing) return;
+    await _killOther();
+    final p = _player;
+    if (fadeOnPause()) {
+      final t = ++_fadeToken;
+      final done = await _ramp(p, p.volume, 0, const Duration(milliseconds: 500), token: t);
+      if (!done) return; // Пока затихало, снова нажали «играть».
+    }
+    await p.pause();
+    await p.setVolume(_userVolume);
+    notifyListeners();
+  }
+
+  /// Продолжить: звук плавно нарастает.
+  Future<void> resume() async {
+    final p = _player;
+    if (fadeOnPause()) {
+      final t = ++_fadeToken;
+      await p.setVolume(0);
+      unawaited(p.play());
+      await _ramp(p, 0, _userVolume, const Duration(milliseconds: 300), token: t);
+    } else {
+      ++_fadeToken;
+      await p.setVolume(_userVolume);
+      unawaited(p.play());
     }
   }
 
@@ -348,7 +504,10 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> setVolume(double v, {bool remember = true}) async {
     final value = v.clamp(0.0, 1.0);
+    _userVolume = value;
+    ++_fadeToken;
     await _player.setVolume(value);
+    if (_other.playing) await _other.setVolume(value);
     if (remember) onVolumeChanged?.call(value);
     notifyListeners();
   }
@@ -606,7 +765,11 @@ class PlayerService extends ChangeNotifier {
     for (final s in _subs) {
       s.cancel();
     }
-    _player.dispose();
+    _xfTimer?.cancel();
+    _a.dispose();
+    _b.dispose();
+    _pos.close();
+    _smoothPos.close();
     super.dispose();
   }
 }

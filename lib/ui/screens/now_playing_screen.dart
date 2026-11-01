@@ -195,7 +195,8 @@ class _Cover extends StatelessWidget {
               ),
               child: Hero(
                 tag: 'artwork',
-                child: Artwork(track: track, radius: 10),
+                child: TrackContextMenu(
+                    track: track, child: Artwork(track: track, radius: 10)),
               ),
             ),
           ),
@@ -490,7 +491,10 @@ class _BigCover extends StatelessWidget {
                     BoxShadow(color: Colors.black54, blurRadius: 40, offset: Offset(0, 16)),
                   ],
                 ),
-                child: Hero(tag: 'artwork', child: Artwork(track: track, radius: 10)),
+                child: TrackContextMenu(
+                  track: track,
+                  child: Hero(tag: 'artwork', child: Artwork(track: track, radius: 10)),
+                ),
               ),
             ),
             const SizedBox(height: 20),
