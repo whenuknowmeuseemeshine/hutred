@@ -11,6 +11,7 @@ import '../../services/player_service.dart';
 import '../actions.dart';
 import '../theme.dart';
 import '../widgets/account_button.dart';
+import '../widgets/controls.dart';
 import '../widgets/logo.dart';
 import '../widgets/track_tile.dart';
 
@@ -332,7 +333,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                       style: const TextStyle(
                                           color: HutredTheme.muted, fontSize: 12)),
                                 ),
-                              IconButton.filledTonal(
+                              IconButton(
+                                iconSize: 28,
                                 tooltip: pinned
                                     ? 'Любимые скачаны — нажми, чтобы удалить загрузки'
                                     : 'Скачать все любимые треки (новые лайки тоже скачаются)',
@@ -348,40 +350,43 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                                 : 'Скачиваю любимые: ${tracksWord(favs.length)}');
                                       },
                                 icon: Icon(
-                                  pinned ? Icons.arrow_circle_down : Icons.download_outlined,
-                                  color: pinned ? Theme.of(context).colorScheme.primary : null,
+                                  pinned
+                                      ? Icons.arrow_circle_down_rounded
+                                      : Icons.arrow_circle_down_outlined,
+                                  color: pinned
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.white70,
                                 ),
                               ),
                               const SizedBox(width: 8),
                             ],
                           );
                         }),
-                        IconButton.filledTonal(
-                          tooltip: 'Добавить музыку: YouTube, файлы, папка, ссылка',
+                        IconButton(
+                          iconSize: 28,
+                          tooltip: 'Добавить музыку: файлы, папка, ссылка',
                           onPressed: () => AppActions.showAddSheet(context),
-                          icon: const Icon(Icons.add),
+                          icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70),
                         ),
                         const SizedBox(width: 8),
                         // Как в Spotify: выкл → перемешать → перемешать с рекомендациями.
-                        IconButton.filledTonal(
+                        IconButton(
                           tooltip: !player.shuffle
                               ? 'Перемешивание выключено'
                               : (player.smartShuffle
                                   ? 'Перемешивание с рекомендациями'
                                   : 'Перемешивание включено'),
                           onPressed: player.toggleShuffle,
-                          isSelected: player.shuffle,
-                          icon: Icon(
-                            player.smartShuffle ? Icons.auto_awesome : Icons.shuffle,
-                            color: player.shuffle
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.white60,
-                          ),
+                          icon: ShuffleIcon(
+                              on: player.shuffle, smart: player.smartShuffle, size: 26),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         IconButton.filled(
+                          style: IconButton.styleFrom(
+                            fixedSize: const Size.square(52),
+                          ),
                           tooltip: 'Слушать всё',
-                          iconSize: 30,
+                          iconSize: 32,
                           onPressed: tracks.isEmpty ? null : () => player.playAll(tracks),
                           icon: const Icon(Icons.play_arrow_rounded),
                         ),

@@ -25,6 +25,8 @@ class AppActions {
 
   /// Нижняя панель «Добавить музыку».
   static Future<void> showAddSheet(BuildContext context) {
+    // На компьютере — аккуратное окошко посередине, а не шторка снизу.
+    if (MediaQuery.sizeOf(context).width >= 700) return _showAddDialog(context);
     return showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -76,6 +78,56 @@ class AppActions {
             const SizedBox(height: 8),
           ],
         )),
+      ),
+    );
+  }
+
+  static Future<void> _showAddDialog(BuildContext context) {
+    Widget option(BuildContext d, IconData icon, String title, String sub, VoidCallback go) =>
+        _AddOption(icon: icon, title: title, subtitle: sub, onTap: () {
+          Navigator.pop(d);
+          go();
+        });
+    return showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (d) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Добавить музыку',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                    tooltip: 'Закрыть',
+                    iconSize: 20,
+                    onPressed: () => Navigator.pop(d),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                option(d, Icons.smart_display_outlined, 'С YouTube',
+                    'Ссылка на видео, плейлист или YouTube Music',
+                    () => addUrlDialog(context, youtube: true)),
+                option(d, Icons.folder_open_rounded, 'Файлы или папка',
+                    'Отдельные треки или целая папка с подпапками',
+                    () => addFromDevice(context)),
+                option(d, Icons.link_rounded, 'По ссылке',
+                    'SoundCloud, Spotify, mp3, интернет-радио',
+                    () => addUrlDialog(context)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -510,5 +562,55 @@ class AppActions {
       ),
     );
     return ok == true;
+  }
+}
+
+
+/// Строчка в окошке «Добавить музыку» на компьютере.
+class _AddOption extends StatelessWidget {
+  const _AddOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 22, color: scheme.onSurface),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 }

@@ -31,6 +31,11 @@ class DesktopTray with TrayListener, WindowListener {
       windowManager.addListener(tray);
       // Крестик не закрывает приложение, решаем сами в onWindowClose.
       await windowManager.setPreventClose(true);
+      // Системную полосу с значком и «hutred» убираем — рисуем свою.
+      if (Platform.isWindows) {
+        await windowManager.setTitleBarStyle(TitleBarStyle.hidden,
+            windowButtonVisibility: false);
+      }
       await trayManager.setIcon(
           Platform.isWindows ? 'assets/app_icon.ico' : 'assets/logo.png');
       await trayManager.setToolTip('Hutred');

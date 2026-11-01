@@ -125,8 +125,7 @@ class TransportControls extends StatelessWidget {
                   ? 'Перемешано с рекомендациями — нажми, чтобы выключить'
                   : 'Перемешать с рекомендациями из «Моей волны»'),
           onPressed: player.toggleShuffle,
-          icon: Icon(player.smartShuffle ? Icons.auto_awesome : Icons.shuffle,
-              color: player.shuffle ? accent : Colors.white70),
+          icon: ShuffleIcon(on: player.shuffle, smart: player.smartShuffle, size: 20),
         ),
         IconButton(
           tooltip: 'Предыдущий',
@@ -204,4 +203,75 @@ class VolumeSlider extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Значок перемешивания как в Spotify: стрелки, при умном перемешивании —
+/// маленькая звёздочка сверху справа, а когда включено — точка снизу.
+class ShuffleIcon extends StatelessWidget {
+  const ShuffleIcon({
+    super.key,
+    required this.on,
+    required this.smart,
+    this.size = 22,
+    this.color,
+  });
+
+  final bool on;
+  final bool smart;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final c = color ?? (on ? accent : Colors.white70);
+    return SizedBox(
+      width: size + 6,
+      height: size + 8,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.shuffle_rounded, size: size, color: c),
+          if (smart)
+            Positioned(
+              right: -1,
+              top: 0,
+              child: CustomPaint(size: Size.square(size * 0.42), painter: _SparklePainter(c)),
+            ),
+          if (on)
+            Positioned(
+              bottom: 0,
+              child: Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Четырёхлучевая звёздочка (как у умного перемешивания Spotify).
+class _SparklePainter extends CustomPainter {
+  _SparklePainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final w = s.width, h = s.height, cx = w / 2, cy = h / 2;
+    final p = Path()
+      ..moveTo(cx, 0)
+      ..quadraticBezierTo(cx + w * 0.08, cy - h * 0.08, w, cy)
+      ..quadraticBezierTo(cx + w * 0.08, cy + h * 0.08, cx, h)
+      ..quadraticBezierTo(cx - w * 0.08, cy + h * 0.08, 0, cy)
+      ..quadraticBezierTo(cx - w * 0.08, cy - h * 0.08, cx, 0)
+      ..close();
+    canvas.drawPath(p, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_SparklePainter old) => old.color != color;
 }

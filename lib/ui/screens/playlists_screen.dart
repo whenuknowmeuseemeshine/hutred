@@ -8,6 +8,7 @@ import '../../services/player_service.dart';
 import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
+import '../widgets/controls.dart';
 import '../widgets/track_tile.dart';
 
 class PlaylistsScreen extends StatelessWidget {
@@ -195,25 +196,26 @@ class PlaylistDetailScreen extends StatelessWidget {
                           child: Text('$done/${tracks.length}',
                               style: const TextStyle(color: HutredTheme.muted, fontSize: 12)),
                         ),
-                      IconButton.filledTonal(
+                      IconButton(
+                        iconSize: 28,
                         tooltip: pinned ? 'Удалить загрузки' : 'Скачать для прослушивания без интернета',
                         isSelected: pinned,
                         onPressed: tracks.isEmpty && !pinned
                             ? null
                             : () => off.pin(playlistId, !pinned),
                         icon: Icon(
-                          pinned ? Icons.arrow_circle_down : Icons.download_outlined,
-                          color: pinned ? Theme.of(context).colorScheme.primary : null,
+                          pinned ? Icons.arrow_circle_down_rounded : Icons.arrow_circle_down_outlined,
+                          color: pinned ? Theme.of(context).colorScheme.primary : Colors.white70,
                         ),
                       ),
                       const SizedBox(width: 8),
                     ],
                   );
                 }),
-                IconButton.filledTonal(
+                IconButton(
                   tooltip: 'Перемешать',
                   onPressed: tracks.isEmpty ? null : () => player.shufflePlay(tracks),
-                  icon: const Icon(Icons.shuffle),
+                  icon: const ShuffleIcon(on: false, smart: false, size: 26),
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(

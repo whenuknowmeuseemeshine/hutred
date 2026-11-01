@@ -31,6 +31,7 @@ import 'ui/home_shell.dart';
 import 'ui/missing_file.dart';
 import 'ui/spotify_check.dart';
 import 'ui/theme.dart';
+import 'ui/widgets/title_bar.dart';
 
 /// Навигатор приложения — чтобы показывать диалоги из сервисов.
 final hutredNavigatorKey = GlobalKey<NavigatorState>();
@@ -208,6 +209,13 @@ class HutredApp extends StatelessWidget {
       theme: HutredTheme.build(settings.accent, settings.background),
       themeAnimationDuration: const Duration(milliseconds: 250),
       home: const HomeShell(),
+      builder: (context, child) {
+        if (!HutredTheme.desktop || !Platform.isWindows) return child!;
+        return Column(children: [
+          const HutredTitleBar(),
+          Expanded(child: child!),
+        ]);
+      },
     );
   }
 }
