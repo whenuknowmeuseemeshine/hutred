@@ -28,6 +28,7 @@ import 'services/transfer_service.dart';
 import 'services/wave_service.dart';
 import 'services/youtube_source.dart';
 import 'ui/home_shell.dart';
+import 'ui/missing_file.dart';
 import 'ui/spotify_check.dart';
 import 'ui/theme.dart';
 
@@ -155,6 +156,8 @@ Future<void> main(List<String> args) async {
   // Автообновление (сборки из облака).
   final updates = UpdateService(settings: settings, player: player);
   await updates.start();
+  // Файл трека переместили — спросим, где он теперь.
+  MissingFiles(navigatorKey: hutredNavigatorKey, store: store, player: player);
   // Статус «Слушает Hutred» в Discord (на компьютере).
   DiscordPresence(player: player, settings: settings);
   final spotifyCheck = SpotifyCheck(

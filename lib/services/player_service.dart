@@ -131,6 +131,9 @@ class PlayerService extends ChangeNotifier {
     await playTracks(tracks, start: Random().nextInt(tracks.length));
   }
 
+  /// Своего файла нет на месте (переместили/переименовали) — спросить, где он.
+  void Function(Track track)? onMissingFile;
+
   /// Трек скрыт («не нравится») или исполнитель в чёрном списке.
   bool Function(Track track)? isBlocked;
   String? _allowId;
@@ -256,6 +259,7 @@ class PlayerService extends ChangeNotifier {
         // Файла на этом устройстве нет — берём копию из облака.
         final fromCloud = await cloudFile?.call(t);
         if (fromCloud != null) return AudioSource.file(fromCloud);
+        if (t.cloudPath == null) onMissingFile?.call(t);
         throw Exception(t.cloudPath == null
             ? 'файл не найден: ${t.uri}'
             : 'не удалось скачать файл из облака');
@@ -412,7 +416,10 @@ class PlayerService extends ChangeNotifier {
       }
       own++;
       if (own == 2) {
-        spots.add(i + 1);
+        // Место после пары, если рекомендация там ещё не стоит
+        // (иначе все рекомендации вставлялись бы в одно и то же место кучкой).
+        final nextIsRec = i + 1 < _queue.length && _recommended.contains(_queue[i + 1].id);
+        if (!nextIsRec) spots.add(i + 1);
         own = 0;
       }
     }
