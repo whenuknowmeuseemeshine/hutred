@@ -10,6 +10,8 @@ import '../theme.dart';
 import '../widgets/logo.dart';
 import '../widgets/user_avatar.dart';
 import '../icons.dart';
+import '../widgets/style_bits.dart';
+import '../../services/friends_service.dart';
 
 /// Вход, регистрация и состояние синхронизации.
 class AccountScreen extends StatelessWidget {
@@ -19,10 +21,10 @@ class AccountScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final acc = context.watch<AccountService>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Аккаунт')),
+      appBar: AppBar(title: acc.signedIn ? null : const Text('Аккаунт')),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
+          constraints: BoxConstraints(maxWidth: acc.signedIn ? 1100 : 440),
           child: !acc.enabled
               ? const _NotConfigured()
               : acc.signedIn
@@ -252,132 +254,237 @@ class _Profile extends StatelessWidget {
   Widget build(BuildContext context) {
     final acc = context.watch<AccountService>();
     final store = context.watch<LibraryStore>();
+    final friends = context.watch<FriendsService>();
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final wide = MediaQuery.sizeOf(context).width >= 800;
     final last = acc.lastSync;
     final status = acc.syncing
         ? 'Синхронизация…'
         : acc.syncError ??
             (last == null
                 ? 'Ещё не синхронизировано'
-                : 'Синхронизировано в ${last.hour.toString().padLeft(2, '0')}:'
+                : 'Медиатека синхронизирована в ${last.hour.toString().padLeft(2, '0')}:'
                     '${last.minute.toString().padLeft(2, '0')}');
+    final statusColor = acc.syncError != null
+        ? Theme.of(context).colorScheme.error
+        : acc.syncing
+            ? Colors.amber
+            : const Color(0xFF4ADE80);
+
+    final avatar = Stack(clipBehavior: Clip.none, children: [
+      Container(
+        decoration: st.glass
+            ? BoxDecoration(shape: BoxShape.circle, boxShadow: [
+                BoxShadow(color: accent.withValues(alpha: 0.5), blurRadius: 60, offset: const Offset(0, 20))
+              ])
+            : null,
+        child: UserAvatar(radius: wide ? 66 : 48),
+      ),
+      Positioned(
+        right: st.sharp ? -4 : 6,
+        bottom: st.sharp ? -4 : 6,
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            shape: st.sharp ? BoxShape.rectangle : BoxShape.circle,
+            color: statusColor,
+            border: Border.all(color: Theme.of(context).canvasColor, width: 4),
+          ),
+        ),
+      ),
+    ]);
+
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const StyleCaption('Аккаунт'),
+        const SizedBox(height: 4),
+        InkWell(
+          onTap: () => _editUsername(context),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(
+              child: Text(acc.username != null ? '@${acc.username}' : 'Задать логин',
+                  overflow: TextOverflow.ellipsis, style: st.display(wide ? 56 : 32)),
+            ),
+            const SizedBox(width: 8),
+            Icon(Ic.edit_outlined, size: 18, color: HutredTheme.muted),
+          ]),
+        ),
+        const SizedBox(height: 4),
+        Text(acc.email ?? '', style: const TextStyle(color: HutredTheme.muted)),
+        const SizedBox(height: 6),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Ic.circle, size: 9, color: statusColor),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(status, style: TextStyle(color: statusColor, fontSize: 13)),
+          ),
+          if (acc.isAdmin) ...[
+            const SizedBox(width: 12),
+            StyleChip(label: 'Админ', icon: Ic.shield_outlined),
+          ],
+        ]),
+      ],
+    );
+
+    final buttons = Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      direction: wide ? Axis.vertical : Axis.horizontal,
+      children: [
+        StyleButton(
+            label: 'Сменить аватарку', primary: false, onPressed: () => _pickAvatar(context)),
+        StyleButton(
+            label: 'Сменить логин', primary: false, onPressed: () => _editUsername(context)),
+      ],
+    );
+
+    Widget stat(String n, String label) => Expanded(
+          child: StylePanel(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(n, style: st.display(30)),
+              const SizedBox(height: 4),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
+            ]),
+          ),
+        );
+
+    final sync = StylePanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const StyleCaption('Синхронизация'),
+          const SizedBox(height: 10),
+          Text(
+            'Медиатека, плейлисты и любимые одинаковые на всех устройствах, '
+            'где ты вошёл в этот аккаунт.',
+            style: TextStyle(color: HutredTheme.muted, height: 1.45),
+          ),
+          const SizedBox(height: 14),
+          Wrap(spacing: 10, runSpacing: 10, children: [
+            StyleButton(
+              label: acc.syncing ? 'Синхронизация…' : 'Синхронизировать',
+              icon: Ic.refresh,
+              onPressed: acc.syncing ? null : acc.syncNow,
+            ),
+            StyleButton(
+              label: 'Перенести треки без входа',
+              primary: false,
+              onPressed: () async {
+                final n = await acc.importGuestLibrary();
+                if (context.mounted) {
+                  AppActions.toast(
+                      context, n == 0 ? 'Нечего переносить' : 'Перенесено: ${tracksWord(n)}');
+                }
+              },
+            ),
+          ]),
+        ],
+      ),
+    );
+
+    final cloud = Builder(builder: (context) {
+      final settings = context.watch<SettingsStore>();
+      final total = acc.localFiles;
+      final done = acc.cloudFiles;
+      final cloudStatus = acc.uploading
+          ? 'Загружается… осталось ${acc.uploadLeft}'
+          : acc.uploadError ?? 'В облаке $done из $total своих файлов';
+      return StylePanel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Expanded(child: StyleCaption('Облако')),
+              Switch(
+                value: settings.cloudFiles,
+                onChanged: (v) {
+                  settings.cloudFiles = v;
+                  if (v) acc.uploadLocalFiles();
+                },
+              ),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+              'Свои файлы хранятся в облаке и есть на всех устройствах '
+              '(до 50 МБ на файл, всего 1 ГБ бесплатно). $cloudStatus.',
+              style: const TextStyle(color: HutredTheme.muted, height: 1.45),
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(st.sharp ? 0 : 3),
+              child: LinearProgressIndicator(
+                value: total == 0 ? 0 : done / total,
+                minHeight: st.sharp ? 2 : 6,
+                color: accent,
+                backgroundColor: const Color(0xFF2A2A2A),
+              ),
+            ),
+            const SizedBox(height: 18),
+            StyleButton(
+              label: 'Выйти из аккаунта',
+              icon: Ic.logout,
+              primary: false,
+              onPressed: () async {
+                final ok = await AppActions.confirm(context,
+                    title: 'Выйти из аккаунта?',
+                    body: 'Медиатека останется в облаке и вернётся, когда ты снова войдёшь.',
+                    action: 'Выйти');
+                if (ok) await acc.signOut();
+              },
+            ),
+          ],
+        ),
+      );
+    });
 
     return ListView(
-      shrinkWrap: true,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.fromLTRB(wide ? 32 : 20, 8, wide ? 32 : 20, 40),
       children: [
-        Center(
-          child: Stack(
-            children: [
-              const UserAvatar(radius: 48),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: IconButton.filledTonal(
-                  tooltip: 'Сменить аватарку',
-                  iconSize: 18,
-                  onPressed: () => _pickAvatar(context),
-                  icon: Icon(Ic.photo_camera_outlined),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => _editUsername(context),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(acc.username != null ? '@${acc.username}' : 'Задать логин',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                ),
-                const SizedBox(width: 6),
-                Icon(Ic.edit_outlined, size: 18, color: HutredTheme.muted),
-              ],
-            ),
-          ),
-        ),
-        Text(acc.email ?? '',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: HutredTheme.muted)),
-        if (acc.isAdmin)
-          Padding(
-            padding: EdgeInsets.only(top: 6),
-            child: Center(
-              child: Chip(
-                avatar: Icon(Ic.shield_outlined, size: 16),
-                label: Text('Админ'),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-          ),
-        const SizedBox(height: 4),
-        Text(
-          '${tracksWord(store.tracks.length)} · плейлистов: ${store.playlists.length}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: HutredTheme.muted),
-        ),
+        if (wide)
+          Row(children: [
+            avatar,
+            const SizedBox(width: 24),
+            Expanded(child: info),
+            buttons,
+          ])
+        else ...[
+          Center(child: avatar),
+          const SizedBox(height: 16),
+          info,
+          const SizedBox(height: 14),
+          buttons,
+        ],
         const SizedBox(height: 24),
-        ListTile(
-          leading: acc.syncing
-              ? const SizedBox.square(
-                  dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-              : Icon(acc.syncError == null ? Ic.cloud_done_outlined : Ic.cloud_off,
-                  color: acc.syncError == null ? null : Theme.of(context).colorScheme.error),
-          title: Text(status),
-          trailing: TextButton(
-            onPressed: acc.syncing ? null : acc.syncNow,
-            child: const Text('Обновить'),
-          ),
-        ),
-        Builder(builder: (context) {
-          final settings = context.watch<SettingsStore>();
-          final status = acc.uploading
-              ? 'Загружается… осталось ${acc.uploadLeft}'
-              : acc.uploadError ??
-                  'В облаке ${acc.cloudFiles} из ${acc.localFiles} своих файлов';
-          return SwitchListTile(
-            secondary: acc.uploading
-                ? const SizedBox.square(
-                    dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(Ic.cloud_sync_outlined),
-            title: const Text('Хранить свои файлы в облаке'),
-            subtitle: Text('$status. Файлы будут на телефоне и не пропадут, '
-                'даже если удалить их с компьютера (до 50 МБ на файл, всего 1 ГБ бесплатно)'),
-            value: settings.cloudFiles,
-            onChanged: (v) {
-              settings.cloudFiles = v;
-              if (v) acc.uploadLocalFiles();
-            },
-          );
-        }),
-        ListTile(
-          leading: Icon(Ic.move_down),
-          title: const Text('Перенести треки, добавленные без входа'),
-          onTap: () async {
-            final n = await acc.importGuestLibrary();
-            if (context.mounted) {
-              AppActions.toast(context, n == 0 ? 'Нечего переносить' : 'Перенесено: ${tracksWord(n)}');
-            }
-          },
-        ),
-        const SizedBox(height: 16),
-        OutlinedButton.icon(
-          onPressed: () async {
-            final ok = await AppActions.confirm(context,
-                title: 'Выйти из аккаунта?',
-                body: 'Медиатека останется в облаке и вернётся, когда ты снова войдёшь.',
-                action: 'Выйти');
-            if (ok) await acc.signOut();
-          },
-          icon: Icon(Ic.logout),
-          label: const Text('Выйти'),
-        ),
+        Row(children: [
+          stat('${store.tracks.length}', 'треков в медиатеке'),
+          const SizedBox(width: 12),
+          stat('${store.favorites.length}', 'любимых'),
+          const SizedBox(width: 12),
+          stat('${store.playlists.length}', 'плейлистов'),
+          if (wide) ...[
+            const SizedBox(width: 12),
+            stat('${friends.friends.length}', 'друзей'),
+          ],
+        ]),
+        const SizedBox(height: 20),
+        if (wide)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: sync),
+            const SizedBox(width: 20),
+            SizedBox(width: 380, child: cloud),
+          ])
+        else ...[
+          sync,
+          const SizedBox(height: 16),
+          cloud,
+        ],
       ],
     );
   }

@@ -22,6 +22,7 @@ import 'equalizer_screen.dart';
 import '../widgets/logo.dart';
 import '../home_shell.dart';
 import '../widgets/style_picker.dart';
+import '../widgets/style_bits.dart';
 import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
 import '../icons.dart';
@@ -512,10 +513,136 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ];
   }
 
+  /// Открытая группа на компьютере (настройки в две колонки).
+  int _group = 0;
+
+  Widget _searchField() => TextField(
+        controller: _search,
+        onChanged: (v) => setState(() => _q = v),
+        decoration: InputDecoration(
+          isDense: true,
+          prefixIcon: Icon(Ic.search),
+          hintText: 'Поиск по настройкам',
+          suffixIcon: _q.isEmpty
+              ? null
+              : IconButton(
+                  icon: Icon(Ic.close),
+                  onPressed: () => setState(() {
+                    _search.clear();
+                    _q = '';
+                  }),
+                ),
+        ),
+      );
+
+  /// Компьютер по макету: слева аккаунт и группы, справа открытая группа.
+  Widget _twoPane(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final all = _items(context);
+    final sections = _sections(all);
+    final groups = [for (final g in _groups) if (g.$4.any(sections.containsKey)) g];
+    final sel = _group.clamp(0, groups.length - 1);
+    final g = groups[sel];
+    final searching = _q.trim().isNotEmpty;
+    final right = searching ? _filter(all) : [for (final name in g.$4) ...?sections[name]];
+    final top = MediaQuery.paddingOf(context).top;
+
+    Widget groupTile(int i) {
+      final gr = groups[i];
+      final on = !searching && i == sel;
+      final fg = on && st.sharp ? HutredTheme.onAccent(accent) : HutredTheme.text;
+      final sub = on && st.sharp ? HutredTheme.onAccent(accent) : HutredTheme.muted;
+      final r = BorderRadius.circular(st.sharp ? 0 : st.glass ? 16 : 8);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Material(
+          color: !on
+              ? Colors.transparent
+              : st.sharp
+                  ? accent
+                  : st.glass
+                      ? accent.withValues(alpha: 0.18)
+                      : const Color(0xFF1A1A1A),
+          borderRadius: r,
+          child: InkWell(
+            borderRadius: r,
+            onTap: () => setState(() {
+              _group = i;
+              _search.clear();
+              _q = '';
+            }),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              decoration: st.sharp && !on
+                  ? const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFF1F1F1F))))
+                  : null,
+              child: Row(children: [
+                Icon(gr.$2, size: 19, color: fg),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(gr.$1,
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: fg)),
+                    Text(gr.$3,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: sub)),
+                  ]),
+                ),
+                Icon(Ic.chevron_right, size: 16, color: sub),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(24, top + (st.mono ? 20 : 8), 24, 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 310,
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 120),
+                children: [
+                  _searchField(),
+                  const SizedBox(height: 12),
+                  const StylePanel(padding: EdgeInsets.zero, child: _AccountTile()),
+                  const SizedBox(height: 10),
+                  for (var i = 0; i < groups.length; i++) groupTile(i),
+                ],
+              ),
+            ),
+            const SizedBox(width: 28),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 120),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    child: Text(searching ? 'Поиск: ${_q.trim()}' : g.$1,
+                        style: st.display(40)),
+                  ),
+                  ...right,
+                  if (!searching && sel == groups.length - 1) const _Footer(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     context.watch<SettingsStore>();
     context.watch<AccountService>();
+    if (MediaQuery.sizeOf(context).width >= 1000) return _twoPane(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
