@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:math';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +11,7 @@ import '../../services/wave_service.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
 import 'now_playing_screen.dart';
+import 'search_screen.dart';
 
 /// «Моя волна»: один большой круг, который запускает поток музыки.
 class WaveScreen extends StatelessWidget {
@@ -105,18 +105,15 @@ class WaveScreen extends StatelessWidget {
         title: const Text('Моя волна'),
         backgroundColor: bg != null ? Colors.transparent : null,
         actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Фон',
-            icon: const Icon(Icons.wallpaper_outlined),
-            onSelected: (v) => v == 'pick' ? _pickBackground(context) : context
-                .read<SettingsStore>()
-                .setWaveBackground(null),
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'pick', child: Text('Свой фон (картинка или GIF)…')),
-              if (bg != null)
-                const PopupMenuItem(value: 'clear', child: Text('Убрать фон')),
-            ],
-          ),
+          // Вкладка «Поиск» скрыта (на телефоне по умолчанию) — поиск здесь.
+          // Фон «Волны» меняется в Настройках → Фон.
+          if (!context.watch<SettingsStore>().visibleNav.contains('search'))
+            IconButton(
+              tooltip: 'Поиск',
+              icon: const Icon(Icons.search_rounded),
+              onPressed: () => Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const SearchScreen())),
+            ),
           const SizedBox(width: 8),
         ],
       ),
@@ -140,17 +137,6 @@ class WaveScreen extends StatelessWidget {
               ],
             ),
     );
-  }
-
-  Future<void> _pickBackground(BuildContext context) async {
-    final settings = context.read<SettingsStore>();
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['gif', 'png', 'jpg', 'jpeg', 'webp'],
-    );
-    final path = res?.files.single.path;
-    if (path == null) return;
-    await settings.setWaveBackground(path);
   }
 }
 

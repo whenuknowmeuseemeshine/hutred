@@ -1,5 +1,6 @@
 package ru.hutred.hutred
 
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 
-class MainActivity : FlutterActivity()
+// AudioServiceActivity — чтобы музыка управлялась из шторки и экрана блокировки.
+class MainActivity : AudioServiceActivity()

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -16,6 +17,7 @@ import '../../services/discord_presence.dart';
 import '../../services/dpi_bypass.dart';
 import '../net_check.dart';
 import '../theme.dart';
+import '../welcome.dart';
 import '../widgets/logo.dart';
 import '../home_shell.dart';
 import '../widgets/user_avatar.dart';
@@ -32,10 +34,10 @@ class SettingsScreen extends StatefulWidget {
 const _sectionKeywords = {
   'Аккаунт': 'вход войти логин аватар аватарка почта пароль облако синхронизация файлы',
   'Акцентный цвет': 'цвет тема оформление акцент',
-  'Фон': 'фон цвет тема оформление обои плеер подкрашивать',
-  'Медиатека': 'любимые избранное лайк добавленные',
+  'Фон': 'фон цвет тема оформление обои плеер подкрашивать волна картинка gif',
+  'Медиатека': 'любимые избранное лайк добавленные исполнители волна',
   'Воспроизведение': 'плавный переход crossfade кроссфейд пауза затихание громкость',
-  'Порядок вкладок': 'вкладки меню навигация порядок',
+  'Вкладки': 'вкладки меню навигация порядок скрыть показать панель друзья перенос поиск',
   'Чёрный список': 'черный блок заблокировать исполнитель скрытые не нравится дизлайк',
   'Тексты песен': 'текст караоке субтитры genius ии ai groq whisper тайминги',
   'Обложки': 'обложка spotify itunes genius ключи сверять сведения превью',
@@ -150,6 +152,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const _Section('Фон'),
+          ListTile(
+            leading: const Icon(Icons.wallpaper_outlined),
+            title: const Text('Фон «Моей волны»'),
+            subtitle: Text(s.waveBackground == null
+                ? 'Своя картинка или GIF за кругом «Волны»'
+                : 'Своя картинка выбрана'),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (s.waveBackground != null)
+                IconButton(
+                  tooltip: 'Убрать фон',
+                  onPressed: () => s.setWaveBackground(null),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              const Icon(Icons.chevron_right),
+            ]),
+            onTap: () async {
+              final res = await FilePicker.platform.pickFiles(
+                type: FileType.custom,
+                allowedExtensions: const ['gif', 'png', 'jpg', 'jpeg', 'webp'],
+              );
+              final path = res?.files.single.path;
+              if (path != null) await s.setWaveBackground(path);
+            },
+          ),
           SizedBox(
             height: 112,
             child: ListView.separated(
@@ -207,6 +233,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const _Section('Медиатека'),
+          ListTile(
+            leading: const Icon(Icons.favorite_outline_rounded),
+            title: const Text('Любимые исполнители'),
+            subtitle: Builder(builder: (context) {
+              final fav = context.watch<WaveService>().favoriteArtists;
+              return Text(fav.isEmpty
+                  ? 'По ним «Моя волна» подбирает музыку, пока лайков мало'
+                  : fav.join(', '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis);
+            }),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const ArtistPickerScreen(standalone: true))),
+          ),
           SwitchListTile(
             title: const Text('Добавленные треки сразу в любимые'),
             subtitle: const Text(
@@ -252,7 +293,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const _Section('Чёрный список'),
           const _BlacklistTiles(),
-          const _Section('Порядок вкладок'),
+          const _Section('Вкладки'),
           const _NavOrderEditor(),
           const _Section('Тексты песен'),
           const ListTile(
@@ -1240,13 +1281,35 @@ class _NavOrderEditor extends StatelessWidget {
               ListTile(
                 key: ValueKey(order[i]),
                 leading: Icon(navTabs[order[i]]!.icon),
-                title: Text(navTabs[order[i]]!.label),
-                trailing: ReorderableDragStartListener(
-                  index: i,
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.drag_handle),
-                  ),
+                // Скрытую вкладку можно открыть отсюда.
+                onTap: s.isTabHidden(order[i])
+                    ? () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => navPage(order[i])))
+                    : null,
+                subtitle: s.isTabHidden(order[i]) ? const Text('Скрыта — нажми, чтобы открыть') : null,
+                title: Text(navTabs[order[i]]!.label,
+                    style: TextStyle(
+                        color: s.isTabHidden(order[i]) ? HutredTheme.muted : null)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Глазик: показывать вкладку на панели или нет.
+                    if (order[i] != 'settings')
+                      IconButton(
+                        tooltip: s.isTabHidden(order[i]) ? 'Показать на панели' : 'Скрыть',
+                        onPressed: () => s.setTabHidden(order[i], !s.isTabHidden(order[i])),
+                        icon: Icon(s.isTabHidden(order[i])
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                      ),
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.drag_handle),
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -1258,7 +1321,7 @@ class _NavOrderEditor extends StatelessWidget {
             child: TextButton.icon(
               onPressed: s.resetNavOrder,
               icon: const Icon(Icons.restart_alt),
-              label: const Text('Вернуть порядок по умолчанию'),
+              label: const Text('Вернуть как было'),
             ),
           ),
         ),

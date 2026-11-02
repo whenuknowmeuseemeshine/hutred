@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
@@ -660,13 +661,24 @@ class _KaraokeViewState extends State<KaraokeView> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _keys[index].currentContext;
-      if (ctx == null || !mounted) return;
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.35,
-        duration: animate ? const Duration(milliseconds: 450) : Duration.zero,
-        curve: Curves.easeOutCubic,
-      );
+      if (ctx == null || !mounted || !_scroll.hasClients) return;
+      // Листаем только сам текст. ensureVisible двигал бы и всю карточку
+      // плеера на телефоне — она сразу уезжала к тексту.
+      final ro = ctx.findRenderObject();
+      if (ro == null) return;
+      final viewport = RenderAbstractViewport.maybeOf(ro);
+      if (viewport == null) return;
+      final pos = _scroll.position;
+      final target = viewport
+          .getOffsetToReveal(ro, 0.35)
+          .offset
+          .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+      if (animate) {
+        _scroll.animateTo(target,
+            duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
+      } else {
+        _scroll.jumpTo(target);
+      }
     });
   }
 

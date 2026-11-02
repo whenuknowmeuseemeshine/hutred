@@ -34,6 +34,20 @@ class WaveService extends ChangeNotifier {
   final Set<String> _blocked = {};
   final Map<String, String> _blockedNames = {};
   final Set<String> _suggested = {};
+
+  /// Любимые исполнители, выбранные при знакомстве: их треки — стартовые
+  /// семена «Волны», пока своих лайков мало.
+  final Map<String, List<Track>> _favArtists = {};
+
+  List<String> get favoriteArtists => _favArtists.keys.toList();
+
+  Future<void> setFavoriteArtists(Map<String, List<Track>> artists) async {
+    _favArtists
+      ..clear()
+      ..addAll(artists);
+    await _save();
+    notifyListeners();
+  }
   final Map<String, String?> _scIdCache = {};
   File? _file;
 
@@ -59,6 +73,12 @@ class WaveService extends ChangeNotifier {
       (j['dislikedArtists'] as Map? ?? const {}).forEach((k, v) {
         _dislikedArtists['$k'] = (v as num).toInt();
       });
+      (j['favoriteArtists'] as Map? ?? const {}).forEach((k, v) {
+        _favArtists['$k'] = [
+          for (final t in (v as List? ?? const []))
+            if (t is Map) Track.fromJson(Map<String, dynamic>.from(t)),
+        ];
+      });
       for (final name in List<String>.from(j['blockedArtists'] as List? ?? const [])) {
         _blocked.add(_norm(name));
         _blockedNames[_norm(name)] = name;
@@ -74,6 +94,9 @@ class WaveService extends ChangeNotifier {
         'disliked': _disliked.toList(),
         'dislikedArtists': _dislikedArtists,
         'blockedArtists': _blockedNames.values.toList(),
+        'favoriteArtists': {
+          for (final e in _favArtists.entries) e.key: [for (final t in e.value) t.toJson()],
+        },
       }));
     } catch (_) {}
   }
@@ -174,6 +197,13 @@ class WaveService extends ChangeNotifier {
     for (final t in store.tracks) {
       final int w = (t.favorite ? 5 : 0) + (t.plays > 10 ? 10 : t.plays);
       if (w > 0) seeds.add((track: t, weight: w));
+    }
+    // Любимые исполнители со знакомства: заметны, пока своих лайков мало.
+    final favWeight = seeds.length < 20 ? 6 : 2;
+    for (final list in _favArtists.values) {
+      for (final t in list) {
+        seeds.add((track: t, weight: favWeight));
+      }
     }
     if (seeds.isEmpty) {
       // Нет лайков — берём последние добавленные.

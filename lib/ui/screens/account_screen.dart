@@ -26,7 +26,7 @@ class AccountScreen extends StatelessWidget {
               ? const _NotConfigured()
               : acc.signedIn
                   ? const _Profile()
-                  : const _SignInForm(),
+                  : const SignInForm(),
         ),
       ),
     );
@@ -52,14 +52,14 @@ class _NotConfigured extends StatelessWidget {
   }
 }
 
-class _SignInForm extends StatefulWidget {
-  const _SignInForm();
+class SignInForm extends StatefulWidget {
+  const SignInForm();
 
   @override
-  State<_SignInForm> createState() => _SignInFormState();
+  State<SignInForm> createState() => SignInFormState();
 }
 
-class _SignInFormState extends State<_SignInForm> {
+class SignInFormState extends State<SignInForm> {
   final _email = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
@@ -112,6 +112,8 @@ class _SignInFormState extends State<_SignInForm> {
     try {
       if (_register) {
         final needConfirm = await acc.signUp(email, password, username: username);
+        // После входа спросим любимых исполнителей — «Волна» заработает сразу.
+        if (mounted) context.read<SettingsStore>().pickArtists = true;
         if (needConfirm) {
           setState(() {
             _message = 'Аккаунт создан. Открой письмо на $email и нажми ссылку, '

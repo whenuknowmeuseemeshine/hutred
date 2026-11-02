@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -70,6 +71,65 @@ class PlayerService extends ChangeNotifier {
       }));
     }
     _xfTimer = Timer.periodic(const Duration(milliseconds: 250), (_) => _checkCrossfade());
+  }
+
+  // ---------- Где остановились ----------
+
+  File? _stateFile;
+  Timer? _stateTimer;
+
+  /// С какого места продолжить трек, восстановленный после перезапуска.
+  Duration? _resumeAt;
+
+  /// Запомненная позиция (до нажатия «играть» после перезапуска).
+  Duration? get resumePosition => _resumeAt;
+
+  /// Восстанавливает очередь и место в треке с прошлого запуска (на паузе).
+  Future<void> restoreState(File file) async {
+    _stateFile = file;
+    try {
+      if (await file.exists()) {
+        final j = jsonDecode(await file.readAsString());
+        if (j is Map && _queue.isEmpty) {
+          final q = [
+            for (final t in (j['queue'] as List? ?? const []))
+              if (t is Map) Track.fromJson(Map<String, dynamic>.from(t)),
+          ];
+          final i = (j['index'] as num?)?.toInt() ?? -1;
+          if (q.isNotEmpty && i >= 0 && i < q.length) {
+            _queue = q;
+            _unshuffled = List.of(q);
+            _index = i;
+            _shuffle = j['shuffle'] == true;
+            final ms = (j['positionMs'] as num?)?.toInt() ?? 0;
+            if (ms > 3000) _resumeAt = Duration(milliseconds: ms);
+            notifyListeners();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Плеер] не удалось восстановить: $e');
+    }
+    // Пока играет — запоминаем раз в 5 секунд, плюс при каждой паузе.
+    _stateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_player.playing) _saveState();
+    });
+  }
+
+  Future<void> _saveState() async {
+    final f = _stateFile;
+    if (f == null || current == null) return;
+    // Длинную очередь храним вокруг текущего трека, чтобы файл был маленьким.
+    final from = max(0, _index - 50);
+    final to = min(_queue.length, _index + 150);
+    try {
+      await f.writeAsString(jsonEncode({
+        'queue': [for (final t in _queue.sublist(from, to)) t.toJson()],
+        'index': _index - from,
+        'positionMs': (_resumeAt ?? _player.position).inMilliseconds,
+        'shuffle': _shuffle,
+      }));
+    } catch (_) {}
   }
 
   // ---------- Плавность ----------
@@ -217,7 +277,7 @@ class PlayerService extends ChangeNotifier {
   String? get error => _error;
   bool get playing => _player.playing;
   double get volume => _userVolume;
-  Duration get position => _player.position;
+  Duration get position => _resumeAt ?? _player.position;
   Duration? get duration => _player.duration ?? current?.duration;
 
   Stream<Duration> get positionStream => _pos.stream;
@@ -229,6 +289,7 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> playTracks(List<Track> tracks, {int start = 0}) async {
     if (tracks.isEmpty) return;
+    _resumeAt = null;
     _recommended.clear();
     _unshuffled = List.of(tracks);
     _queue = List.of(tracks);
@@ -307,6 +368,13 @@ class PlayerService extends ChangeNotifier {
         throw Exception('плеер не смог открыть поток');
       });
       if (token != _loadToken) return;
+      final resume = _resumeAt;
+      _resumeAt = null;
+      if (resume != null) {
+        try {
+          await _player.seek(resume);
+        } catch (_) {}
+      }
       // Пока грузилось, нажали паузу — не включаем.
       if (autoplay && !_pauseRequested) unawaited(_player.play());
       _failedInRow = 0;
@@ -443,6 +511,7 @@ class PlayerService extends ChangeNotifier {
     await p.pause();
     await p.setVolume(_userVolume);
     notifyListeners();
+    unawaited(_saveState());
   }
 
   /// Продолжить: звук плавно нарастает.
@@ -461,6 +530,7 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> next() async {
+    _resumeAt = null;
     if (_queue.isEmpty) return;
     if (_index < _queue.length - 1) {
       _index++;
@@ -475,6 +545,7 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> previous() async {
+    _resumeAt = null;
     if (_queue.isEmpty) return;
     if (_player.position > const Duration(seconds: 3) || _index == 0) {
       await _player.seek(Duration.zero);
@@ -485,6 +556,7 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> jumpTo(int i) async {
+    _resumeAt = null;
     if (i < 0 || i >= _queue.length) return;
     _index = i;
     _allowId = _queue[i].id;
@@ -500,7 +572,15 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
-  Future<void> seek(Duration d) => _player.seek(d);
+  Future<void> seek(Duration d) async {
+    // Трек после перезапуска ещё не загружен — просто запоминаем новое место.
+    if (_resumeAt != null && _player.processingState == ProcessingState.idle) {
+      _resumeAt = d;
+      notifyListeners();
+      return;
+    }
+    await _player.seek(d);
+  }
 
   Future<void> setVolume(double v, {bool remember = true}) async {
     final value = v.clamp(0.0, 1.0);
@@ -766,6 +846,7 @@ class PlayerService extends ChangeNotifier {
       s.cancel();
     }
     _xfTimer?.cancel();
+    _stateTimer?.cancel();
     _a.dispose();
     _b.dispose();
     _pos.close();

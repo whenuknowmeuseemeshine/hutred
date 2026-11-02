@@ -53,6 +53,12 @@ class SettingsStore extends ChangeNotifier {
     'wave', 'library', 'search', 'playlists', 'friends', 'transfer', 'settings'
   ];
   List<String> _navOrder = List.of(defaultNavOrder);
+
+  /// Скрытые вкладки. null — ещё не настраивали: на телефоне по умолчанию
+  /// видны только Волна, Медиатека, Плейлисты и Настройки.
+  Set<String>? _hiddenTabs;
+  static bool get _phone => Platform.isAndroid || Platform.isIOS;
+  static const _phoneHidden = {'search', 'friends', 'transfer'};
   String? _waveBackground;
   Set<String> _searchSources = {'library', 'spotify', 'soundcloud', 'youtube'};
   final List<String> _searchHistory = [];
@@ -72,6 +78,8 @@ class SettingsStore extends ChangeNotifier {
   bool _crossfade = false;
   int _crossfadeSec = 6;
   bool _fadePause = true;
+  bool _guest = false;
+  bool _pickArtists = false;
   String _discordAppId = '';
   File? _file;
 
@@ -143,6 +151,20 @@ class SettingsStore extends ChangeNotifier {
   int get crossfadeSec => _crossfadeSec;
   set crossfadeSec(int v) {
     _crossfadeSec = v.clamp(1, 12);
+    _save();
+  }
+
+  /// Пользователь выбрал «без аккаунта» на приветственном экране.
+  bool get guest => _guest;
+  set guest(bool v) {
+    _guest = v;
+    _save();
+  }
+
+  /// Только что зарегистрировался — спросить любимых исполнителей.
+  bool get pickArtists => _pickArtists;
+  set pickArtists(bool v) {
+    _pickArtists = v;
     _save();
   }
 
@@ -236,6 +258,22 @@ class SettingsStore extends ChangeNotifier {
   /// Порядок вкладок в боковой/нижней панели.
   List<String> get navOrder => List.unmodifiable(_navOrder);
 
+  Set<String> get hiddenTabs => _hiddenTabs ?? (_phone ? _phoneHidden : const {});
+
+  /// Вкладки, которые видны на панели (Настройки скрыть нельзя).
+  List<String> get visibleNav =>
+      _navOrder.where((t) => t == 'settings' || !hiddenTabs.contains(t)).toList();
+
+  bool isTabHidden(String id) => id != 'settings' && hiddenTabs.contains(id);
+
+  void setTabHidden(String id, bool hidden) {
+    if (id == 'settings') return;
+    final h = Set.of(hiddenTabs);
+    hidden ? h.add(id) : h.remove(id);
+    _hiddenTabs = h;
+    _save();
+  }
+
   void reorderNav(int oldIndex, int newIndex) {
     if (newIndex > oldIndex) newIndex--;
     final id = _navOrder.removeAt(oldIndex);
@@ -245,6 +283,7 @@ class SettingsStore extends ChangeNotifier {
 
   void resetNavOrder() {
     _navOrder = List.of(defaultNavOrder);
+    _hiddenTabs = null;
     _save();
   }
 
@@ -387,6 +426,8 @@ class SettingsStore extends ChangeNotifier {
       _fullscreenCover = j['fullscreenCover'] as bool? ?? true;
       _fullscreenLyrics = j['fullscreenLyrics'] as bool? ?? true;
       _queuePanel = j['queuePanel'] as bool? ?? false;
+      final hidden = j['hiddenTabs'] as List?;
+      if (hidden != null) _hiddenTabs = hidden.map((e) => '$e').toSet();
       final nav = (j['navOrder'] as List?)?.map((e) => '$e').toList();
       // Сохранённый порядок; новые вкладки встают перед «Настройками».
       if (nav != null) {
@@ -421,6 +462,8 @@ class SettingsStore extends ChangeNotifier {
       _crossfade = j['crossfade'] as bool? ?? false;
       _crossfadeSec = ((j['crossfadeSec'] as num?)?.toInt() ?? 6).clamp(1, 12);
       _fadePause = j['fadePause'] as bool? ?? true;
+      _guest = j['guest'] as bool? ?? false;
+      _pickArtists = j['pickArtists'] as bool? ?? false;
       _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
       debugPrint('Не удалось прочитать настройки: $e');
@@ -449,6 +492,8 @@ class SettingsStore extends ChangeNotifier {
         'crossfade': _crossfade,
         'crossfadeSec': _crossfadeSec,
         'fadePause': _fadePause,
+        'guest': _guest,
+        'pickArtists': _pickArtists,
         'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
         'volume': _volume,
@@ -457,6 +502,7 @@ class SettingsStore extends ChangeNotifier {
         'fullscreenLyrics': _fullscreenLyrics,
         'queuePanel': _queuePanel,
         'navOrder': _navOrder,
+        if (_hiddenTabs != null) 'hiddenTabs': _hiddenTabs!.toList(),
         'searchSources': _searchSources.toList(),
         'searchSpotifyAdded': true,
         'searchHistory': _searchHistory,

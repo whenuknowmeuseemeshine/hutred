@@ -12,6 +12,9 @@ dependencies:
   # Воспроизведение (Android, iOS, macOS нативно; Windows/Linux через media_kit)
   just_audio: ^0.9.42
   just_audio_media_kit: ^2.0.6
+  # Управление музыкой из шторки Android и «Исполняется» на iPhone.
+  audio_service: ^0.18.15
+  audio_session: ^0.1.21
   media_kit_libs_linux: ^1.1.3
   media_kit_libs_windows_audio: ^1.0.9
   # Источники

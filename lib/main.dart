@@ -17,6 +17,7 @@ import 'services/discord_presence.dart';
 import 'services/friends_service.dart';
 import 'services/genius_service.dart';
 import 'services/library_store.dart';
+import 'services/media_session.dart';
 import 'services/offline_service.dart';
 import 'services/lyrics_service.dart';
 import 'services/player_service.dart';
@@ -33,6 +34,7 @@ import 'ui/home_shell.dart';
 import 'ui/missing_file.dart';
 import 'ui/spotify_check.dart';
 import 'ui/theme.dart';
+import 'ui/welcome.dart';
 import 'ui/widgets/title_bar.dart';
 
 /// Навигатор приложения — чтобы показывать диалоги из сервисов.
@@ -101,6 +103,11 @@ Future<void> main(List<String> args) async {
   await player.setVolume(settings.volume, remember: false);
   player.crossfadeSeconds = () => settings.crossfade ? settings.crossfadeSec : 0;
   player.fadeOnPause = () => settings.fadePause;
+  // Трек в шторке Android и в «Исполняется» на iPhone.
+  await MediaSession.init(player);
+  // Последний трек и место в нём — с прошлого запуска (на паузе).
+  unawaited(getApplicationSupportDirectory().then((d) => player
+      .restoreState(File('${d.path}${Platform.pathSeparator}player_state.json'))));
 
   final covers = CoverService(
     genius: genius,
@@ -214,7 +221,7 @@ class HutredApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: HutredTheme.build(settings.accent, settings.background),
       themeAnimationDuration: const Duration(milliseconds: 250),
-      home: const HomeShell(),
+      home: const _Gate(),
       builder: (context, child) {
         if (!HutredTheme.desktop || !Platform.isWindows) return child!;
         // Приложение занимает всё окно, полоса лежит поверх него, а
@@ -233,5 +240,20 @@ class HutredApp extends StatelessWidget {
         ]);
       },
     );
+  }
+}
+
+
+/// Что показать при запуске: вход → «кого слушаешь» → само приложение.
+class _Gate extends StatelessWidget {
+  const _Gate();
+
+  @override
+  Widget build(BuildContext context) {
+    final acc = context.watch<AccountService>();
+    final settings = context.watch<SettingsStore>();
+    if (acc.enabled && !acc.signedIn && !settings.guest) return const WelcomeScreen();
+    if (acc.signedIn && settings.pickArtists) return const ArtistPickerScreen();
+    return const HomeShell();
   }
 }

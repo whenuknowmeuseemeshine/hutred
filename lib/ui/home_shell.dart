@@ -47,19 +47,15 @@ class _HomeShellState extends State<HomeShell> {
     for (final id in navTabs.keys) id: GlobalKey<NavigatorState>(),
   };
 
-  static Widget _page(String id) => switch (id) {
-        'wave' => const WaveScreen(),
-        'library' => const LibraryScreen(),
-        'search' => const SearchScreen(),
-        'playlists' => const PlaylistsScreen(),
-        'transfer' => const TransferScreen(),
-        'friends' => const FriendsScreen(),
-        _ => const SettingsScreen(),
-      };
+  static Widget _page(String id) => navPage(id);
 
-  List<String> get _order => context.read<SettingsStore>().navOrder;
+  List<String> get _order => context.read<SettingsStore>().visibleNav;
 
-  String get _current => _tabId ?? _order.first;
+  String get _current {
+    final id = _tabId;
+    // Вкладку скрыли, пока она была открыта, — возвращаемся на первую.
+    return id != null && _order.contains(id) ? id : _order.first;
+  }
 
   int get _tab {
     final i = _order.indexOf(_current);
@@ -97,7 +93,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsStore>();
-    final order = settings.navOrder;
+    final order = settings.visibleNav;
     final wide = MediaQuery.sizeOf(context).width >= 800;
     final extended = MediaQuery.sizeOf(context).width >= 1150;
 
@@ -188,18 +184,28 @@ class _HomeShellState extends State<HomeShell> {
           const MiniPlayer(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: _select,
-        height: 64,
-        destinations: [
-          for (final id in order)
-            NavigationDestination(
-              icon: Icon(navTabs[id]!.icon),
-              selectedIcon: Icon(navTabs[id]!.selected),
-              label: navTabs[id]!.label,
-            ),
-        ],
+      // Подписи в одну строку: длинные не переносятся и не «прыгают».
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarTheme.of(context).copyWith(
+          labelTextStyle: WidgetStatePropertyAll(
+              TextStyle(fontSize: order.length > 5 ? 10.5 : 12, overflow: TextOverflow.ellipsis)),
+        ),
+        child: NavigationBar(
+          selectedIndex: _tab,
+          onDestinationSelected: _select,
+          height: 64,
+          labelBehavior: order.length > 5
+              ? NavigationDestinationLabelBehavior.onlyShowSelected
+              : NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: [
+            for (final id in order)
+              NavigationDestination(
+                icon: Icon(navTabs[id]!.icon),
+                selectedIcon: Icon(navTabs[id]!.selected),
+                label: navTabs[id]!.label,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -377,3 +383,14 @@ class _UpdateBanner extends StatelessWidget {
     );
   }
 }
+
+/// Экран вкладки (его можно открыть и из Настроек, если вкладка скрыта).
+Widget navPage(String id) => switch (id) {
+      'wave' => const WaveScreen(),
+      'library' => const LibraryScreen(),
+      'search' => const SearchScreen(),
+      'playlists' => const PlaylistsScreen(),
+      'transfer' => const TransferScreen(),
+      'friends' => const FriendsScreen(),
+      _ => const SettingsScreen(),
+    };
