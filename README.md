@@ -19,7 +19,3 @@
 flutter pub get
 flutter run
 ```
-
-Ключи облака передаются при сборке (`--dart-define=SUPABASE_URL=… --dart-define=SUPABASE_KEY=…`) и в репозитории не хранятся.
-
-Проект для личного использования.
