@@ -43,10 +43,14 @@ class TrackTile extends StatelessWidget {
     required this.onTap,
     this.onRemoveFromPlaylist,
     this.trailingAction,
+    this.inFavorites = false,
   });
 
   final Track track;
   final VoidCallback onTap;
+
+  /// Строка в «Любимых треках»: «убрать» снимает ♥, а не удаляет трек.
+  final bool inFavorites;
 
   /// Если задано — в меню появится «Убрать из плейлиста».
   final VoidCallback? onRemoveFromPlaylist;
@@ -73,6 +77,7 @@ class TrackTile extends StatelessWidget {
     return TrackContextMenu(
       track: track,
       compact: desktop,
+      inFavorites: inFavorites,
       onRemoveFromPlaylist: onRemoveFromPlaylist,
       child: _Hover(builder: (hovered) => Opacity(
         opacity: hidden ? 0.4 : 1,
@@ -154,6 +159,7 @@ class TrackTile extends StatelessWidget {
           TrackMenuButton(
               track: track,
               compact: desktop,
+              inFavorites: inFavorites,
               onRemoveFromPlaylist: onRemoveFromPlaylist),
         ],
       ),
@@ -165,7 +171,7 @@ class TrackTile extends StatelessWidget {
 
 /// Пункты меню трека — одинаковые для «⋮» и для правого клика.
 List<PopupMenuEntry<String>> trackMenuItems(BuildContext context, Track track,
-    {bool canRemoveFromPlaylist = false, bool compact = false}) {
+    {bool canRemoveFromPlaylist = false, bool compact = false, bool inFavorites = false}) {
   final store = context.read<LibraryStore>();
   final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
   final inLibrary = saved != null;
@@ -198,7 +204,7 @@ List<PopupMenuEntry<String>> trackMenuItems(BuildContext context, Track track,
     const PopupMenuDivider(),
     item('playlist', Icons.add_circle_outline, 'Добавить в плейлист…'),
     if (!inLibrary) item('library', Icons.library_add_outlined, 'Добавить в медиатеку'),
-    if (inLibrary && !compact)
+    if (inLibrary && !compact && !inFavorites)
       item('fav', saved.favorite ? Icons.favorite : Icons.favorite_border,
           saved.favorite ? 'Убрать из любимых' : 'В любимые'),
     if (inLibrary) ...[
@@ -211,8 +217,11 @@ List<PopupMenuEntry<String>> trackMenuItems(BuildContext context, Track track,
       if (acc.signedIn && acc.isAdmin)
         item('fix', Icons.public, 'Применить правки для всех'),
     ],
-    if (canRemoveFromPlaylist) item('unlist', Icons.playlist_remove, 'Убрать из плейлиста'),
-    if (inLibrary) item('delete', Icons.delete_outline, 'Удалить из медиатеки'),
+    if (canRemoveFromPlaylist)
+      inFavorites
+          ? item('unlist', Icons.heart_broken_outlined, 'Убрать из любимых')
+          : item('unlist', Icons.playlist_remove, 'Убрать из плейлиста'),
+    if (inLibrary && !inFavorites) item('delete', Icons.delete_outline, 'Удалить из медиатеки'),
   ];
 }
 
@@ -332,14 +341,16 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
 
 /// Меню трека в точке клика (правая кнопка мыши или долгое нажатие).
 Future<void> showTrackMenuAt(BuildContext context, Track track, Offset globalPosition,
-    {VoidCallback? onRemoveFromPlaylist, bool compact = false}) async {
+    {VoidCallback? onRemoveFromPlaylist, bool compact = false, bool inFavorites = false}) async {
   final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
   final local = overlay.globalToLocal(globalPosition);
   final action = await showMenu<String>(
     context: context,
     position: RelativeRect.fromRect(local & const Size(1, 1), Offset.zero & overlay.size),
     items: trackMenuItems(context, track,
-        canRemoveFromPlaylist: onRemoveFromPlaylist != null, compact: compact),
+        canRemoveFromPlaylist: onRemoveFromPlaylist != null,
+        compact: compact,
+        inFavorites: inFavorites),
   );
   if (action != null && context.mounted) {
     await runTrackAction(context, track, action, onRemoveFromPlaylist: onRemoveFromPlaylist);
@@ -355,31 +366,42 @@ class TrackContextMenu extends StatelessWidget {
     required this.child,
     this.onRemoveFromPlaylist,
     this.compact = false,
+    this.inFavorites = false,
   });
 
   final Track track;
   final Widget child;
   final VoidCallback? onRemoveFromPlaylist;
   final bool compact;
+  final bool inFavorites;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onSecondaryTapUp: (d) => showTrackMenuAt(context, track, d.globalPosition,
-            onRemoveFromPlaylist: onRemoveFromPlaylist, compact: compact),
+            onRemoveFromPlaylist: onRemoveFromPlaylist,
+            compact: compact,
+            inFavorites: inFavorites),
         onLongPressStart: (d) => showTrackMenuAt(context, track, d.globalPosition,
-            onRemoveFromPlaylist: onRemoveFromPlaylist, compact: compact),
+            onRemoveFromPlaylist: onRemoveFromPlaylist,
+            compact: compact,
+            inFavorites: inFavorites),
         child: child,
       );
 }
 
 class TrackMenuButton extends StatelessWidget {
   const TrackMenuButton(
-      {super.key, required this.track, this.onRemoveFromPlaylist, this.compact = false});
+      {super.key,
+      required this.track,
+      this.onRemoveFromPlaylist,
+      this.compact = false,
+      this.inFavorites = false});
 
   final Track track;
   final VoidCallback? onRemoveFromPlaylist;
   final bool compact;
+  final bool inFavorites;
 
   @override
   Widget build(BuildContext context) {
@@ -389,7 +411,9 @@ class TrackMenuButton extends StatelessWidget {
       onSelected: (v) =>
           runTrackAction(context, track, v, onRemoveFromPlaylist: onRemoveFromPlaylist),
       itemBuilder: (_) => trackMenuItems(context, track,
-          canRemoveFromPlaylist: onRemoveFromPlaylist != null, compact: compact),
+          canRemoveFromPlaylist: onRemoveFromPlaylist != null,
+          compact: compact,
+          inFavorites: inFavorites),
     );
   }
 }

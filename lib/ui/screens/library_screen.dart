@@ -148,7 +148,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String get _filterLabel => _downloadedOnly
       ? 'Скачанные'
       : _favOnly
-          ? 'Избранное'
+          ? 'Любимые треки'
           : (_source == null ? 'Все треки' : sourceLabel(_source!));
 
   IconData get _filterIcon => _downloadedOnly
@@ -289,7 +289,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           items: () => [
                             _item('all', Icons.library_music_outlined, 'Все треки',
                                 !_favOnly && !_downloadedOnly && _source == null),
-                            _item('fav', Icons.favorite_border, 'Избранное', _favOnly),
+                            _item('fav', Icons.favorite_border, 'Любимые треки', _favOnly),
                             _item('downloaded', Icons.arrow_circle_down, 'Скачанные',
                                 _downloadedOnly),
                             const PopupMenuDivider(),

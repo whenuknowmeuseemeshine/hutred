@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
+import '../models/playlist.dart';
 import '../models/track.dart';
 import 'library_store.dart';
 import 'settings_store.dart';
@@ -233,6 +234,48 @@ class AccountService extends ChangeNotifier {
     await folder.create(recursive: true);
     final copy = await File(filePath).copy('${folder.path}$sep${trackId}_$stamp.$ext');
     return copy.path;
+  }
+
+  // ---------- Плейлисты по ссылке ----------
+
+  static const playlistLinkPrefix = 'hutred://playlist/';
+
+  /// Выкладывает снимок плейлиста в облако и возвращает ссылку на него.
+  /// Свои файлы без копии в облаке другим не сыграть — их не передаём.
+  Future<String> sharePlaylist(Playlist p, List<Track> tracks) async {
+    final uid = user?.id;
+    if (uid == null) throw Exception('Чтобы делиться, войди в аккаунт');
+    final shareable = [
+      for (final t in tracks)
+        if (t.source != TrackSource.local || t.cloudPath != null) t.toJson(),
+    ];
+    await _db.from('shared_playlists').upsert({
+      'id': p.id,
+      'owner': uid,
+      'name': p.name,
+      'description': p.description,
+      'cover': (p.cover ?? '').startsWith('http') ? p.cover : null,
+      'tracks': shareable,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+    return '$playlistLinkPrefix${p.id}';
+  }
+
+  /// Плейлист по ссылке hutred://playlist/<id>.
+  Future<({String name, String description, String? cover, List<Track> tracks})>
+      fetchSharedPlaylist(String link) async {
+    final id = link.trim().substring(playlistLinkPrefix.length).split(RegExp(r'[/?#\s]')).first;
+    final row = await _db.from('shared_playlists').select().eq('id', id).maybeSingle();
+    if (row == null) throw Exception('Плейлист не найден — возможно, ссылку уже убрали');
+    return (
+      name: '${row['name'] ?? 'Плейлист'}',
+      description: '${row['description'] ?? ''}',
+      cover: row['cover'] as String?,
+      tracks: [
+        for (final t in (row['tracks'] as List? ?? const []))
+          if (t is Map) Track.fromJson(Map<String, dynamic>.from(t)),
+      ],
+    );
   }
 
   /// Админ: свои ключи Spotify и ИИ (и Discord ID) сразу раздаются всем,

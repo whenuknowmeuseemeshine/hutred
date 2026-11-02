@@ -132,6 +132,28 @@ class AppActions {
     );
   }
 
+  /// Добавляет к себе плейлист по ссылке hutred://playlist/…
+  static Future<void> importSharedPlaylist(BuildContext context, String link) async {
+    final store = context.read<LibraryStore>();
+    final acc = context.read<AccountService>();
+    toast(context, 'Загружаю плейлист…');
+    try {
+      final shared = await acc.fetchSharedPlaylist(link);
+      if (!context.mounted) return;
+      store.addTracks(shared.tracks);
+      final p = store.createPlaylist(shared.name);
+      final ids = [
+        for (final t in shared.tracks)
+          (store.findBySource(t.source, t.uri) ?? t).id,
+      ];
+      store.addToPlaylist(p.id, ids);
+      store.updatePlaylist(p.id, description: shared.description, cover: shared.cover);
+      toast(context, '«${shared.name}» добавлен в плейлисты: ${tracksWord(ids.length)}');
+    } catch (e) {
+      if (context.mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
+    }
+  }
+
   static Future<void> addFiles(BuildContext context) async {
     final store = context.read<LibraryStore>();
     try {
@@ -263,6 +285,11 @@ class AppActions {
 
   static Future<void> addUrl(BuildContext context, String url) async {
     final store = context.read<LibraryStore>();
+    // Плейлист, которым поделился друг.
+    if (url.trim().startsWith(AccountService.playlistLinkPrefix)) {
+      await importSharedPlaylist(context, url);
+      return;
+    }
     final yt = context.read<YoutubeSource>();
     final uri = Uri.tryParse(url);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {

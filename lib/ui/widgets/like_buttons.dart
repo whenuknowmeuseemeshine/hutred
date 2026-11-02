@@ -6,7 +6,7 @@ import '../../services/library_store.dart';
 import '../../services/wave_service.dart';
 import '../actions.dart';
 
-/// Сердечко и «Добавить в плейлист» рядом, как в Spotify.
+/// Сердечко и 👎 рядом. «Добавить в плейлист» — в меню трека.
 /// Работает для любого трека: если его ещё нет в медиатеке,
 /// лайк сам добавит его туда.
 class LikeButtons extends StatelessWidget {
@@ -60,12 +60,6 @@ class LikeButtons extends StatelessWidget {
             ),
           );
         }),
-        IconButton(
-          tooltip: 'Добавить в плейлист',
-          iconSize: size,
-          onPressed: () => AppActions.addToPlaylistDialog(context, saved ?? track),
-          icon: const Icon(Icons.add_circle_outline),
-        ),
       ],
     );
   }

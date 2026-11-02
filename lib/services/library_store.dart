@@ -257,6 +257,19 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  /// Название, описание и обложка плейлиста.
+  void updatePlaylist(String id,
+      {String? name, String? description, String? cover, bool removeCover = false}) {
+    final p = playlistById(id);
+    if (p == null) return;
+    _replacePlaylist(p.copyWith(
+      name: (name ?? '').trim().isEmpty ? null : name!.trim(),
+      description: description?.trim(),
+      cover: cover,
+      removeCover: removeCover,
+    ));
+  }
+
   void deletePlaylist(String id) {
     _playlists.removeWhere((p) => p.id == id);
     _bury('playlist:$id');

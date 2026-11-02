@@ -980,12 +980,9 @@ class _FilledWords extends StatelessWidget {
         children.add(Text(w, style: style.copyWith(color: p >= 1 ? filled : empty)));
         continue;
       }
-      // Слово, которое поётся прямо сейчас, чуть приподнимается.
-      final lift = (p > 0 && p < 1) ? -2.0 : 0.0;
+      // Слово, которое поётся сейчас, просто заливается — без подпрыгиваний.
       children.add(
-        AnimatedSlide(
-          offset: Offset(0, lift / (style.fontSize ?? 24)),
-          duration: const Duration(milliseconds: 120),
+        SizedBox(
           child: ShaderMask(
           blendMode: BlendMode.srcIn,
           shaderCallback: (r) => LinearGradient(
