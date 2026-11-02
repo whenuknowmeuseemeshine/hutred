@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
+import 'relay.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import 'library_store.dart';
@@ -141,12 +142,20 @@ class AccountService extends ChangeNotifier {
       final rows = await _db.from('app_config').select('key, value');
       _config = {for (final r in rows) '${r['key']}': r['value']};
       settings?.applyShared(_config);
+      _applyRelay();
     } catch (e) {
       debugPrint('[Общие настройки] $e');
     }
     notifyListeners();
     // Админ зашёл — его ключи сразу у всех.
     unawaited(shareAdminKeys());
+  }
+
+  /// Адрес сервера-посредника из общих настроек.
+  void _applyRelay() {
+    final r = _config['relay'];
+    final u = r is Map ? '${r['url'] ?? ''}'.trim() : '';
+    HutredRelay.url = u.isEmpty ? null : u;
   }
 
   static final _usernameRe = RegExp(r'^[A-Za-z0-9_.]{3,24}$');
@@ -410,6 +419,7 @@ class AccountService extends ChangeNotifier {
       });
       _config = {..._config, key: value};
       settings?.applyShared(_config);
+      _applyRelay();
       notifyListeners();
       return null;
     } catch (e) {

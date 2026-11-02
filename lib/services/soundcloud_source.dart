@@ -5,6 +5,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+
+import 'relay.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -16,7 +18,7 @@ import 'yt_dlp.dart';
 /// SoundCloud: поиск, добавление по ссылке, воспроизведение и похожие треки.
 /// Работает через публичный API сайта (тот же, что использует soundcloud.com).
 class SoundcloudSource {
-  final http.Client _client = http.Client();
+  final http.Client _client = RelayClient();
   String? _clientId;
   Future<String>? _clientIdFuture;
 

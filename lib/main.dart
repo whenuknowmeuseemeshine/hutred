@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'services/jam_service.dart';
+import 'services/relay.dart';
 import 'services/account_service.dart';
 import 'services/ai_sync_service.dart';
 import 'services/cover_service.dart';
@@ -138,6 +140,17 @@ Future<void> main(List<String> args) async {
   // Скрытые треки и исполнители из чёрного списка не играют.
   player.isBlocked = wave.isBlocked;
   player.blockedArtist = wave.blockedArtistOf;
+  // Сервер-посредник: для тех, у кого музыкальные сервисы заблокированы.
+  HutredRelay.mode = () => settings.relayMode;
+  HutredRelay.token = () {
+    try {
+      return account.user == null
+          ? null
+          : Supabase.instance.client.auth.currentSession?.accessToken;
+    } catch (_) {
+      return null;
+    }
+  };
   // Джем: слушать вместе с друзьями.
   final jam = JamService(account: account, player: player, store: store, wave: wave)
     ..shareOnline = (() => settings.shareOnline);

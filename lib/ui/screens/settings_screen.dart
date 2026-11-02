@@ -26,6 +26,7 @@ import '../widgets/style_bits.dart';
 import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
 import '../icons.dart';
+import '../../services/relay.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -49,7 +50,7 @@ const _sectionKeywords = {
   'Админ': 'админ всем ключи раздать',
   'Discord': 'дискорд статус активность rich presence слушает',
   'Обновления': 'обновление версия сборка автозапуск автозагрузка windows трей',
-  'Сеть': 'обход блокировок zapret vpn впн россия прокси проверить связь соединение dns днс 1.1.1.1 google cloudflare',
+  'Сеть': 'сервер посредник oracle прокси впн обход блокировок zapret vpn впн россия прокси проверить связь соединение dns днс 1.1.1.1 google cloudflare',
   'YouTube': 'ютуб вход cookies браузер 18+',
   'Версия': 'обновление обновить проверить версия сборка',
   'Загрузки и кэш': 'скачать скачанные офлайн без интернета кэш память место удалить',
@@ -353,6 +354,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (acc.isAdmin && acc.enabled && acc.signedIn) ...[
             const _Section('Админ'),
             const _AdminTiles(),
+            const _RelayAdminTile(),
           ],
           if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
             const _Section('Discord'),
@@ -398,6 +400,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const _UpdatesTiles(),
           ],
           const _Section('Сеть'),
+          const _RelayTile(),
           SwitchListTile(
             secondary: Icon(Ic.vpn_lock_outlined),
             title: const Text('Обход блокировок (для России)'),
@@ -1689,4 +1692,128 @@ class _GroupPage extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+/// Сервер-посредник: как через него ходить и работает ли он.
+class _RelayTile extends StatefulWidget {
+  const _RelayTile();
+
+  @override
+  State<_RelayTile> createState() => _RelayTileState();
+}
+
+class _RelayTileState extends State<_RelayTile> {
+  String? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    if (HutredRelay.url == null) return;
+    final h = await HutredRelay.health();
+    if (mounted) setState(() => _status = h == null ? 'не отвечает' : 'работает');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final acc = context.watch<AccountService>();
+    final url = HutredRelay.url;
+    final host = url == null ? null : Uri.tryParse(url)?.host;
+    final String sub;
+    if (url == null) {
+      sub = 'Сервер ещё не настроен админом';
+    } else if (!acc.signedIn) {
+      sub = 'Работает только после входа в аккаунт';
+    } else {
+      sub = 'Сервер $host · ${_status ?? 'проверяю…'}'
+          '${HutredRelay.used > 0 ? ' · через него прошло запросов: ${HutredRelay.used}' : ''}';
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Ic.public, size: 22, color: HutredTheme.muted),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Text('Сервер Hutred для заблокированного',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(left: 38, top: 4),
+            child: Text(
+              'Если YouTube, SoundCloud или Spotify не открываются (например, в России), '
+              'Hutred скачает трек через свой сервер. Остальной интернет не трогает. $sub',
+              style: const TextStyle(color: HutredTheme.muted, fontSize: 13, height: 1.4),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 38, top: 10),
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final (v, label) in const [
+                ('auto', 'Когда не открывается'),
+                ('always', 'Всегда'),
+                ('off', 'Никогда'),
+              ])
+                StyleChip(
+                  label: label,
+                  selected: s.relayMode == v,
+                  onTap: () => s.relayMode = v,
+                ),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Админ: адрес сервера-посредника для всех.
+class _RelayAdminTile extends StatelessWidget {
+  const _RelayAdminTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final acc = context.watch<AccountService>();
+    return ListTile(
+      leading: Icon(Ic.dns_outlined),
+      title: const Text('Сервер-посредник для всех'),
+      subtitle: Text(HutredRelay.url ?? 'Не задан — вставь адрес из установки сервера'),
+      trailing: Icon(Ic.edit_outlined),
+      onTap: () async {
+        final ctrl = TextEditingController(text: HutredRelay.url ?? '');
+        final v = await showDialog<String>(
+          context: context,
+          builder: (d) => AlertDialog(
+            title: const Text('Адрес сервера'),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: 'https://1-2-3-4.sslip.io'),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(d), child: const Text('Отмена')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(d, ctrl.text.trim()),
+                  child: const Text('Сохранить')),
+            ],
+          ),
+        );
+        if (v == null) return;
+        var url = v;
+        if (url.isNotEmpty && !url.startsWith('http')) url = 'https://$url';
+        final err = await acc.pushConfig('relay', {'url': url});
+        if (context.mounted) {
+          AppActions.toast(context, err ?? (url.isEmpty ? 'Сервер убран' : 'Сервер сохранён для всех'));
+        }
+      },
+    );
+  }
 }

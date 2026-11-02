@@ -101,6 +101,7 @@ class SettingsStore extends ChangeNotifier {
   bool _guest = false;
   bool _dnsOnly = false;
   bool _shareOnline = true;
+  String _relayMode = 'auto';
   bool _eqOn = false;
   List<double> _eqGains = const [];
   bool _pickArtists = false;
@@ -109,6 +110,13 @@ class SettingsStore extends ChangeNotifier {
   File? _file;
 
   Color get accent => _accent;
+
+  /// Сервер-посредник: auto, always или off.
+  String get relayMode => _relayMode;
+  set relayMode(String v) {
+    _relayMode = v;
+    _save();
+  }
 
   /// Показывать друзьям, что я в сети и что слушаю.
   bool get shareOnline => _shareOnline;
@@ -557,6 +565,7 @@ class SettingsStore extends ChangeNotifier {
       _guest = j['guest'] as bool? ?? false;
       _dnsOnly = j['dnsOnly'] as bool? ?? false;
       _shareOnline = j['shareOnline'] as bool? ?? true;
+      _relayMode = j['relayMode'] as String? ?? 'auto';
       _eqOn = j['eqOn'] as bool? ?? false;
       _eqGains = [for (final g in (j['eqGains'] as List? ?? const [])) (g as num).toDouble()];
       _pickArtists = j['pickArtists'] as bool? ?? false;
@@ -593,6 +602,7 @@ class SettingsStore extends ChangeNotifier {
         'guest': _guest,
         'dnsOnly': _dnsOnly,
         'shareOnline': _shareOnline,
+        'relayMode': _relayMode,
         'eqOn': _eqOn,
         'eqGains': _eqGains,
         'pickArtists': _pickArtists,

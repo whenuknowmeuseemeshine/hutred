@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import 'relay.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/solvers.dart';
@@ -17,7 +19,8 @@ import 'yt_dlp.dart';
 class YoutubeSource {
   YoutubeSource({this.cookiesBrowser});
 
-  final YoutubeExplode _yt = YoutubeExplode();
+  // Через посредника Hutred, если YouTube напрямую не открывается.
+  final YoutubeExplode _yt = YoutubeExplode(httpClient: YoutubeHttpClient(RelayClient()));
 
   /// Браузер, из которого yt-dlp берёт вход в YouTube (для видео 18+).
   /// Пустая строка — без входа.
@@ -48,7 +51,7 @@ class YoutubeSource {
     return _wrap(await _yt.search.search(query));
   }
 
-  final _http = http.Client();
+  final http.Client _http = RelayClient();
 
   /// Поиск видео через внутренний API YouTube (тот же, что у сайта).
   Future<Paged<Track>> _innertubeSearch(String query, {String? continuation}) async {
@@ -342,7 +345,7 @@ class YoutubeSource {
     return _solverFuture ??= () async {
       try {
         final solver = await DenoEJSSolver.init();
-        return YoutubeExplode(jsSolver: solver);
+        return YoutubeExplode(httpClient: YoutubeHttpClient(RelayClient()), jsSolver: solver);
       } catch (_) {
         return null; // Deno не установлен.
       }
