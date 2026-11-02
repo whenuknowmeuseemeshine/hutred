@@ -62,7 +62,22 @@ Future<void> main(List<String> args) async {
   // Набор значков — по стилю, выбранному при запуске.
   Ic.style = settings.style;
   DpiBypass.splitHello = !settings.dnsOnly;
+  DpiBypass.strategy = settings.dpiStrategy ?? 'split';
+  if (settings.dpiStrategy != null) {
+    DpiBypass.status.value = 'Способ: ${DpiBypass.strategyLabel(settings.dpiStrategy!)}';
+  }
   DpiBypass.watchZapret(() => settings.dpiBypass);
+  // Способ обхода подбирается сам: при первом включении и раз в неделю
+  // (провайдеры меняют настройки блокировок).
+  final tuned = settings.dpiTunedAt;
+  if (settings.dpiBypass &&
+      !settings.dnsOnly &&
+      (tuned == null || DateTime.now().difference(tuned) > const Duration(days: 7))) {
+    unawaited(Future<void>.delayed(const Duration(seconds: 8), () async {
+      if (!DpiBypass.enabled) return;
+      settings.setDpiStrategy(await DpiBypass.autotune());
+    }));
+  }
   settings.addListener(() {
     DpiBypass.splitHello = !settings.dnsOnly;
     DpiBypass.refresh(settings.dpiBypass);

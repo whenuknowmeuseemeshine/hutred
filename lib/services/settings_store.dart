@@ -93,6 +93,8 @@ class SettingsStore extends ChangeNotifier {
   bool _autoFavorite = true;
   bool _discordPresence = true;
   bool? _dpiBypass;
+  String? _dpiStrategy;
+  DateTime? _dpiTunedAt;
   bool _autoUpdate = true;
   bool _closeToTray = true;
   bool _crossfade = false;
@@ -205,6 +207,15 @@ class SettingsStore extends ChangeNotifier {
           DateTime.now().timeZoneOffset == const Duration(hours: 3));
   set dpiBypass(bool v) {
     _dpiBypass = v;
+    _save();
+  }
+
+  /// Подобранный способ обхода и когда его подбирали.
+  String? get dpiStrategy => _dpiStrategy;
+  DateTime? get dpiTunedAt => _dpiTunedAt;
+  void setDpiStrategy(String s) {
+    _dpiStrategy = s;
+    _dpiTunedAt = DateTime.now();
     _save();
   }
 
@@ -557,6 +568,8 @@ class SettingsStore extends ChangeNotifier {
       _autoFavorite = j['autoFavorite'] as bool? ?? true;
       _discordPresence = j['discordPresence'] as bool? ?? true;
       _dpiBypass = j['dpiBypass'] as bool?;
+      _dpiStrategy = j['dpiStrategy'] as String?;
+      _dpiTunedAt = DateTime.tryParse(j['dpiTunedAt'] as String? ?? '');
       _autoUpdate = j['autoUpdate'] as bool? ?? true;
       _closeToTray = j['closeToTray'] as bool? ?? true;
       _crossfade = j['crossfade'] as bool? ?? false;
@@ -594,6 +607,8 @@ class SettingsStore extends ChangeNotifier {
         'autoFavorite': _autoFavorite,
         'discordPresence': _discordPresence,
         if (_dpiBypass != null) 'dpiBypass': _dpiBypass,
+        if (_dpiStrategy != null) 'dpiStrategy': _dpiStrategy,
+        if (_dpiTunedAt != null) 'dpiTunedAt': _dpiTunedAt!.toIso8601String(),
         'autoUpdate': _autoUpdate,
         'closeToTray': _closeToTray,
         'crossfade': _crossfade,

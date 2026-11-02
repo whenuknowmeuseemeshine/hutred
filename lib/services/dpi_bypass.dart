@@ -108,8 +108,9 @@ class DpiBypass {
       // Первое TLS-сообщение собираем целиком и отправляем порезанным
       // (в режиме «только DNS» — как есть).
       final hello = await reader.readTlsRecord();
-      if (splitHello) {
-        await _sendSplit(remote, hello, host);
+      final how = _testStrategy ?? strategy;
+      if (splitHello && how != 'none') {
+        await _sendWith(how, remote, hello, host);
       } else {
         remote.add(hello);
         await remote.flush();
@@ -159,6 +160,168 @@ class DpiBypass {
     await Future<void>.delayed(const Duration(milliseconds: 5));
     remote.add(second);
     await remote.flush();
+  }
+
+  // ---------- Способы обхода (как в ByeDPI) ----------
+
+  /// Выбранный способ: split, multisplit, disorder, disorder_multi или none.
+  static String strategy = 'split';
+
+  /// Способ на время проверки (автоподбор).
+  static String? _testStrategy;
+
+  static const strategies = ['split', 'multisplit', 'disorder', 'disorder_multi'];
+
+  static String strategyLabel(String s) => switch (s) {
+        'split' => 'разрез имени сайта',
+        'multisplit' => 'мелкая нарезка',
+        'disorder' => 'разрез с перестановкой пакетов',
+        'disorder_multi' => 'мелкая нарезка с перестановкой',
+        _ => 'без хитростей',
+      };
+
+  /// Что подобрано и как быстро открывается YouTube (для настроек).
+  static final status = ValueNotifier<String>('');
+
+  static Future<void> _sendWith(String how, Socket remote, Uint8List hello, String host) async {
+    switch (how) {
+      case 'multisplit':
+        return _sendMulti(remote, hello, host, disorder: false);
+      case 'disorder':
+        return _sendDisorder(remote, hello, host);
+      case 'disorder_multi':
+        return _sendMulti(remote, hello, host, disorder: true);
+      default:
+        return _sendSplit(remote, hello, host);
+    }
+  }
+
+  // TTL: 1 — пакет «теряется» на первом же узле, ОС потом пошлёт его заново.
+  static int get _ipTtl => Platform.isWindows || Platform.isMacOS || Platform.isIOS ? 4 : 2;
+  static int get _defaultTtl => Platform.isWindows ? 128 : 64;
+
+  static bool _setTtl(Socket s, int ttl) {
+    try {
+      s.setRawOption(RawSocketOption.fromInt(RawSocketOption.levelIPv4, _ipTtl, ttl));
+      return true;
+    } catch (e) {
+      debugPrint('[Обход] TTL не поменять: $e');
+      return false;
+    }
+  }
+
+  /// «Беспорядок»: начало ClientHello уходит с TTL=1 и теряется по дороге,
+  /// за ним — остальное. Провайдер видит хвост без начала и не узнаёт сайт,
+  /// а ОС сама дошлёт потерянное начало — сервер соберёт всё как надо.
+  static Future<void> _sendDisorder(Socket remote, Uint8List rec, String host) async {
+    final at = _sniCut(rec, host);
+    if (at == null || !_setTtl(remote, 1)) return _sendSplit(remote, rec, host);
+    remote.add(Uint8List.sublistView(rec, 0, at));
+    await remote.flush();
+    await Future<void>.delayed(const Duration(milliseconds: 3));
+    _setTtl(remote, _defaultTtl);
+    remote.add(Uint8List.sublistView(rec, at));
+    await remote.flush();
+  }
+
+  /// Где в записи начинается имя сайта (+1 байт), или null.
+  static int? _sniCut(Uint8List rec, String host) {
+    if (rec.length < 6 || rec[0] != 0x16) return null;
+    final i = _indexOf(rec, ascii.encode(host));
+    return i > 0 ? i + 1 : null;
+  }
+
+  /// Мелкая нарезка: ClientHello делится на много TLS-записей — до имени
+  /// сайта, само имя по 2 байта, остальное — и каждая уходит своим пакетом.
+  /// С [disorder] первый пакет ещё и уходит с TTL=1.
+  static Future<void> _sendMulti(Socket remote, Uint8List rec, String host,
+      {required bool disorder}) async {
+    if (rec.length < 6 || rec[0] != 0x16) {
+      remote.add(rec);
+      await remote.flush();
+      return;
+    }
+    final body = rec.sublist(5);
+    final name = ascii.encode(host);
+    final at = _indexOf(body, name);
+    final cuts = <int>[0];
+    if (at > 0) {
+      cuts.add(at);
+      for (var i = at + 2; i < at + name.length; i += 2) {
+        cuts.add(i);
+      }
+      cuts.add(at + name.length);
+    } else {
+      for (var i = 1; i < 6; i++) {
+        cuts.add(body.length * i ~/ 6);
+      }
+    }
+    cuts.add(body.length);
+    final pieces = <Uint8List>[];
+    for (var i = 0; i + 1 < cuts.length; i++) {
+      if (cuts[i + 1] <= cuts[i]) continue;
+      final data = Uint8List.sublistView(body, cuts[i], cuts[i + 1]);
+      pieces.add(Uint8List.fromList(
+          [0x16, rec[1], rec[2], (data.length >> 8) & 0xff, data.length & 0xff, ...data]));
+    }
+    final lowTtl = disorder && _setTtl(remote, 1);
+    for (var i = 0; i < pieces.length; i++) {
+      remote.add(pieces[i]);
+      await remote.flush();
+      if (i == 0 && lowTtl) {
+        await Future<void>.delayed(const Duration(milliseconds: 3));
+        _setTtl(remote, _defaultTtl);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+  }
+
+  /// Автоподбор: по очереди пробуем способы на YouTube и берём самый быстрый.
+  /// Возвращает выбранный способ.
+  static Future<String> autotune({void Function(String)? onProgress}) async {
+    if (_port == null) return strategy;
+    final results = <String, double>{};
+    for (final s in ['none', ...strategies]) {
+      onProgress?.call('Пробую: ${strategyLabel(s)}…');
+      results[s] = await _measure(s);
+      debugPrint('[Обход] $s: ${(results[s]! / 1024).round()} КБ/с');
+    }
+    final best = results.entries.reduce((a, b) => b.value > a.value ? b : a);
+    strategy = best.value <= 0 ? 'split' : best.key;
+    final speed = best.value <= 0
+        ? 'YouTube не открылся ни одним способом'
+        : 'YouTube: ${(best.value / 1024 / 1024).toStringAsFixed(1)} МБ/с';
+    status.value = 'Подобрано: ${strategyLabel(strategy)} · $speed';
+    return strategy;
+  }
+
+  /// Скорость (байт/с) загрузки страницы YouTube этим способом; 0 — не открылось.
+  static Future<double> _measure(String how) async {
+    final wasEnabled = enabled;
+    enabled = true;
+    _testStrategy = how;
+    final c = HttpClient()..connectionTimeout = const Duration(seconds: 6);
+    final sw = Stopwatch()..start();
+    var got = 0;
+    try {
+      final req = await c.getUrl(Uri.parse('https://www.youtube.com/?hl=ru&_=${sw.hashCode}'));
+      req.headers.set('accept-encoding', 'identity');
+      req.headers.set('user-agent',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36');
+      final res = await req.close().timeout(const Duration(seconds: 8));
+      await for (final chunk in res.timeout(const Duration(seconds: 8))) {
+        got += chunk.length;
+        if (got > 700 * 1024 || sw.elapsedMilliseconds > 8000) break;
+      }
+    } catch (_) {
+      // не открылось
+    } finally {
+      c.close(force: true);
+      _testStrategy = null;
+      enabled = wasEnabled;
+    }
+    if (got < 20 * 1024) return 0;
+    return got / (sw.elapsedMilliseconds.clamp(1, 1 << 30) / 1000);
   }
 
   static int _indexOf(Uint8List hay, List<int> needle) {

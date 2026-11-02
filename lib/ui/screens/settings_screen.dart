@@ -420,6 +420,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.dnsOnly,
             onChanged: s.dpiBypass ? (v) => s.dnsOnly = v : null,
           ),
+          if (s.dpiBypass && !s.dnsOnly) const _DpiTuneTile(),
           ValueListenableBuilder<bool>(
             valueListenable: DpiBypass.zapretRunning,
             builder: (_, z, __) => !z
@@ -1814,6 +1815,69 @@ class _RelayAdminTile extends StatelessWidget {
           AppActions.toast(context, err ?? (url.isEmpty ? 'Сервер убран' : 'Сервер сохранён для всех'));
         }
       },
+    );
+  }
+}
+
+
+/// Способ обхода блокировок: что подобрано и кнопка «подобрать заново».
+class _DpiTuneTile extends StatefulWidget {
+  const _DpiTuneTile();
+
+  @override
+  State<_DpiTuneTile> createState() => _DpiTuneTileState();
+}
+
+class _DpiTuneTileState extends State<_DpiTuneTile> {
+  String? _progress;
+
+  Future<void> _tune() async {
+    final s = context.read<SettingsStore>();
+    setState(() => _progress = 'Проверяю…');
+    final best = await DpiBypass.autotune(
+        onProgress: (p) => mounted ? setState(() => _progress = p) : null);
+    s.setDpiStrategy(best);
+    if (mounted) setState(() => _progress = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    return ValueListenableBuilder<String>(
+      valueListenable: DpiBypass.status,
+      builder: (_, st, __) => Padding(
+        padding: const EdgeInsets.fromLTRB(72, 0, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _progress ??
+                  (st.isEmpty
+                      ? 'Способ обхода ещё не подбирался — Hutred проверит сам через пару секунд'
+                      : st),
+              style: const TextStyle(color: HutredTheme.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              StyleButton(
+                label: _progress == null ? 'Подобрать способ заново' : 'Подбираю…',
+                primary: false,
+                onPressed: _progress == null ? _tune : null,
+              ),
+              for (final k in DpiBypass.strategies)
+                StyleChip(
+                  label: DpiBypass.strategyLabel(k),
+                  selected: (s.dpiStrategy ?? 'split') == k,
+                  onTap: () {
+                    DpiBypass.strategy = k;
+                    s.setDpiStrategy(k);
+                    DpiBypass.status.value = 'Способ: ${DpiBypass.strategyLabel(k)} (выбран вручную)';
+                  },
+                ),
+            ]),
+          ],
+        ),
+      ),
     );
   }
 }
