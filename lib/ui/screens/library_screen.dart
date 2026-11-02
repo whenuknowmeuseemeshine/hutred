@@ -16,6 +16,9 @@ import '../widgets/filter_field.dart';
 import '../widgets/logo.dart';
 import '../widgets/track_tile.dart';
 import '../icons.dart';
+import '../widgets/style_bits.dart';
+import '../../models/playlist.dart';
+import 'playlists_screen.dart';
 
 enum _Sort { recent, title, artist }
 
@@ -154,12 +157,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ? 'Любимые треки'
           : (_source == null ? 'Все треки' : sourceLabel(_source!));
 
-  IconData get _filterIcon => _downloadedOnly
-      ? Ic.arrow_circle_down
-      : _favOnly
-          ? Ic.favorite
-          : (_source == null ? Ic.library_music_outlined : sourceIcon(_source!));
-
   /// Пункт меню в том же стиле, что и меню трека: значок + текст + галочка.
   PopupMenuItem<T> _item<T>(T value, IconData icon, String text, bool selected) =>
       PopupMenuItem<T>(
@@ -244,20 +241,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final player = context.watch<PlayerService>();
     final offline = context.watch<OfflineService>();
     final tracks = _visible(store, offline);
+    final st = HutredStyle.of(context);
+    final wide = MediaQuery.sizeOf(context).width >= 800;
+    final pad = stylePagePadding(context);
+    final filtered = _favOnly || _downloadedOnly || _source != null || _q.isNotEmpty;
+    // Источники, которые реально есть в медиатеке, — фишками.
+    final sources = TrackSource.values.where((src) => store.tracks.any((t) => t.source == src));
 
-    return Scaffold(
-      appBar: _sel != null ? _selectionBar(tracks, store, offline) : AppBar(
-        title: Row(
-          children: [
-            if (MediaQuery.sizeOf(context).width < 800) ...[
-              const HutredLogo(size: 34),
-              const SizedBox(width: 12),
-            ],
-            const Text('Медиатека'),
+    Widget chip(String label, bool on, VoidCallback onTap) =>
+        StyleChip(label: label, selected: on, onTap: onTap);
+
+    final header = Padding(
+      padding: EdgeInsets.fromLTRB(
+          pad.left, MediaQuery.paddingOf(context).top + pad.top, pad.right, 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!wide) ...[
+            const HutredLogo(size: 34),
+            const SizedBox(width: 12),
           ],
-        ),
-        actions: [
-          if (MediaQuery.sizeOf(context).width < 800) const AccountButton(),
+          Expanded(child: Text('Медиатека', style: st.display(wide ? 48 : 30))),
+          if (!wide) const AccountButton(),
           if (store.tracks.isNotEmpty)
             TextButton.icon(
               onPressed: () => setState(() => _sel = {}),
@@ -265,146 +270,139 @@ class _LibraryScreenState extends State<LibraryScreen> {
               label: const Text('Выбрать'),
             ),
           const SizedBox(width: 8),
+          StyleButton(
+            label: 'Добавить',
+            icon: Ic.add,
+            primary: false,
+            onPressed: () => AppActions.showAddSheet(context),
+          ),
         ],
       ),
+    );
+
+    final filters = Padding(
+      padding: EdgeInsets.fromLTRB(pad.left, 0, pad.right, 18),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          chip('Все', !filtered || (_q.isNotEmpty && !_favOnly && !_downloadedOnly && _source == null),
+              () => setState(() {
+                    _favOnly = false;
+                    _downloadedOnly = false;
+                    _source = null;
+                  })),
+          chip('Любимые', _favOnly, () => setState(() {
+                _favOnly = !_favOnly;
+                _downloadedOnly = false;
+                _source = null;
+              })),
+          chip('Скачанные', _downloadedOnly, () => setState(() {
+                _downloadedOnly = !_downloadedOnly;
+                _favOnly = false;
+                _source = null;
+              })),
+          for (final src in sources)
+            chip(sourceLabel(src), _source == src, () => setState(() {
+                  _source = _source == src ? null : src;
+                  _favOnly = false;
+                  _downloadedOnly = false;
+                })),
+          FilterField(
+            width: 220,
+            hint: 'Найти в медиатеке',
+            onChanged: (v) => setState(() => _q = v.trim()),
+          ),
+          _dropdown<_Sort>(
+            tooltip: 'Сортировка',
+            icon: _sortLabels[_sort]!.$2,
+            label: _sortLabels[_sort]!.$1,
+            onSelected: (v) => setState(() => _sort = v),
+            items: () => [
+              for (final e in _sortLabels.entries)
+                _item(e.key, e.value.$2, e.value.$1, _sort == e.key),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    // Верх как в макете: большая карточка «Любимые треки» и плитки плейлистов.
+    final hero = filtered || _sel != null
+        ? null
+        : Padding(
+            padding: EdgeInsets.fromLTRB(pad.left, 0, pad.right, 24),
+            child: _LibraryHero(favorites: store.favorites, playlists: store.playlists),
+          );
+
+    final listHead = Padding(
+      padding: EdgeInsets.fromLTRB(pad.left, 0, pad.right - 8, 8),
+      child: Row(
+        children: [
+          StyleCaption(filtered ? _filterLabel : _sortLabels[_sort]!.$1),
+          const SizedBox(width: 10),
+          Text(tracksWord(tracks.length),
+              style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
+          const Spacer(),
+          // Скачать все любимые (и докачивать новые лайки).
+          Builder(builder: (context) {
+            final pinned = offline.isPinned(null);
+            final favs = store.favorites;
+            final done = favs.where(offline.isDownloaded).length;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (pinned && done < favs.length)
+                  Text('$done/${favs.length}',
+                      style: const TextStyle(color: HutredTheme.muted, fontSize: 12)),
+                IconButton(
+                  tooltip: pinned
+                      ? 'Любимые скачаны — нажми, чтобы удалить загрузки'
+                      : 'Скачать все любимые треки (новые лайки тоже скачаются)',
+                  onPressed: favs.isEmpty && !pinned
+                      ? null
+                      : () {
+                          offline.pin(null, !pinned);
+                          AppActions.toast(
+                              context,
+                              pinned
+                                  ? 'Загрузки любимых удалены'
+                                  : 'Скачиваю любимые: ${tracksWord(favs.length)}');
+                        },
+                  icon: Icon(
+                    pinned ? Ic.arrow_circle_down_rounded : Ic.arrow_circle_down_outlined,
+                    color: pinned ? Theme.of(context).colorScheme.primary : Colors.white70,
+                  ),
+                ),
+              ],
+            );
+          }),
+          IconButton(
+            tooltip: !player.shuffle
+                ? 'Перемешивание выключено'
+                : (player.smartShuffle
+                    ? 'Перемешивание с рекомендациями'
+                    : 'Перемешивание включено'),
+            onPressed: player.toggleShuffle,
+            icon: ShuffleIcon(on: player.shuffle, smart: player.smartShuffle, size: 24),
+          ),
+          const SizedBox(width: 6),
+          _PlayButton(onPressed: tracks.isEmpty ? null : () => player.playAll(tracks)),
+        ],
+      ),
+    );
+
+    return Scaffold(
+      appBar: _sel != null ? _selectionBar(tracks, store, offline) : null,
       body: store.tracks.isEmpty
-          ? const _EmptyLibrary()
+          ? Column(children: [header, const Expanded(child: _EmptyLibrary())])
           : CustomScrollView(
               slivers: [
-                // Два меню: что показывать и как сортировать.
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilterField(
-                          width: 240,
-                          hint: 'Найти в медиатеке',
-                          onChanged: (v) => setState(() => _q = v.trim()),
-                        ),
-                        _dropdown<String>(
-                          tooltip: 'Что показывать',
-                          icon: _filterIcon,
-                          label: _filterLabel,
-                          onSelected: (v) => setState(() {
-                            _favOnly = v == 'fav';
-                            _downloadedOnly = v == 'downloaded';
-                            _source = (v == 'all' || v == 'fav' || v == 'downloaded')
-                                ? null
-                                : TrackSource.values.byName(v);
-                          }),
-                          items: () => [
-                            _item('all', Ic.library_music_outlined, 'Все треки',
-                                !_favOnly && !_downloadedOnly && _source == null),
-                            _item('fav', Ic.favorite_border, 'Любимые треки', _favOnly),
-                            _item('downloaded', Ic.arrow_circle_down, 'Скачанные',
-                                _downloadedOnly),
-                            const PopupMenuDivider(),
-                            for (final src in TrackSource.values)
-                              _item(src.name, sourceIcon(src), sourceLabel(src),
-                                  !_favOnly && !_downloadedOnly && _source == src),
-                          ],
-                        ),
-                        _dropdown<_Sort>(
-                          tooltip: 'Сортировка',
-                          icon: _sortLabels[_sort]!.$2,
-                          label: _sortLabels[_sort]!.$1,
-                          onSelected: (v) => setState(() => _sort = v),
-                          items: () => [
-                            for (final e in _sortLabels.entries)
-                              _item(e.key, e.value.$2, e.value.$1, _sort == e.key),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Row(
-                      children: [
-                        Text(tracksWord(tracks.length),
-                            style: const TextStyle(color: HutredTheme.muted)),
-                        const Spacer(),
-                        // Скачать все любимые (и докачивать новые лайки).
-                        Builder(builder: (context) {
-                          final pinned = offline.isPinned(null);
-                          final favs = store.favorites;
-                          final done = favs.where(offline.isDownloaded).length;
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (pinned && done < favs.length)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: Text('$done/${favs.length}',
-                                      style: const TextStyle(
-                                          color: HutredTheme.muted, fontSize: 12)),
-                                ),
-                              IconButton(
-                                iconSize: 28,
-                                tooltip: pinned
-                                    ? 'Любимые скачаны — нажми, чтобы удалить загрузки'
-                                    : 'Скачать все любимые треки (новые лайки тоже скачаются)',
-                                isSelected: pinned,
-                                onPressed: favs.isEmpty && !pinned
-                                    ? null
-                                    : () {
-                                        offline.pin(null, !pinned);
-                                        AppActions.toast(
-                                            context,
-                                            pinned
-                                                ? 'Загрузки любимых удалены'
-                                                : 'Скачиваю любимые: ${tracksWord(favs.length)}');
-                                      },
-                                icon: Icon(
-                                  pinned
-                                      ? Ic.arrow_circle_down_rounded
-                                      : Ic.arrow_circle_down_outlined,
-                                  color: pinned
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Colors.white70,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                          );
-                        }),
-                        IconButton(
-                          iconSize: 28,
-                          tooltip: 'Добавить музыку: файлы, папка, ссылка',
-                          onPressed: () => AppActions.showAddSheet(context),
-                          icon: Icon(Ic.add_circle_outline_rounded, color: Colors.white70),
-                        ),
-                        const SizedBox(width: 8),
-                        // Как в Spotify: выкл → перемешать → перемешать с рекомендациями.
-                        IconButton(
-                          tooltip: !player.shuffle
-                              ? 'Перемешивание выключено'
-                              : (player.smartShuffle
-                                  ? 'Перемешивание с рекомендациями'
-                                  : 'Перемешивание включено'),
-                          onPressed: player.toggleShuffle,
-                          icon: ShuffleIcon(
-                              on: player.shuffle, smart: player.smartShuffle, size: 26),
-                        ),
-                        const SizedBox(width: 12),
-                        IconButton.filled(
-                          style: IconButton.styleFrom(
-                            fixedSize: const Size.square(52),
-                          ),
-                          tooltip: 'Слушать всё',
-                          iconSize: 32,
-                          onPressed: tracks.isEmpty ? null : () => player.playAll(tracks),
-                          icon: Icon(Ic.play_arrow_rounded),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                if (_sel == null) SliverToBoxAdapter(child: header),
+                SliverToBoxAdapter(child: filters),
+                if (hero != null) SliverToBoxAdapter(child: hero),
+                SliverToBoxAdapter(child: listHead),
                 if (tracks.isEmpty)
                   const SliverFillRemaining(
                     hasScrollBody: false,
@@ -417,6 +415,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ? TrackTile(
                             key: ValueKey(tracks[i].id),
                             track: tracks[i],
+                            number: i + 1,
                             onTap: () => player.playTracks(tracks, start: i),
                           )
                         : Row(
@@ -442,6 +441,176 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ],
             ),
     );
+  }
+}
+
+/// Кнопка «Слушать всё» в стиле: белый круг / круг акцента / салатовый прямоугольник.
+class _PlayButton extends StatelessWidget {
+  const _PlayButton({required this.onPressed});
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final bg = st.mono ? Colors.white : accent;
+    return SizedBox(
+      width: st.sharp ? 64 : 48,
+      height: 48,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          padding: EdgeInsets.zero,
+          shape: st.sharp ? const RoundedRectangleBorder() : const CircleBorder(),
+          backgroundColor: bg,
+          foregroundColor: st.mono ? Colors.black : HutredTheme.onAccent(accent),
+        ),
+        child: Icon(Ic.play_arrow_rounded, size: 28),
+      ),
+    );
+  }
+}
+
+/// «Любимые треки» крупной карточкой и плитки плейлистов рядом.
+class _LibraryHero extends StatelessWidget {
+  const _LibraryHero({required this.favorites, required this.playlists});
+  final List<Track> favorites;
+  final List<Playlist> playlists;
+
+  void _open(BuildContext context, String? id) => Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => PlaylistDetailScreen(playlistId: id)));
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final store = context.read<LibraryStore>();
+    final dur = totalDuration(favorites);
+    final sub = [tracksWord(favorites.length), if (dur.isNotEmpty) dur].join(' · ');
+
+    Widget favCard(double h) {
+      final Widget content;
+      final BoxDecoration deco;
+      if (st.sharp) {
+        deco = BoxDecoration(color: accent);
+        final on = HutredTheme.onAccent(accent);
+        content = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('ЛЮБИМЫЕ ТРЕКИ', style: st.caption(color: on)),
+            const Spacer(),
+            Text('${favorites.length}',
+                style: st.display(56).copyWith(color: on, height: 1)),
+            const SizedBox(height: 10),
+            Text('треков с ♥${dur.isEmpty ? '' : ' · $dur'}',
+                style: TextStyle(color: on, fontWeight: FontWeight.w600)),
+          ],
+        );
+      } else {
+        deco = BoxDecoration(
+          borderRadius: BorderRadius.circular(st.glass ? 22 : 10),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: st.glass
+                ? [accent, Color.lerp(accent, Colors.black, 0.55)!, const Color(0xFF0EA5E9)]
+                : const [Color(0xFF4A4A4A), Color(0xFF161616)],
+            stops: st.glass ? const [0, 0.6, 1] : null,
+          ),
+          boxShadow: st.glass
+              ? [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 50, offset: const Offset(0, 20))]
+              : null,
+        );
+        content = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text('Любимые треки', style: st.display(30)),
+            const SizedBox(height: 6),
+            Text(sub,
+                style: TextStyle(
+                    color: st.glass ? const Color(0xFFE9E5FF) : const Color(0xFFD4D4D4),
+                    fontWeight: st.glass ? FontWeight.w600 : FontWeight.w500)),
+          ],
+        );
+      }
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _open(context, null),
+          borderRadius: BorderRadius.circular(st.glass ? 22 : st.sharp ? 0 : 10),
+          child: Ink(
+            height: h,
+            decoration: deco,
+            padding: const EdgeInsets.all(20),
+            child: content,
+          ),
+        ),
+      );
+    }
+
+    Widget tile(Playlist p, double size) {
+      final tracks = store.tracksOf(p);
+      return InkWell(
+        onTap: () => _open(context, p.id),
+        borderRadius: BorderRadius.circular(st.radius),
+        child: SizedBox(
+          width: size,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              PlaylistCollage(tracks: tracks, cover: p.cover, size: size),
+              const SizedBox(height: 8),
+              Text(p.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: st.glass ? FontWeight.w700 : FontWeight.w600)),
+              Text('Плейлист · ${tracks.length}',
+                  maxLines: 1,
+                  style: const TextStyle(fontSize: 12, color: HutredTheme.muted)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth;
+      if (w < 700) {
+        // Телефон: карточка во всю ширину, плейлисты — лентой.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            favCard(150),
+            if (playlists.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 186,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: playlists.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (_, i) => tile(playlists[i], 140),
+                ),
+              ),
+            ],
+          ],
+        );
+      }
+      const gap = 18.0;
+      final favW = w * 0.3;
+      final size = (w - favW - gap * 4) / 4;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: favW, child: favCard(size)),
+          for (final p in playlists.take(4)) ...[
+            const SizedBox(width: gap),
+            tile(p, size),
+          ],
+        ],
+      );
+    });
   }
 }
 

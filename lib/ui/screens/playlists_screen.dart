@@ -74,7 +74,7 @@ class PlaylistsScreen extends StatelessWidget {
           ),
           for (final p in store.playlists)
             ListTile(
-              leading: _Collage(tracks: store.tracksOf(p), cover: p.cover),
+              leading: PlaylistCollage(tracks: store.tracksOf(p), cover: p.cover),
               title: Text(p.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(
@@ -115,8 +115,8 @@ class PlaylistsScreen extends StatelessWidget {
 }
 
 /// Обложка плейлиста из первых четырёх треков.
-class _Collage extends StatelessWidget {
-  const _Collage({required this.tracks, this.cover, this.size = 52});
+class PlaylistCollage extends StatelessWidget {
+  const PlaylistCollage({super.key, required this.tracks, this.cover, this.size = 52});
   final List<Track> tracks;
   final String? cover;
   final double size;
@@ -126,7 +126,7 @@ class _Collage extends StatelessWidget {
     final c = cover;
     if (c != null) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(size > 100 ? 8 : 4),
+        borderRadius: BorderRadius.circular((size > 100 ? 8 : 4) * HutredStyle.of(context).artScale),
         child: Image(
           image: artworkProvider(c),
           width: size,
@@ -143,7 +143,7 @@ class _Collage extends StatelessWidget {
     }
     final half = size / 2;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(size > 100 ? 8 : 4),
+      borderRadius: BorderRadius.circular((size > 100 ? 8 : 4) * HutredStyle.of(context).artScale),
       child: SizedBox.square(
         dimension: size,
         child: Wrap(
@@ -292,7 +292,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           )
         : GestureDetector(
             onTap: playlist.isFollowed ? null : () => _edit(context, playlist),
-            child: _Collage(tracks: tracks, cover: playlist.cover, size: coverSize),
+            child: PlaylistCollage(tracks: tracks, cover: playlist.cover, size: coverSize),
           );
     // Тень под обложкой: у «Стекла» — цветное свечение.
     cover = DecoratedBox(
@@ -704,7 +704,7 @@ class _EditPlaylistDialogState extends State<_EditPlaylistDialog> {
                 InkWell(
                   borderRadius: BorderRadius.circular(8),
                   onTap: _pick,
-                  child: _Collage(
+                  child: PlaylistCollage(
                     tracks: store.tracksOf(widget.playlist),
                     cover: current,
                     size: 140,
