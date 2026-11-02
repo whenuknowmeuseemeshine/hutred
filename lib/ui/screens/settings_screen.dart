@@ -133,113 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: const Icon(Icons.close_rounded),
                 ),
               const Icon(Icons.chevron_right),
-    ];
-  }
-
-  /// Разделы настроек, собранные в несколько понятных групп.
-  static const _groups = <(String, IconData, String, List<String>)>[
-    ('Внешний вид', Icons.palette_outlined, 'Цвет, фон, вкладки',
-        ['Акцентный цвет', 'Фон', 'Вкладки']),
-    ('Воспроизведение', Icons.play_circle_outline, 'Плавный переход, пауза',
-        ['Воспроизведение']),
-    ('Медиатека и волна', Icons.library_music_outlined, 'Любимые исполнители, чёрный список',
-        ['Медиатека', 'Чёрный список']),
-    ('Тексты и обложки', Icons.lyrics_outlined, 'Караоке, Spotify, Genius',
-        ['Тексты песен', 'Обложки']),
-    ('Сеть и YouTube', Icons.public, 'Обход блокировок, проверка связи, вход в YouTube',
-        ['Сеть', 'YouTube']),
-    ('Discord', Icons.headset_mic_outlined, 'Трек в статусе Discord', ['Discord']),
-    ('Загрузки и кэш', Icons.download_outlined, 'Скачанное, место на диске',
-        ['Загрузки и кэш']),
-    ('Обновления', Icons.system_update_alt, 'Версия, автообновление, трей',
-        ['Обновления', 'Версия']),
-    ('Админ', Icons.admin_panel_settings_outlined, 'Общие ключи для всех', ['Админ']),
-  ];
-
-  /// Раздел → его пункты (с заголовком раздела).
-  Map<String, List<Widget>> _sections(List<Widget> all) {
-    final out = <String, List<Widget>>{};
-    String? title;
-    for (final w in all) {
-      if (w is _Section) {
-        title = w.text;
-        out[title] = [w];
-      } else if (title != null) {
-        out[title]!.add(w);
-      }
-    }
-    return out;
-  }
-
-  /// Без поиска — аккаунт и список групп; при поиске — найденные пункты.
-  List<Widget> _body(BuildContext context) {
-    final all = _items(context);
-    if (_q.trim().isNotEmpty) return _filter(all);
-    final sections = _sections(all);
-    return [
-      const _AccountTile(),
-      const SizedBox(height: 8),
-      for (final g in _groups)
-        if (g.$4.any(sections.containsKey))
-          ListTile(
-            leading: Icon(g.$2),
-            title: Text(g.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(g.$3),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => _GroupPage(
-                title: g.$1,
-                // Пункты строятся заново при каждой перерисовке страницы,
-                // чтобы переключатели сразу показывали новое значение.
-                items: (ctx) {
-                  final sec = _sections(_items(ctx));
-                  return [for (final name in g.$4) ...?sec[name]];
-                },
-              ),
-            )),
-          ),
-      const _Footer(),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    context.watch<SettingsStore>();
-    context.watch<AccountService>();
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Настройки')),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 96),
-        children: [
-          // Поиск по настройкам.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
-              controller: _search,
-              onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Поиск по настройкам',
-                suffixIcon: _q.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() {
-                          _search.clear();
-                          _q = '';
-                        }),
-                      ),
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          ..._body(context),
+            ]),
             onTap: () async {
               final res = await FilePicker.platform.pickFiles(
                 type: FileType.custom,
@@ -530,7 +424,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _Section('Версия'),
           const _UpdateCheckTile(),
           const _Footer(),
-          ]),
+    ];
+  }
+
+  /// Разделы настроек, собранные в несколько понятных групп.
+  static const _groups = <(String, IconData, String, List<String>)>[
+    ('Внешний вид', Icons.palette_outlined, 'Цвет, фон, вкладки',
+        ['Акцентный цвет', 'Фон', 'Вкладки']),
+    ('Воспроизведение', Icons.play_circle_outline, 'Плавный переход, пауза',
+        ['Воспроизведение']),
+    ('Медиатека и волна', Icons.library_music_outlined, 'Любимые исполнители, чёрный список',
+        ['Медиатека', 'Чёрный список']),
+    ('Тексты и обложки', Icons.lyrics_outlined, 'Караоке, Spotify, Genius',
+        ['Тексты песен', 'Обложки']),
+    ('Сеть и YouTube', Icons.public, 'Обход блокировок, проверка связи, вход в YouTube',
+        ['Сеть', 'YouTube']),
+    ('Discord', Icons.headset_mic_outlined, 'Трек в статусе Discord', ['Discord']),
+    ('Загрузки и кэш', Icons.download_outlined, 'Скачанное, место на диске',
+        ['Загрузки и кэш']),
+    ('Обновления', Icons.system_update_alt, 'Версия, автообновление, трей',
+        ['Обновления', 'Версия']),
+    ('Админ', Icons.admin_panel_settings_outlined, 'Общие ключи для всех', ['Админ']),
+  ];
+
+  /// Раздел → его пункты (с заголовком раздела).
+  Map<String, List<Widget>> _sections(List<Widget> all) {
+    final out = <String, List<Widget>>{};
+    String? title;
+    for (final w in all) {
+      if (w is _Section) {
+        title = w.text;
+        out[title] = [w];
+      } else if (title != null && w is! _Footer) {
+        out[title]!.add(w);
+      }
+    }
+    return out;
+  }
+
+  /// Без поиска — аккаунт и список групп; при поиске — найденные пункты.
+  List<Widget> _body(BuildContext context) {
+    final all = _items(context);
+    if (_q.trim().isNotEmpty) return _filter(all);
+    final sections = _sections(all);
+    return [
+      const _AccountTile(),
+      const SizedBox(height: 8),
+      for (final g in _groups)
+        if (g.$4.any(sections.containsKey))
+          ListTile(
+            leading: Icon(g.$2),
+            title: Text(g.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(g.$3),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => _GroupPage(
+                title: g.$1,
+                // Пункты строятся заново при каждой перерисовке страницы,
+                // чтобы переключатели сразу показывали новое значение.
+                items: (ctx) {
+                  final sec = _sections(_items(ctx));
+                  return [for (final name in g.$4) ...?sec[name]];
+                },
+              ),
+            )),
+          ),
+      const _Footer(),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    context.watch<SettingsStore>();
+    context.watch<AccountService>();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Настройки')),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 96),
+        children: [
+          // Поиск по настройкам.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _search,
+              onChanged: (v) => setState(() => _q = v),
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search),
+                hintText: 'Поиск по настройкам',
+                suffixIcon: _q.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() {
+                          _search.clear();
+                          _q = '';
+                        }),
+                      ),
+                filled: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          ..._body(context),
         ],
       ),
     );
