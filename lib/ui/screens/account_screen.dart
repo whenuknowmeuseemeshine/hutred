@@ -316,7 +316,12 @@ class _Profile extends StatelessWidget {
         Text(acc.email ?? '', style: const TextStyle(color: HutredTheme.muted)),
         const SizedBox(height: 6),
         Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Ic.circle, size: 9, color: statusColor),
+          Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: st.sharp ? BoxShape.rectangle : BoxShape.circle)),
           const SizedBox(width: 8),
           Flexible(
             child: Text(status, style: TextStyle(color: statusColor, fontSize: 13)),
