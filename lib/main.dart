@@ -139,7 +139,11 @@ Future<void> main(List<String> args) async {
   player.isBlocked = wave.isBlocked;
   player.blockedArtist = wave.blockedArtistOf;
   // Джем: слушать вместе с друзьями.
-  final jam = JamService(account: account, player: player, store: store, wave: wave);
+  final jam = JamService(account: account, player: player, store: store, wave: wave)
+    ..shareOnline = (() => settings.shareOnline);
+  // Заявка в друзья: друг узнаёт сразу, а не через минуту.
+  friends.onRequestSent = jam.pingFriendRequest;
+  jam.friendRequests.listen((_) => friends.refresh(quiet: true));
   // Длительность своих файлов, у которых её нет.
   DurationProbe(store);
   // Ошибки плеера (не играет трек, исполнитель в чёрном списке) — внизу экрана.

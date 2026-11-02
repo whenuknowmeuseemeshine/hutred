@@ -183,11 +183,13 @@ class JamScreen extends StatelessWidget {
       ),
     );
 
+    final asTab = !Navigator.of(context).canPop();
+    final topPad = asTab ? MediaQuery.paddingOf(context).top + 20 : 0.0;
     return Scaffold(
-      appBar: AppBar(),
+      appBar: asTab ? null : AppBar(),
       body: wide
           ? Padding(
-              padding: const EdgeInsets.fromLTRB(32, 0, 32, 0),
+              padding: EdgeInsets.fromLTRB(32, topPad, 32, 0),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Expanded(
                   child: ListView(padding: const EdgeInsets.only(bottom: 120), children: main),
@@ -201,7 +203,7 @@ class JamScreen extends StatelessWidget {
               ]),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+              padding: EdgeInsets.fromLTRB(16, topPad, 16, 120),
               children: [...main, const SizedBox(height: 24), invite],
             ),
     );

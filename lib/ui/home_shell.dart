@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../services/account_service.dart';
+import '../services/friends_service.dart';
 import '../services/jam_service.dart';
 import '../services/offline_service.dart';
 import '../services/update_service.dart';
@@ -40,6 +41,7 @@ final navTabs = {
   'library': (icon: Ic.library_music_outlined, selected: Ic.library_music_outlined, label: 'Медиатека'),
   'search': (icon: Ic.search, selected: Ic.search, label: 'Поиск'),
   'playlists': (icon: Ic.queue_music, selected: Ic.queue_music, label: 'Плейлисты'),
+  'jam': (icon: Ic.graphic_eq, selected: Ic.graphic_eq, label: 'Джем'),
   'friends': (icon: Ic.people_outline, selected: Ic.people_outline, label: 'Друзья'),
   'transfer': (icon: Ic.move_to_inbox_outlined, selected: Ic.move_to_inbox_outlined, label: 'Перенос'),
   'settings': (icon: Ic.settings_outlined, selected: Ic.settings_outlined, label: 'Настройки'),
@@ -54,10 +56,23 @@ class _HomeShellState extends State<HomeShell> {
   static Widget _page(String id) => navPage(id);
 
   StreamSubscription<JamInvite>? _inviteSub;
+  StreamSubscription<FriendInfo>? _requestSub;
 
   @override
   void initState() {
     super.initState();
+    // Новая заявка в друзья — всплывающим сообщением с кнопкой «Принять».
+    _requestSub = context.read<FriendsService>().newRequests.listen((f) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 15),
+        content: Text('${f.name} хочет добавить тебя в друзья'),
+        action: SnackBarAction(
+          label: 'Принять',
+          onPressed: () => context.read<FriendsService>().accept(f),
+        ),
+      ));
+    });
     // Приглашения в джем — всплывающим сообщением с кнопкой «Войти».
     _inviteSub = context.read<JamService>().invites.listen((inv) {
       if (!mounted) return;
@@ -79,12 +94,19 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    _requestSub?.cancel();
     _inviteSub?.cancel();
     super.dispose();
   }
 
-  void _openJam() =>
+  /// Джем: своя вкладка, а если её скрыли — открываем поверх текущей.
+  void _openJam() {
+    if (_order.contains('jam')) {
+      setState(() => _tabId = 'jam');
+    } else {
       _navKeys[_current]!.currentState?.push(MaterialPageRoute(builder: (_) => const JamScreen()));
+    }
+  }
 
   List<String> get _order => context.read<SettingsStore>().visibleNav;
 
@@ -176,7 +198,13 @@ class _HomeShellState extends State<HomeShell> {
 
     final style = HutredStyle.of(context);
     final items = <NavItem>[
-      for (final id in order) (id: id, icon: navTabs[id]!.icon, label: navTabs[id]!.label),
+      for (final id in order)
+        (
+          id: id,
+          icon: navTabs[id]!.icon,
+          label: navTabs[id]!.label,
+          badge: id == 'friends' ? context.watch<FriendsService>().incoming.length : 0,
+        ),
     ];
     void onSelect(String id) => _select(order.indexOf(id));
 
@@ -433,5 +461,6 @@ Widget navPage(String id) => switch (id) {
       'playlists' => const PlaylistsScreen(),
       'transfer' => const TransferScreen(),
       'friends' => const FriendsScreen(),
+      'jam' => const JamScreen(),
       _ => const SettingsScreen(),
     };

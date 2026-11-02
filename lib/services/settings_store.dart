@@ -70,7 +70,7 @@ class SettingsStore extends ChangeNotifier {
   bool _fullscreenLyrics = true;
   bool _queuePanel = false;
   static const defaultNavOrder = [
-    'wave', 'library', 'search', 'playlists', 'friends', 'transfer', 'settings'
+    'wave', 'library', 'search', 'playlists', 'jam', 'friends', 'transfer', 'settings'
   ];
   List<String> _navOrder = List.of(defaultNavOrder);
 
@@ -100,6 +100,7 @@ class SettingsStore extends ChangeNotifier {
   bool _fadePause = true;
   bool _guest = false;
   bool _dnsOnly = false;
+  bool _shareOnline = true;
   bool _eqOn = false;
   List<double> _eqGains = const [];
   bool _pickArtists = false;
@@ -108,6 +109,13 @@ class SettingsStore extends ChangeNotifier {
   File? _file;
 
   Color get accent => _accent;
+
+  /// Показывать друзьям, что я в сети и что слушаю.
+  bool get shareOnline => _shareOnline;
+  set shareOnline(bool v) {
+    _shareOnline = v;
+    _save();
+  }
 
   /// Стиль, с которым запущено приложение: mono, glass или sharp.
   /// Меняется только после перезапуска — у стилей разная раскладка экранов.
@@ -512,6 +520,12 @@ class SettingsStore extends ChangeNotifier {
         final kept = nav.where(defaultNavOrder.contains).toSet().toList();
         for (final id in defaultNavOrder) {
           if (kept.contains(id)) continue;
+          // Джем встаёт сразу после «Плейлистов», остальное новое — перед «Настройками».
+          final after = id == 'jam' ? kept.indexOf('playlists') : -1;
+          if (after >= 0) {
+            kept.insert(after + 1, id);
+            continue;
+          }
           final at = kept.indexOf('settings');
           kept.insert(at < 0 ? kept.length : at, id);
         }
@@ -542,6 +556,7 @@ class SettingsStore extends ChangeNotifier {
       _fadePause = j['fadePause'] as bool? ?? true;
       _guest = j['guest'] as bool? ?? false;
       _dnsOnly = j['dnsOnly'] as bool? ?? false;
+      _shareOnline = j['shareOnline'] as bool? ?? true;
       _eqOn = j['eqOn'] as bool? ?? false;
       _eqGains = [for (final g in (j['eqGains'] as List? ?? const [])) (g as num).toDouble()];
       _pickArtists = j['pickArtists'] as bool? ?? false;
@@ -577,6 +592,7 @@ class SettingsStore extends ChangeNotifier {
         'fadePause': _fadePause,
         'guest': _guest,
         'dnsOnly': _dnsOnly,
+        'shareOnline': _shareOnline,
         'eqOn': _eqOn,
         'eqGains': _eqGains,
         'pickArtists': _pickArtists,

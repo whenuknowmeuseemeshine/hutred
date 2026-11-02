@@ -41,6 +41,7 @@ class JamService extends ChangeNotifier {
     required this.wave,
   }) {
     account.addListener(_onAccount);
+    player.addListener(_onPlayerForPresence);
     _onAccount();
   }
 
@@ -69,6 +70,71 @@ class JamService extends ChangeNotifier {
   /// В каком джеме сейчас друг (id хозяина) или null.
   String? jamOf(String uid) => _jamOf[uid];
 
+  // ---------- Кто в сети ----------
+
+  /// Показывать ли другим, что я в сети и что слушаю (настройка).
+  bool Function() shareOnline = () => true;
+
+  /// Кто сейчас в сети: id → что слушает («Название — Исполнитель» или '').
+  final Map<String, String> _online2 = {};
+
+  /// Когда друг был в сети последний раз (пока приложение открыто).
+  final Map<String, DateTime> _lastSeen = {};
+
+  bool isOnline(String uid) => _online2.containsKey(uid);
+
+  /// Что друг слушает прямо сейчас (null — ничего или скрыл).
+  String? listeningOf(String uid) {
+    final t = _online2[uid];
+    return t == null || t.isEmpty ? null : t;
+  }
+
+  DateTime? lastSeenOf(String uid) => _lastSeen[uid];
+
+  final _friendPings = StreamController<String>.broadcast();
+
+  /// Кто-то прислал мне заявку в друзья (имя) — чтобы сразу обновить список.
+  Stream<String> get friendRequests => _friendPings.stream;
+
+  /// Сообщить другу, что я отправил ему заявку.
+  Future<void> pingFriendRequest(String toUid) async {
+    await _online?.sendBroadcastMessage(
+      event: 'friend_request',
+      payload: {'to': toUid, 'fromName': _myName},
+    );
+  }
+
+  String _nowPlaying() {
+    final t = player.current;
+    if (t == null || !player.playing) return '';
+    return '${t.title} — ${t.artist}';
+  }
+
+  String _lastShared = '';
+  Timer? _shareDebounce;
+
+  /// Трек сменился или пауза — обновляем «что слушаю» (не чаще раза в 2 с).
+  void _onPlayerForPresence() {
+    final now = _nowPlaying();
+    if (now == _lastShared) return;
+    _shareDebounce?.cancel();
+    _shareDebounce = Timer(const Duration(seconds: 2), () {
+      _lastShared = _nowPlaying();
+      _trackOnline();
+    });
+  }
+
+  /// Настройку «показывать, что я в сети» поменяли.
+  void refreshPresence() {
+    final ch = _online;
+    if (ch == null) return;
+    if (shareOnline()) {
+      _trackOnline();
+    } else {
+      unawaited(ch.untrack());
+    }
+  }
+
   void _onAccount() {
     final me = _me;
     if (me == _onlineFor) return;
@@ -85,15 +151,29 @@ class JamService extends ChangeNotifier {
     ch
         .onPresenceSync((_) {
           _jamOf.clear();
+          final was = Set.of(_online2.keys);
+          _online2.clear();
           for (final s in ch.presenceState()) {
             for (final p in s.presences) {
               final uid = p.payload['uid'];
               final jam = p.payload['jam'];
               if (uid is String && jam is String) _jamOf[uid] = jam;
+              if (uid is String) _online2[uid] = '${p.payload['track'] ?? ''}';
             }
+          }
+          final now = DateTime.now();
+          for (final uid in was.difference(_online2.keys.toSet())) {
+            _lastSeen[uid] = now;
           }
           notifyListeners();
         })
+        .onBroadcast(
+          event: 'friend_request',
+          callback: (p) {
+            if (p['to'] != _me) return;
+            _friendPings.add('${p['fromName'] ?? 'Кто-то'}');
+          },
+        )
         .onBroadcast(
           event: 'invite',
           callback: (p) {
@@ -113,7 +193,15 @@ class JamService extends ChangeNotifier {
     final me = _me;
     final ch = _online;
     if (me == null || ch == null) return;
-    unawaited(ch.track({'uid': me, if (_host != null) 'jam': _host}));
+    if (!shareOnline()) {
+      unawaited(ch.untrack());
+      return;
+    }
+    unawaited(ch.track({
+      'uid': me,
+      if (_host != null) 'jam': _host,
+      'track': _lastShared = _nowPlaying(),
+    }));
   }
 
   /// Позвать друга в свой джем (если джема нет — он начнётся).
@@ -447,6 +535,9 @@ class JamService extends ChangeNotifier {
   @override
   void dispose() {
     account.removeListener(_onAccount);
+    player.removeListener(_onPlayerForPresence);
+    _shareDebounce?.cancel();
+    _friendPings.close();
     _beat?.cancel();
     _invites.close();
     super.dispose();

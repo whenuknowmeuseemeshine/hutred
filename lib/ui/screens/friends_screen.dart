@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../models/playlist.dart';
 import '../../models/track.dart';
 import '../../services/account_service.dart';
+import '../../services/settings_store.dart';
 import '../../services/friends_service.dart';
 import '../../services/library_store.dart';
 import '../../services/player_service.dart';
@@ -14,6 +15,8 @@ import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
 import 'account_screen.dart';
 import '../icons.dart';
+import '../widgets/style_bits.dart';
+import '../../services/jam_service.dart';
 
 /// Друзья: добавить по логину, заявки, список друзей и их медиатеки.
 class FriendsScreen extends StatefulWidget {
@@ -68,137 +71,287 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Друзья'),
-        actions: [
-          TextButton.icon(
-            onPressed: () => JamScreen.open(context),
-            icon: Icon(Ic.graphic_eq_rounded, size: 18),
-            label: const Text('Джем'),
+    final jam = context.watch<JamService>();
+    final settings = context.watch<SettingsStore>();
+    final st = HutredStyle.of(context);
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final pad = stylePagePadding(context);
+    final onlineCount = f.friends.where((fr) => jam.isOnline(fr.userId)).length;
+    // Сначала те, кто в сети.
+    final friends = List.of(f.friends)
+      ..sort((a, b) {
+        final oa = jam.isOnline(a.userId) ? 0 : 1, ob = jam.isOnline(b.userId) ? 0 : 1;
+        return oa != ob ? oa - ob : (a.username ?? '').compareTo(b.username ?? '');
+      });
+
+    String ago(DateTime t) {
+      final d = DateTime.now().difference(t);
+      if (d.inMinutes < 1) return 'только что';
+      if (d.inMinutes < 60) return '${d.inMinutes} мин назад';
+      return '${d.inHours} ч назад';
+    }
+
+    Widget requestCard(FriendInfo r) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: st.sharp
+                  ? null
+                  : st.glass
+                      ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.14)
+                      : const Color(0xFF1A1A1A),
+              border: st.sharp ? Border.all(color: Theme.of(context).colorScheme.primary) : null,
+              borderRadius: BorderRadius.circular(st.sharp ? 0 : st.glass ? 18 : 12),
+            ),
+            child: Row(children: [
+              _Avatar(info: r, online: jam.isOnline(r.userId)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(r.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const Text('хочет добавить тебя в друзья',
+                      style: TextStyle(fontSize: 12, color: HutredTheme.muted)),
+                ]),
+              ),
+              StyleButton(label: 'Принять', onPressed: () => f.accept(r)),
+              IconButton(
+                tooltip: 'Отклонить',
+                onPressed: () => f.remove(r),
+                icon: Icon(Ic.close, size: 18),
+              ),
+            ]),
           ),
-          IconButton(
-            tooltip: 'Обновить',
-            onPressed: f.loading ? null : f.refresh,
-            icon: Icon(Ic.refresh),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: f.refresh,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _name,
-                    onSubmitted: (_) => _send(),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixText: '@',
-                      hintText: 'логин друга',
-                      border: OutlineInputBorder(),
-                    ),
+        );
+
+    Widget friendRow(FriendInfo fr, int i) {
+      final online = jam.isOnline(fr.userId);
+      final listening = jam.listeningOf(fr.userId);
+      final hisJam = jam.jamOf(fr.userId);
+      final seen = jam.lastSeenOf(fr.userId);
+      final status = hisJam != null
+          ? (hisJam == jam.hostId ? 'С тобой в джеме' : 'В джеме')
+          : listening != null
+              ? 'Слушает: $listening'
+              : online
+                  ? 'В сети'
+                  : seen != null
+                      ? 'Был в сети ${ago(seen)}'
+                      : 'Не в сети';
+      final Widget action;
+      if (hisJam != null && hisJam != jam.hostId) {
+        action = TextButton(onPressed: () => jam.join(hisJam), child: const Text('Присоединиться'));
+      } else if (online && hisJam == null) {
+        action = StyleButton(
+          label: 'Позвать в джем',
+          icon: Ic.graphic_eq,
+          primary: false,
+          onPressed: () async {
+            try {
+              await jam.invite(fr.userId);
+              if (context.mounted) AppActions.toast(context, 'Позвали ${fr.name}');
+            } catch (e) {
+              if (context.mounted) {
+                AppActions.toast(context, e.toString().replaceFirst('Exception: ', ''));
+              }
+            }
+          },
+        );
+      } else {
+        action = const SizedBox.shrink();
+      }
+      return InkWell(
+        onTap: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => FriendLibraryScreen(friend: fr))),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          decoration: i == 0
+              ? null
+              : BoxDecoration(
+                  border: Border(
+                      top: BorderSide(
+                          color: st.glass
+                              ? Colors.white.withValues(alpha: 0.07)
+                              : const Color(0xFF1F1F1F)))),
+          child: Row(children: [
+            _Avatar(info: fr, online: online, radius: 22),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(fr.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Row(children: [
+                  if (listening != null) ...[
+                    Icon(Ic.graphic_eq, size: 13, color: const Color(0xFF4ADE80)),
+                    const SizedBox(width: 5),
+                  ],
+                  Flexible(
+                    child: Text(status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: online || hisJam != null
+                                ? const Color(0xFF4ADE80)
+                                : HutredTheme.muted)),
                   ),
-                ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: _sending ? null : _send,
-                  icon: Icon(Ic.person_add_alt_1),
-                  label: const Text('Добавить'),
-                ),
+                ]),
+              ]),
+            ),
+            action,
+            PopupMenuButton<String>(
+              onSelected: (_) async {
+                final ok = await AppActions.confirm(context,
+                    title: 'Удалить из друзей?',
+                    body: '${fr.name} больше не будет видеть твою медиатеку, а ты — его.');
+                if (ok) f.remove(fr);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'remove', child: Text('Удалить из друзей')),
               ],
             ),
-            if (acc.username == null)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text(
-                  'Задай себе логин в Аккаунте — по нему друзья найдут тебя.',
-                  style: TextStyle(color: HutredTheme.muted),
-                ),
-              ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Показывать мою медиатеку друзьям'),
-              subtitle: const Text(
-                  'Отдельный трек можно скрыть в его меню: «Скрыть от друзей»'),
-              value: f.libraryPublic,
-              onChanged: f.setLibraryPublic,
-            ),
-            if (f.error != null)
-              Text(f.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            if (f.incoming.isNotEmpty) ...[
-              const _Section('Заявки в друзья'),
-              for (final r in f.incoming)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: _Avatar(info: r),
-                  title: Text(r.name),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'Отклонить',
-                        onPressed: () => f.remove(r),
-                        icon: Icon(Ic.close),
-                      ),
-                      FilledButton(
-                        onPressed: () => f.accept(r),
-                        child: const Text('Принять'),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-            const _Section('Друзья'),
-            if (f.loading && f.friends.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (f.friends.isEmpty)
-              const Text('Пока никого. Добавь друга по логину.',
-                  style: TextStyle(color: HutredTheme.muted))
-            else
-              for (final fr in f.friends)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: _Avatar(info: fr),
-                  title: Text(fr.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: const Text('Открыть медиатеку'),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => FriendLibraryScreen(friend: fr))),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (_) async {
-                      final ok = await AppActions.confirm(context,
-                          title: 'Удалить из друзей?',
-                          body: '${fr.name} больше не будет видеть твою медиатеку, а ты — его.');
-                      if (ok) f.remove(fr);
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'remove', child: Text('Удалить из друзей')),
-                    ],
-                  ),
-                ),
-            if (f.outgoing.isNotEmpty) ...[
-              const _Section('Отправленные заявки'),
-              for (final r in f.outgoing)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: _Avatar(info: r),
-                  title: Text(r.name),
-                  subtitle: const Text('Ждёт ответа'),
-                  trailing: TextButton(
-                    onPressed: () => f.remove(r),
-                    child: const Text('Отменить'),
-                  ),
-                ),
-            ],
-          ],
+          ]),
         ),
+      );
+    }
+
+    final addPanel = StylePanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const StyleCaption('Добавить друга'),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _name,
+            onSubmitted: (_) => _send(),
+            decoration: const InputDecoration(prefixText: '@', hintText: 'логин друга'),
+          ),
+          const SizedBox(height: 10),
+          StyleButton(
+            label: 'Отправить заявку',
+            icon: Ic.person_add_alt_1,
+            onPressed: _sending ? null : _send,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            acc.username == null
+                ? 'Задай себе логин в Аккаунте — по нему друзья найдут тебя.'
+                : 'Друг увидит заявку сразу — всплывёт сообщение.',
+            style: const TextStyle(fontSize: 12, color: HutredTheme.muted, height: 1.45),
+          ),
+        ],
+      ),
+    );
+
+    final privacy = StylePanel(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(children: [
+        SwitchListTile(
+          title: const Text('Показывать, что я в сети'),
+          subtitle: const Text('и что слушаю сейчас'),
+          value: settings.shareOnline,
+          onChanged: (v) {
+            settings.shareOnline = v;
+            jam.refreshPresence();
+          },
+        ),
+        SwitchListTile(
+          title: const Text('Показывать мою медиатеку друзьям'),
+          subtitle: const Text('Отдельный трек можно скрыть в его меню'),
+          value: f.libraryPublic,
+          onChanged: f.setLibraryPublic,
+        ),
+      ]),
+    );
+
+    final main = <Widget>[
+      Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('Друзья', style: st.display(wide ? 52 : 32)),
+        const SizedBox(width: 16),
+        if (onlineCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('● $onlineCount в сети',
+                style: const TextStyle(color: Color(0xFF4ADE80), fontWeight: FontWeight.w600)),
+          ),
+        const Spacer(),
+        if (!settings.visibleNav.contains('jam'))
+          TextButton.icon(
+            onPressed: () => JamScreen.open(context),
+            icon: Icon(Ic.graphic_eq, size: 18),
+            label: const Text('Джем'),
+          ),
+        IconButton(
+          tooltip: 'Обновить',
+          onPressed: f.loading ? null : f.refresh,
+          icon: Icon(Ic.refresh),
+        ),
+      ]),
+      if (f.error != null)
+        Text(f.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      if (f.incoming.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        StyleCaption('Заявки в друзья · ${f.incoming.length}'),
+        const SizedBox(height: 10),
+        for (final r in f.incoming) requestCard(r),
+      ],
+      const SizedBox(height: 18),
+      const StyleCaption('Друзья'),
+      const SizedBox(height: 6),
+      if (f.loading && f.friends.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (f.friends.isEmpty)
+        const Text('Пока никого. Добавь друга по логину.',
+            style: TextStyle(color: HutredTheme.muted))
+      else
+        for (final (i, fr) in friends.indexed) friendRow(fr, i),
+      if (f.outgoing.isNotEmpty) ...[
+        const SizedBox(height: 18),
+        const StyleCaption('Отправленные заявки'),
+        for (final r in f.outgoing)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: _Avatar(info: r),
+            title: Text(r.name),
+            subtitle: const Text('Ждёт ответа'),
+            trailing: TextButton(onPressed: () => f.remove(r), child: const Text('Отменить')),
+          ),
+      ],
+    ];
+
+    final top = MediaQuery.paddingOf(context).top + pad.top;
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: f.refresh,
+        child: wide
+            ? Padding(
+                padding: EdgeInsets.fromLTRB(pad.left, top, pad.right, 0),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: ListView(padding: const EdgeInsets.only(bottom: 120), children: main),
+                  ),
+                  const SizedBox(width: 24),
+                  SizedBox(
+                    width: 330,
+                    child: ListView(
+                      padding: const EdgeInsets.only(top: 70, bottom: 120),
+                      children: [addPanel, const SizedBox(height: 14), privacy],
+                    ),
+                  ),
+                ]),
+              )
+            : ListView(
+                padding: EdgeInsets.fromLTRB(pad.left, top, pad.right, 120),
+                children: [
+                  ...main,
+                  const SizedBox(height: 20),
+                  addPanel,
+                  const SizedBox(height: 14),
+                  privacy,
+                ],
+              ),
       ),
     );
   }
@@ -359,14 +512,51 @@ class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.info, this.radius = 20});
+  const _Avatar({required this.info, this.radius = 20, this.online});
   final FriendInfo info;
   final double radius;
 
+  /// Точка «в сети» (null — без точки).
+  final bool? online;
+
   @override
   Widget build(BuildContext context) {
+    final avatar = _circle(context);
+    if (online == null) return avatar;
+    final sharp = HutredStyle.of(context).sharp;
+    return Stack(clipBehavior: Clip.none, children: [
+      avatar,
+      Positioned(
+        right: -1,
+        bottom: -1,
+        child: Container(
+          width: radius * 0.6,
+          height: radius * 0.6,
+          decoration: BoxDecoration(
+            shape: sharp ? BoxShape.rectangle : BoxShape.circle,
+            color: online! ? const Color(0xFF4ADE80) : const Color(0xFF555555),
+            border: Border.all(color: Theme.of(context).canvasColor, width: 2.5),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _circle(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final url = info.avatarUrl;
+    if (HutredStyle.of(context).sharp) {
+      return Container(
+        width: radius * 2,
+        height: radius * 2,
+        color: scheme.primary,
+        alignment: Alignment.center,
+        child: url == null
+            ? Text((info.username ?? '?')[0].toUpperCase(),
+                style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onPrimary))
+            : Image.network(url, fit: BoxFit.cover, width: radius * 2, height: radius * 2),
+      );
+    }
     return CircleAvatar(
       radius: radius,
       backgroundColor: scheme.primary,
@@ -379,17 +569,6 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-class _Section extends StatelessWidget {
-  const _Section(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(0, 24, 0, 8),
-        child: Text(text,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-      );
-}
 
 
 /// Плейлист друга: слушать или добавить себе целиком.

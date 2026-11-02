@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -32,7 +33,22 @@ class FriendInfo {
 class FriendsService extends ChangeNotifier {
   FriendsService({required this.account}) {
     account.addListener(_onAccount);
+    // Новые заявки появляются сами: раз в минуту проверяем список.
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (account.user != null) refresh(quiet: true);
+    });
   }
+
+  Timer? _timer;
+
+  /// Сообщить другу о заявке сразу (через общий канал «кто в сети»).
+  Future<void> Function(String toUid)? onRequestSent;
+
+  final _newRequests = StreamController<FriendInfo>.broadcast();
+
+  /// Пришла новая заявка в друзья — для всплывающего сообщения.
+  Stream<FriendInfo> get newRequests => _newRequests.stream;
+  Set<int>? _knownIncoming;
 
   final AccountService account;
   SupabaseClient get _db => Supabase.instance.client;
@@ -58,17 +74,20 @@ class FriendsService extends ChangeNotifier {
       _loadedFor = uid;
       _all = const [];
       _libraryPublic = null;
+      _knownIncoming = null;
       if (uid != null) refresh();
       notifyListeners();
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool quiet = false}) async {
     final me = account.user?.id;
     if (me == null) return;
-    _loading = true;
-    _error = null;
-    notifyListeners();
+    if (!quiet) {
+      _loading = true;
+      _error = null;
+      notifyListeners();
+    }
     try {
       final rows = await _db
           .from('friendships')
@@ -103,6 +122,15 @@ class FriendsService extends ChangeNotifier {
             );
           }(),
       ]..sort((a, b) => (a.username ?? '').compareTo(b.username ?? ''));
+      // Новые входящие заявки (после первой загрузки) — всплывашкой.
+      final inc = incoming;
+      final known = _knownIncoming;
+      if (known != null) {
+        for (final f in inc) {
+          if (!known.contains(f.friendshipId)) _newRequests.add(f);
+        }
+      }
+      _knownIncoming = {for (final f in inc) f.friendshipId};
 
       final mine = await _db
           .from('profiles')
@@ -142,6 +170,7 @@ class FriendsService extends ChangeNotifier {
         return 'Заявка уже отправлена';
       }
       await _db.from('friendships').insert({'requester': me, 'addressee': other});
+      await onRequestSent?.call(other);
       await refresh();
       return null;
     } catch (e) {

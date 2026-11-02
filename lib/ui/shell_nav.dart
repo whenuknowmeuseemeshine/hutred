@@ -9,7 +9,30 @@ import 'widgets/user_avatar.dart';
 import 'screens/account_screen.dart';
 
 /// Вкладка для меню: id, значок, подпись.
-typedef NavItem = ({String id, IconData icon, String label});
+typedef NavItem = ({String id, IconData icon, String label, int badge});
+
+/// Счётчик на вкладке (новые заявки в друзья).
+class NavBadge extends StatelessWidget {
+  const NavBadge(this.count, {super.key, this.small = false});
+  final int count;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final bg = st.glass ? const Color(0xFFF472B6) : st.sharp ? accent : const Color(0xFFEF4444);
+    final fg = st.glass ? const Color(0xFF0B0B12) : st.sharp ? HutredTheme.onAccent(accent) : Colors.white;
+    return Container(
+      constraints: BoxConstraints(minWidth: small ? 16 : 20),
+      padding: EdgeInsets.symmetric(horizontal: small ? 4 : 6, vertical: 1),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(st.sharp ? 0 : 99)),
+      child: Text('$count',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: fg, fontSize: small ? 10 : 11, fontWeight: FontWeight.w800)),
+    );
+  }
+}
 
 const _ink2 = Color(0xFF1A1A1A);
 
@@ -112,6 +135,10 @@ class _MonoNavTile extends StatelessWidget {
                         color: color,
                         fontSize: 14,
                         fontWeight: selected ? FontWeight.w600 : FontWeight.w500)),
+                if (item.badge > 0) ...[const Spacer(), NavBadge(item.badge)],
+              ] else if (item.badge > 0) ...[
+                const SizedBox(width: 2),
+                NavBadge(item.badge, small: true),
               ],
             ],
           ),
@@ -192,9 +219,15 @@ class GlassRail extends StatelessWidget {
                       onTap: () => onSelect(i.id),
                       child: SizedBox.square(
                         dimension: 48,
-                        child: Icon(i.icon,
-                            size: 22,
-                            color: i.id == selected ? Colors.white : const Color(0xFFB4B4C6)),
+                        child: Stack(children: [
+                          Center(
+                            child: Icon(i.icon,
+                                size: 22,
+                                color: i.id == selected ? Colors.white : const Color(0xFFB4B4C6)),
+                          ),
+                          if (i.badge > 0)
+                            Positioned(top: 5, right: 5, child: NavBadge(i.badge, small: true)),
+                        ]),
                       ),
                     ),
                   ),
@@ -272,15 +305,18 @@ class SharpTopNav extends StatelessWidget {
                         child: Container(
                           color: i.id == selected ? accent : Colors.transparent,
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          child: Text(
-                            i.label,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: i.id == selected
-                                  ? HutredTheme.onAccent(accent)
-                                  : const Color(0xFF8A8A8A),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text(
+                              i.label,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: i.id == selected
+                                    ? HutredTheme.onAccent(accent)
+                                    : const Color(0xFF8A8A8A),
+                              ),
                             ),
-                          ),
+                            if (i.badge > 0) ...[const SizedBox(width: 6), NavBadge(i.badge, small: true)],
+                          ]),
                         ),
                       ),
                     ),
@@ -353,7 +389,7 @@ class PhoneNav extends StatelessWidget {
                 color: sel ? accent : Colors.transparent,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Text(
-                  i.label,
+                  i.badge > 0 ? '${i.label} ${i.badge}' : i.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -369,6 +405,12 @@ class PhoneNav extends StatelessWidget {
       }
       final color = sel ? HutredTheme.text : const Color(0xFFA3A3A3);
       Widget icon = Icon(i.icon, size: 24, color: color);
+      if (i.badge > 0) {
+        icon = Stack(clipBehavior: Clip.none, children: [
+          icon,
+          Positioned(top: -4, right: -10, child: NavBadge(i.badge, small: true)),
+        ]);
+      }
       if (style.glass && sel) {
         icon = Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
