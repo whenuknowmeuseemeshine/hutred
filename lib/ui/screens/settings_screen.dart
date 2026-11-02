@@ -616,12 +616,8 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
         child: Text(text.toUpperCase(),
-            style: TextStyle(
-              fontSize: 12,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.primary,
-            )),
+            style: HutredStyle.of(context)
+                .caption(color: Theme.of(context).colorScheme.primary)),
       );
 }
 

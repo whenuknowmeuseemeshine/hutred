@@ -60,6 +60,15 @@ class HutredStyle extends ThemeExtension<HutredStyle> {
         height: 1.05,
       );
 
+  /// Мелкая подпись над разделом: у «Резкого» — моноширинная, как в макете.
+  TextStyle caption({Color? color, double size = 12}) => TextStyle(
+        fontFamily: sharp ? 'JetBrainsMono' : font,
+        fontSize: sharp ? size - 0.5 : size,
+        fontWeight: sharp ? FontWeight.w500 : FontWeight.w700,
+        letterSpacing: sharp ? 0.6 : 1.2,
+        color: color,
+      );
+
   /// Форма кнопок: капсула или прямоугольник.
   OutlinedBorder get buttonShape => sharp
       ? const RoundedRectangleBorder()

@@ -8,6 +8,7 @@ import '../../services/library_store.dart';
 import '../../services/player_service.dart';
 import '../../services/settings_store.dart';
 import '../../services/wave_service.dart';
+import '../shell_nav.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
 import 'now_playing_screen.dart';
@@ -339,7 +340,7 @@ class _SharpWave extends StatelessWidget {
     final style = HutredStyle.of(context);
     final current = player.current;
     final onWave = wave.isWaveTrack(current);
-    const mono = TextStyle(fontSize: 11, color: Color(0xFF8A8A8A), letterSpacing: 1);
+    final mono = style.caption(color: const Color(0xFF8A8A8A), size: 11);
 
     // Режимы: обычная волна, только по любимым, по недавно добавленным.
     final favs = store.favorites;
@@ -362,6 +363,14 @@ class _SharpWave extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
       children: [
+        if (MediaQuery.sizeOf(context).width < 800) ...[
+          Row(children: [
+            SharpWordmark(size: 18, accent: accent),
+            const Spacer(),
+            Text(_dayCaption(), style: mono),
+          ]),
+          const SizedBox(height: 28),
+        ],
         Text('ПОД НАСТРОЕНИЕ', style: mono.copyWith(color: accent)),
         const SizedBox(height: 10),
         Text('Моя\nволна', style: style.display(72).copyWith(height: 0.95)),
@@ -477,7 +486,7 @@ class _SharpWave extends StatelessWidget {
         ],
         if (next.isNotEmpty) ...[
           const SizedBox(height: 24),
-          const Text('ДАЛЬШЕ', style: mono),
+          Text('ДАЛЬШЕ', style: mono),
           const SizedBox(height: 8),
           for (final (k, t) in next.indexed)
             InkWell(
@@ -520,4 +529,13 @@ class _SharpWave extends StatelessWidget {
       ],
     );
   }
+}
+
+/// «ПН · ВЕЧЕР» — день недели и время суток для шапки «Резкого».
+String _dayCaption() {
+  final now = DateTime.now();
+  const days = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+  final h = now.hour;
+  final part = h < 5 ? 'НОЧЬ' : h < 12 ? 'УТРО' : h < 18 ? 'ДЕНЬ' : 'ВЕЧЕР';
+  return '${days[now.weekday - 1]} · $part';
 }

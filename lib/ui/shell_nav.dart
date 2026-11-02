@@ -153,7 +153,30 @@ class GlassRail extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Column(
           children: [
-            const HutredLogo(size: 40),
+            // Логотип «Стекла»: буква на градиенте из акцента.
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    accent,
+                    HSLColor.fromColor(accent)
+                        .withHue((HSLColor.fromColor(accent).hue + 60) % 360)
+                        .toColor(),
+                  ],
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text('H',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: HutredTheme.onAccent(accent))),
+            ),
             const SizedBox(height: 18),
             for (final i in items)
               Padding(

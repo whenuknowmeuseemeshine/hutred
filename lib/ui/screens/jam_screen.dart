@@ -135,11 +135,8 @@ class _Head extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(0, 28, 0, 10),
         child: Text(text.toUpperCase(),
-            style: TextStyle(
-                fontSize: 12,
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.primary)),
+            style: HutredStyle.of(context)
+                .caption(color: Theme.of(context).colorScheme.primary)),
       );
 }
 

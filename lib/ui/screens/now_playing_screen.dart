@@ -871,7 +871,7 @@ class _SharpWide extends StatelessWidget {
     final track = store.byId(player.current!.id) ?? player.current!;
     final accent = Theme.of(context).colorScheme.primary;
     final style = HutredStyle.of(context);
-    const mono = TextStyle(fontSize: 12, color: Color(0xFF8A8A8A), letterSpacing: 1);
+    final mono = style.caption(color: const Color(0xFF8A8A8A));
     final from = wave.radioLabel?.toUpperCase() ??
         (wave.isWaveTrack(track) ? 'ИЗ ВОЛНЫ' : sourceLabel(track.source).toUpperCase());
     final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
@@ -972,8 +972,8 @@ class _SharpWide extends StatelessWidget {
     final right = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(32, 8, 32, 8),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 8, 32, 8),
           child: Text('ТЕКСТ', style: mono),
         ),
         Expanded(child: LyricsPanel(track: track)),
