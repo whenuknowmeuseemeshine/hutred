@@ -10,6 +10,9 @@ import '../../services/settings_store.dart';
 import '../../services/wave_service.dart';
 import '../shell_nav.dart';
 import '../theme.dart';
+import '../widgets/style_bits.dart';
+import '../widgets/track_tile.dart';
+import '../../models/track.dart';
 import '../widgets/artwork.dart';
 import 'now_playing_screen.dart';
 import 'search_screen.dart';
@@ -32,7 +35,87 @@ class WaveScreen extends StatelessWidget {
 
     final content = LayoutBuilder(
         builder: (context, box) {
-          final size = min(box.maxWidth - 48, min(box.maxHeight * 0.48, 340.0));
+          final wideLayout = box.maxWidth >= 900;
+          final size = wideLayout
+              ? min(box.maxHeight * 0.5, 320.0)
+              : min(box.maxWidth - 48, min(box.maxHeight * 0.48, 340.0));
+          if (wideLayout) {
+            // Компьютер по макету: слева круг и режимы, справа что играет и дальше.
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(32, 12, 32, 120),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(children: [
+                      const SizedBox(height: 20),
+                      _WaveOrb(
+                        size: size,
+                        color: accent,
+                        playing: onWave && player.playing,
+                        loading: wave.loading,
+                        glow: HutredStyle.of(context).glass,
+                        onTap: () {
+                          if (wave.loading) return;
+                          if (onWave) {
+                            player.togglePlay();
+                          } else {
+                            wave.start();
+                          }
+                        },
+                        icon: onWave && player.playing
+                            ? Ic.pause_rounded
+                            : Ic.play_arrow_rounded,
+                      ),
+                      const SizedBox(height: 22),
+                      Text('Моя волна', style: HutredStyle.of(context).display(44)),
+                      const SizedBox(height: 8),
+                      Text(
+                          wave.radioLabel ??
+                              (onWave ? 'Волна играет' : 'Бесконечный поток под твой вкус'),
+                          style: const TextStyle(color: HutredTheme.muted)),
+                      const SizedBox(height: 18),
+                      const _ModeChips(center: true),
+                      if (wave.error != null) ...[
+                        const SizedBox(height: 14),
+                        Text(wave.error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                      ],
+                      if (wave.dislikedCount > 0)
+                        TextButton(
+                          onPressed: wave.resetDislikes,
+                          child: Text('Сбросить дизлайки (${wave.dislikedCount})'),
+                        ),
+                    ]),
+                  ),
+                  const SizedBox(width: 40),
+                  SizedBox(
+                    width: 420,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const StyleCaption('Сейчас в волне'),
+                        const SizedBox(height: 8),
+                        if (onWave)
+                          _NowOnWave()
+                        else
+                          const StylePanel(
+                            child: Text(
+                              'Нажми на круг — волна подберёт музыку по трекам с ♥ и тому, '
+                              'что ты часто слушаешь. Лайк делает похожее чаще, '
+                              '«не нравится» убирает трек навсегда.',
+                              style: TextStyle(color: HutredTheme.muted, height: 1.45),
+                            ),
+                          ),
+                        if (onWave) const _UpNext(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
             child: Column(
@@ -41,6 +124,7 @@ class WaveScreen extends StatelessWidget {
                 _WaveOrb(
                   size: size,
                   color: accent,
+                  glow: HutredStyle.of(context).glass,
                   playing: onWave && player.playing,
                   loading: wave.loading,
                   onTap: () {
@@ -68,6 +152,8 @@ class WaveScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: HutredTheme.muted, height: 1.4),
                 ),
+                const SizedBox(height: 16),
+                const _ModeChips(center: true),
                 if (wave.error != null) ...[
                   const SizedBox(height: 16),
                   Text(wave.error!,
@@ -153,11 +239,20 @@ class _NowOnWave extends StatelessWidget {
     final saved = store.findBySource(t.source, t.uri);
     final liked = saved?.favorite ?? false;
 
+    final st = HutredStyle.of(context);
+    final r = BorderRadius.circular(st.glass ? 22 : st.sharp ? 0 : 12);
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
+      color: st.glass ? Colors.white.withValues(alpha: 0.06) : const Color(0xFF141414),
+      shape: RoundedRectangleBorder(
+        borderRadius: r,
+        side: st.glass
+            ? BorderSide(color: Colors.white.withValues(alpha: 0.08))
+            : st.sharp
+                ? const BorderSide(color: Color(0xFF2A2A2A))
+                : BorderSide.none,
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: r,
         onTap: () => NowPlayingScreen.open(context),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -213,8 +308,11 @@ class _WaveOrb extends StatefulWidget {
     required this.loading,
     required this.onTap,
     required this.icon,
+    this.glow = false,
   });
 
+  /// «Стекло»: светящийся шар.
+  final bool glow;
   final double size;
   final Color color;
   final bool playing;
@@ -244,8 +342,16 @@ class _WaveOrbState extends State<_WaveOrb> with SingleTickerProviderStateMixin 
       label: widget.playing ? 'Пауза' : 'Запустить волну',
       child: GestureDetector(
         onTap: widget.onTap,
-        child: SizedBox.square(
-          dimension: widget.size,
+        child: Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: widget.glow
+              ? BoxDecoration(shape: BoxShape.circle, boxShadow: [
+                  BoxShadow(color: widget.color.withValues(alpha: 0.55), blurRadius: 90),
+                  BoxShadow(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.2), blurRadius: 180),
+                ])
+              : null,
           child: AnimatedBuilder(
             animation: _c,
             builder: (context, _) => CustomPaint(
@@ -345,23 +451,50 @@ class _SharpWave extends StatelessWidget {
     // Режимы: обычная волна, только по любимым, по недавно добавленным.
     final favs = store.favorites;
     final recent = List.of(store.tracks)..sort((a, b) => b.addedAt.compareTo(a.addedAt));
-    final modes = <(String, String?, Future<void> Function())>[
-      ('Как обычно', null, wave.start),
-      if (favs.isNotEmpty)
-        ('По любимым', 'По любимым',
-            () => wave.startCustom([for (final t in favs) (track: t, weight: 3)],
-                label: 'По любимым')),
-      if (recent.isNotEmpty)
-        ('По свежим', 'По свежим',
-            () => wave.startCustom([for (final t in recent.take(20)) (track: t, weight: 3)],
-                label: 'По свежим')),
-    ];
+    final modes = waveModes(wave, favs, recent);
     final activeMode = onWave ? (wave.radioLabel) : '-';
 
-    final next = player.queue.skip(player.index + 1).take(onWave ? 6 : 0).toList();
+    final next = player.queue.skip(player.index + 1).take(onWave ? 8 : 0).toList();
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final nextList = <Widget>[
+      if (next.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text(wide ? 'ДАЛЬШЕ В ВОЛНЕ' : 'ДАЛЬШЕ', style: mono.copyWith(color: wide ? accent : null)),
+          const SizedBox(height: 8),
+          for (final (k, t) in next.indexed)
+            InkWell(
+              onTap: () => player.jumpTo(player.index + 1 + k),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: Color(0xFF1F1F1F)))),
+                child: Row(children: [
+                  SizedBox(
+                      width: 28,
+                      child: Text((k + 1).toString().padLeft(2, '0'),
+                          style: mono.copyWith(color: const Color(0xFF555555)))),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(t.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF8A8A8A))),
+                    ]),
+                  ),
+                  Text(formatDuration(t.duration), style: mono.copyWith(letterSpacing: 0)),
+                ]),
+              ),
+            ),
+        
+      ],
+    ];
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+    final left = ListView(
+      padding: EdgeInsets.fromLTRB(wide ? 32 : 20, 8, wide ? 32 : 20, 120),
       children: [
         if (MediaQuery.sizeOf(context).width < 800) ...[
           Row(children: [
@@ -373,7 +506,7 @@ class _SharpWave extends StatelessWidget {
         ],
         Text('ПОД НАСТРОЕНИЕ', style: mono.copyWith(color: accent)),
         const SizedBox(height: 10),
-        Text('Моя\nволна', style: style.display(72).copyWith(height: 0.95)),
+        Text('Моя\nволна', style: style.display(wide ? 110 : 72).copyWith(height: 0.95)),
         const SizedBox(height: 20),
         Wrap(
           spacing: 8,
@@ -484,39 +617,7 @@ class _SharpWave extends StatelessWidget {
           const SizedBox(height: 12),
           Text(wave.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
         ],
-        if (next.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text('ДАЛЬШЕ', style: mono),
-          const SizedBox(height: 8),
-          for (final (k, t) in next.indexed)
-            InkWell(
-              onTap: () => player.jumpTo(player.index + 1 + k),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: const BoxDecoration(
-                    border: Border(top: BorderSide(color: Color(0xFF1F1F1F)))),
-                child: Row(children: [
-                  SizedBox(
-                      width: 28,
-                      child: Text((k + 1).toString().padLeft(2, '0'),
-                          style: mono.copyWith(color: const Color(0xFF555555)))),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(t.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text(t.artist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13, color: Color(0xFF8A8A8A))),
-                    ]),
-                  ),
-                  Text(formatDuration(t.duration), style: mono.copyWith(letterSpacing: 0)),
-                ]),
-              ),
-            ),
-        ],
+        if (!wide) ...nextList,
         const SizedBox(height: 20),
         if (wave.dislikedCount > 0)
           Align(
@@ -526,6 +627,26 @@ class _SharpWave extends StatelessWidget {
               child: Text('Сбросить дизлайки (${wave.dislikedCount})'),
             ),
           ),
+      ],
+    );
+    if (!wide) return left;
+    // Компьютер по макету C: слева «Моя волна» крупно, справа «Дальше в волне».
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: left),
+        SizedBox(
+          width: 440,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(0, 8, 32, 120),
+            children: nextList.isEmpty
+                ? [Text('ДАЛЬШЕ В ВОЛНЕ', style: mono.copyWith(color: accent)),
+                   const SizedBox(height: 12),
+                   const Text('Запусти волну — здесь появятся следующие треки.',
+                       style: TextStyle(color: Color(0xFF8A8A8A)))]
+                : nextList,
+          ),
+        ),
       ],
     );
   }
@@ -538,4 +659,73 @@ String _dayCaption() {
   final h = now.hour;
   final part = h < 5 ? 'НОЧЬ' : h < 12 ? 'УТРО' : h < 18 ? 'ДЕНЬ' : 'ВЕЧЕР';
   return '${days[now.weekday - 1]} · $part';
+}
+
+
+/// Режимы волны: (подпись, метка режима в WaveService.radioLabel, запуск).
+List<(String, String?, Future<void> Function())> waveModes(
+        WaveService wave, List<Track> favs, List<Track> recent) =>
+    [
+      ('Как обычно', null, wave.start),
+      if (favs.isNotEmpty)
+        ('По любимым', 'По любимым',
+            () => wave.startCustom([for (final t in favs) (track: t, weight: 3)],
+                label: 'По любимым')),
+      if (recent.isNotEmpty)
+        ('По свежим', 'По свежим',
+            () => wave.startCustom([for (final t in recent.take(20)) (track: t, weight: 3)],
+                label: 'По свежим')),
+      ('Незнакомое', 'Незнакомое',
+          () => wave.startCustom(null, label: 'Незнакомое', unfamiliar: true)),
+    ];
+
+/// Ряд режимов волны фишками.
+class _ModeChips extends StatelessWidget {
+  const _ModeChips({this.center = false});
+  final bool center;
+
+  @override
+  Widget build(BuildContext context) {
+    final wave = context.watch<WaveService>();
+    final player = context.watch<PlayerService>();
+    final store = context.read<LibraryStore>();
+    final onWave = wave.isWaveTrack(player.current);
+    final recent = List.of(store.tracks)..sort((a, b) => b.addedAt.compareTo(a.addedAt));
+    final active = onWave ? wave.radioLabel : '-';
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: center ? WrapAlignment.center : WrapAlignment.start,
+      children: [
+        for (final (label, key, run) in waveModes(wave, store.favorites, recent))
+          StyleChip(
+            label: label,
+            selected: active == key,
+            onTap: wave.loading ? null : run,
+          ),
+      ],
+    );
+  }
+}
+
+/// «Дальше в волне»: следующие треки очереди.
+class _UpNext extends StatelessWidget {
+  const _UpNext();
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerService>();
+    final next = player.queue.skip(player.index + 1).take(5).toList();
+    if (next.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 18),
+        const StyleCaption('Дальше'),
+        const SizedBox(height: 6),
+        for (final (k, t) in next.indexed)
+          TrackTile(track: t, onTap: () => player.jumpTo(player.index + 1 + k)),
+      ],
+    );
+  }
 }

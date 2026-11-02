@@ -324,6 +324,7 @@ class WaveService extends ChangeNotifier {
 
   List<({Track track, int weight})>? _custom;
   String? _customLabel;
+  bool _unfamiliar = false;
 
   /// Что сейчас играет вместо обычной волны: «Джем по треку «nuts»» и т. п.
   String? get radioLabel => _active ? _customLabel : null;
@@ -336,10 +337,13 @@ class WaveService extends ChangeNotifier {
       );
 
   /// Волна по своему набору треков (вес — насколько сильно на него опираться).
-  Future<void> startCustom(List<({Track track, int weight})> seeds,
-      {required String label, Track? first}) async {
+  /// seeds == null — опора как у обычной волны (вся медиатека).
+  /// unfamiliar — только исполнители, которых в медиатеке ещё нет.
+  Future<void> startCustom(List<({Track track, int weight})>? seeds,
+      {required String label, Track? first, bool unfamiliar = false}) async {
     _custom = seeds;
     _customLabel = label;
+    _unfamiliar = unfamiliar;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -372,7 +376,7 @@ class WaveService extends ChangeNotifier {
     }
     final candidates = <Track>[];
     final picked = <String>{};
-    for (var attempt = 0; attempt < 6 && candidates.length < size * 3; attempt++) {
+    for (var attempt = 0; attempt < (_unfamiliar ? 10 : 6) && candidates.length < size * 3; attempt++) {
       final seed = _pickWeighted(seeds);
       if (!picked.add(seed.id) && picked.length < seeds.length) continue;
       try {
@@ -385,6 +389,10 @@ class WaveService extends ChangeNotifier {
     }
 
     final perArtist = <String, int>{};
+    // Для режима «Незнакомое»: исполнители, которые уже есть в медиатеке.
+    final known = _unfamiliar
+        ? {for (final t in store.tracks) t.artist.toLowerCase()}
+        : const <String>{};
     final out = <Track>[];
     candidates.shuffle(_rand);
     for (final t in candidates) {
@@ -397,6 +405,7 @@ class WaveService extends ChangeNotifier {
       final skips = _skippedArtists[artist] ?? 0;
       if (skips > 0 && _rand.nextDouble() < min(0.85, skips * 0.25)) continue;
       if (isOwnedLike(t)) continue;
+      if (_unfamiliar && known.contains(artist)) continue;
       if ((perArtist[artist] ?? 0) >= 2) continue;
       if (t.durationMs != null && t.durationMs! < 60000) continue; // не сниппеты
       perArtist[artist] = (perArtist[artist] ?? 0) + 1;
@@ -412,6 +421,7 @@ class WaveService extends ChangeNotifier {
   Future<void> start() async {
     _custom = null;
     _customLabel = null;
+    _unfamiliar = false;
     _loading = true;
     _error = null;
     notifyListeners();
