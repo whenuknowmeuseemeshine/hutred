@@ -233,8 +233,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               const SizedBox(height: 12),
               const Text(
                 'Отправь её другу. В Hutred: «Добавить музыку» → «По ссылке» — '
-                'плейлист появится у него со всеми треками. Если поменяешь плейлист, '
-                'нажми «Поделиться» ещё раз — по ссылке будет новая версия.',
+                'плейлист появится у него и дальше будет обновляться сам, '
+                'когда ты его меняешь. Ссылка у плейлиста всегда одна.',
                 style: TextStyle(color: HutredTheme.muted),
               ),
             ],
