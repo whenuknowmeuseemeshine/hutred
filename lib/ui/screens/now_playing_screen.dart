@@ -918,9 +918,9 @@ class _SharpWide extends StatelessWidget {
         ),
         const _ErrorLine(),
         const SizedBox(height: 18),
-        const ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: 560),
-          child: SeekBar(compact: true),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: const SeekBar(compact: true),
         ),
         const SizedBox(height: 14),
         Wrap(
