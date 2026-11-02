@@ -109,18 +109,32 @@ class SettingsStore extends ChangeNotifier {
 
   Color get accent => _accent;
 
-  /// Стиль оформления: mono, glass или sharp.
-  String get style => _style;
-  AppStyleInfo get styleInfo =>
-      appStyles.firstWhere((x) => x.id == _style, orElse: () => appStyles.first);
+  /// Стиль, с которым запущено приложение: mono, glass или sharp.
+  /// Меняется только после перезапуска — у стилей разная раскладка экранов.
+  String get style => _activeStyle ?? _style;
+  String? _activeStyle;
 
-  /// Сменить стиль; вместе с ним ставятся его цвет и фон.
+  /// Выбранный стиль (может ещё не действовать — до перезапуска).
+  String get chosenStyle => _style;
+  bool get styleRestartNeeded => _activeStyle != null && _activeStyle != _style;
+
+  AppStyleInfo get styleInfo =>
+      appStyles.firstWhere((x) => x.id == style, orElse: () => appStyles.first);
+
+  /// Выбрать стиль; вместе с ним ставятся его цвет и фон (сразу),
+  /// а раскладка — после перезапуска.
   void applyStyle(String id) {
     final info = appStyles.firstWhere((x) => x.id == id, orElse: () => appStyles.first);
     _style = info.id;
     _accent = info.accent;
     _backgroundId = info.background;
     _save();
+  }
+
+  /// Первый выбор стиля (до главного экрана) — действует сразу.
+  void applyStyleNow(String id) {
+    applyStyle(id);
+    _activeStyle = _style;
   }
   BackgroundPreset get background {
     if (_backgroundId == 'custom') return customBackground;
@@ -471,11 +485,13 @@ class SettingsStore extends ChangeNotifier {
       final dir = await getApplicationSupportDirectory();
       await dir.create(recursive: true);
       _file = File('${dir.path}${Platform.pathSeparator}settings.json');
+      _activeStyle = _style;
       if (!await _file!.exists()) return;
       final j = jsonDecode(await _file!.readAsString()) as Map<String, dynamic>;
       _accent = Color((j['accent'] as num?)?.toInt() ?? _accent.toARGB32());
       _backgroundId = j['background'] as String? ?? _backgroundId;
       _style = j['style'] as String? ?? 'mono';
+      _activeStyle = _style;
       final cb = (j['customBg'] as num?)?.toInt();
       if (cb != null) _customBg = Color(cb);
       _youtubeLyrics = j['youtubeLyrics'] as bool? ?? true;

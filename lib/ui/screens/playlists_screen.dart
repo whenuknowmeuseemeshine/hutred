@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/playlist.dart';
@@ -12,7 +13,6 @@ import '../../services/player_service.dart';
 import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
-import '../widgets/controls.dart';
 import '../widgets/filter_field.dart';
 import '../widgets/track_tile.dart';
 
@@ -264,15 +264,21 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final tracks = _q.isEmpty ? all : all.where((t) => trackMatches(t, _q)).toList();
     final name = playlist?.name ?? 'Любимые треки';
     final wide = MediaQuery.sizeOf(context).width >= 600;
-    final coverSize = wide ? 180.0 : 132.0;
+    final style = HutredStyle.of(context);
+    final coverSize = style.glass ? (wide ? 168.0 : 220.0) : (wide ? 196.0 : 220.0);
     final scheme = Theme.of(context).colorScheme;
+    final owner = playlist?.owner ?? context.watch<AccountService>().username ?? 'Ты';
+    final meta = [
+      tracksWord(all.length),
+      if (totalDuration(all).isNotEmpty) totalDuration(all),
+    ].join(', ');
 
-    final cover = playlist == null
+    Widget cover = playlist == null
         ? Container(
             width: coverSize,
             height: coverSize,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10 * style.artScale),
               gradient: LinearGradient(
                 colors: [
                   scheme.primary,
@@ -288,137 +294,305 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             onTap: playlist.isFollowed ? null : () => _edit(context, playlist),
             child: _Collage(tracks: tracks, cover: playlist.cover, size: coverSize),
           );
-
-    final header = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          cover,
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(playlist?.isFollowed == true ? 'Плейлист (подписка)' : 'Плейлист',
-                    style: const TextStyle(color: HutredTheme.muted, fontSize: 12)),
-                Text(name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: HutredStyle.of(context).display(wide ? 48 : 28)),
-                if ((playlist?.description ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(playlist!.description,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: HutredTheme.muted)),
-                ],
-                const SizedBox(height: 6),
-                // Как в Spotify: автор · число треков, общая длительность.
-                Text(
-                  [
-                    playlist?.owner ?? context.watch<AccountService>().username ?? 'Ты',
-                    [
-                      tracksWord(all.length),
-                      if (totalDuration(all).isNotEmpty) totalDuration(all),
-                    ].join(', '),
-                  ].join(' · '),
-                  style: const TextStyle(color: HutredTheme.muted, fontSize: 13),
-                ),
-              ],
-            ),
+    // Тень под обложкой: у «Стекла» — цветное свечение.
+    cover = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10 * style.artScale),
+        boxShadow: [
+          BoxShadow(
+            color: style.glass
+                ? scheme.primary.withValues(alpha: 0.45)
+                : Colors.black.withValues(alpha: 0.5),
+            blurRadius: style.glass ? 60 : 48,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
+      child: cover,
     );
 
-    final actions = Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 16, 8),
-      child: Row(
+    final label = playlist?.isFollowed == true ? 'Плейлист (подписка)' : 'Плейлист';
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (style.glass)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(label,
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFD8D4FE))),
+          )
+        else if (wide)
+          Text(style.sharp ? label.toUpperCase() : label,
+              style: TextStyle(
+                  fontSize: style.sharp ? 11 : 13,
+                  letterSpacing: style.sharp ? 1 : 0,
+                  fontWeight: FontWeight.w600,
+                  color: style.sharp ? scheme.primary : const Color(0xFFD4D4D4))),
+        SizedBox(height: style.glass ? 10 : 8),
+        Text(name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: style.display(wide ? (style.glass ? 44 : 64) : 26)),
+        if ((playlist?.description ?? '').isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(playlist!.description,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0xFFA3A3A3))),
+        ],
+        const SizedBox(height: 8),
+        // Как в Spotify: автор · число треков, общая длительность.
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(
+                text: owner,
+                style: const TextStyle(color: HutredTheme.text, fontWeight: FontWeight.w700)),
+            TextSpan(text: ' · $meta'),
+          ]),
+          style: const TextStyle(color: Color(0xFFD4D4D4), fontSize: 13),
+        ),
+      ],
+    );
+
+    final header = Padding(
+      padding: EdgeInsets.fromLTRB(wide ? 32 : 20, 8, wide ? 32 : 20, wide ? 24 : 12),
+      child: wide
+          ? Row(
+              crossAxisAlignment:
+                  style.glass ? CrossAxisAlignment.center : CrossAxisAlignment.end,
+              children: [
+                cover,
+                const SizedBox(width: 28),
+                Expanded(child: titleBlock),
+              ],
+            )
+          // Телефон: обложка по центру, под ней название.
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(child: cover),
+                const SizedBox(height: 20),
+                titleBlock,
+              ],
+            ),
+    );
+
+    final canPlay = tracks.isNotEmpty;
+    void play() => player.playTracks(tracks);
+    void shuffle() => player.shufflePlay(tracks);
+
+    // Большая кнопка «Слушать»: круг (Моно), капсула со словом (Стекло),
+    // прямоугольник цвета акцента (Резкий).
+    final playButton = style.glass
+        ? FilledButton.icon(
+            onPressed: canPlay ? play : null,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Слушать'),
+          )
+        : SizedBox(
+            width: style.sharp ? 76 : 56,
+            height: 56,
+            child: FilledButton(
+              onPressed: canPlay ? play : null,
+              style: FilledButton.styleFrom(
+                padding: EdgeInsets.zero,
+                shape: style.sharp ? const RoundedRectangleBorder() : const CircleBorder(),
+                backgroundColor: style.sharp ? scheme.primary : Colors.white,
+                foregroundColor:
+                    style.sharp ? HutredTheme.onAccent(scheme.primary) : Colors.black,
+              ),
+              child: const Icon(Icons.play_arrow_rounded, size: 32),
+            ),
+          );
+
+    Widget iconAction(String tip, IconData icon, VoidCallback? onTap, {Color? color}) =>
+        IconButton(
+          tooltip: tip,
+          onPressed: onTap,
+          icon: Icon(icon, size: 24, color: color ?? const Color(0xFFA3A3A3)),
+        );
+
+    final download = Builder(builder: (context) {
+      final off = context.watch<OfflineService>();
+      final pinned = off.isPinned(playlistId);
+      final done = tracks.where(off.isDownloaded).length;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (all.length > 8) ...[
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 220),
-                child: FilterField(
-                  hint: 'Найти в плейлисте',
-                  onChanged: (v) => setState(() => _q = v.trim()),
-                ),
+          iconAction(
+            pinned ? 'Удалить загрузки' : 'Скачать для прослушивания без интернета',
+            pinned ? Icons.arrow_circle_down_rounded : LucideIcons.circleArrowDown,
+            tracks.isEmpty && !pinned ? null : () => off.pin(playlistId, !pinned),
+            color: pinned ? scheme.primary : null,
+          ),
+          if (pinned && done < tracks.length)
+            Text('$done/${tracks.length}',
+                style: const TextStyle(color: HutredTheme.muted, fontSize: 12)),
+        ],
+      );
+    });
+
+    final unfollow = playlist != null && playlist.isFollowed
+        ? iconAction('Убрать из моих плейлистов', LucideIcons.circleMinus, () async {
+            final ok = await AppActions.confirm(context,
+                title: 'Убрать плейлист?',
+                body: '«${playlist.name}» пропадёт из твоих плейлистов. '
+                    'Вернуть можно снова по ссылке или со страницы автора.',
+                action: 'Убрать');
+            if (ok && context.mounted) {
+              Navigator.of(context).pop();
+              store.deletePlaylist(playlist.id);
+            }
+          })
+        : null;
+    final edit = playlist != null && !playlist.isFollowed
+        ? iconAction('Изменить: название, описание, обложка', LucideIcons.pencil,
+            () => _edit(context, playlist))
+        : null;
+    final share = playlist != null
+        ? iconAction('Поделиться ссылкой', LucideIcons.share, () => _share(context, playlist, all))
+        : null;
+    final search = all.length > 8
+        ? ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 230),
+            child: FilterField(
+              hint: 'Найти в плейлисте',
+              onChanged: (v) => setState(() => _q = v.trim()),
+            ),
+          )
+        : null;
+
+    final Widget actions;
+    if (style.glass) {
+      actions = Padding(
+        padding: EdgeInsets.fromLTRB(wide ? 32 : 20, 0, wide ? 32 : 20, 16),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            playButton,
+            OutlinedButton.icon(
+              onPressed: canPlay ? shuffle : null,
+              icon: const Icon(LucideIcons.shuffle, size: 16),
+              label: const Text('Перемешать'),
+            ),
+            if (playlist != null)
+              OutlinedButton.icon(
+                onPressed: () => _share(context, playlist, all),
+                icon: const Icon(LucideIcons.share, size: 16),
+                label: const Text('Поделиться'),
+              ),
+            download,
+            if (edit != null) edit,
+            if (unfollow != null) unfollow,
+            if (search != null) search,
+          ],
+        ),
+      );
+    } else if (wide) {
+      actions = Padding(
+        padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
+        child: Row(
+          children: [
+            playButton,
+            const SizedBox(width: 12),
+            iconAction('Перемешать', LucideIcons.shuffle, canPlay ? shuffle : null),
+            download,
+            if (share != null) share,
+            if (edit != null) edit,
+            if (unfollow != null) unfollow,
+            const Spacer(),
+            if (search != null) Flexible(child: search),
+          ],
+        ),
+      );
+    } else {
+      // Телефон: слева скачать/поделиться, справа перемешать и «играть».
+      actions = Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 20, 8),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                download,
+                if (share != null) share,
+                if (edit != null) edit,
+                if (unfollow != null) unfollow,
+                const Spacer(),
+                iconAction('Перемешать', LucideIcons.shuffle, canPlay ? shuffle : null),
+                const SizedBox(width: 8),
+                playButton,
+              ],
+            ),
+            if (search != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, top: 8),
+                child: Align(alignment: Alignment.centerLeft, child: search),
+              ),
+          ],
+        ),
+      );
+    }
+
+    // Шапка таблицы (# · название · альбом · время) — на компьютере в Моно/Резком.
+    final columns = wide && !style.glass && tracks.isNotEmpty
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(28, 0, 28, 8),
+            child: Container(
+              padding: const EdgeInsets.only(bottom: 10),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFF1F1F1F))),
+              ),
+              child: const DefaultTextStyle(
+                style: TextStyle(
+                    color: Color(0xFF737373),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4),
+                child: Row(children: [
+                  SizedBox(width: 40, child: Text('#')),
+                  Expanded(flex: 10, child: Text('НАЗВАНИЕ')),
+                  SizedBox(width: 16),
+                  Expanded(flex: 8, child: Text('АЛЬБОМ')),
+                  SizedBox(width: 132, child: Text('ВРЕМЯ', textAlign: TextAlign.center)),
+                ]),
               ),
             ),
-            const SizedBox(width: 4),
-          ],
-          if (playlist != null && !playlist.isFollowed)
-            IconButton(
-              tooltip: 'Изменить: название, описание, обложка',
-              onPressed: () => _edit(context, playlist),
-              icon: const Icon(Icons.edit_outlined, color: Colors.white70),
+          )
+        : const SizedBox.shrink();
+
+    // Фон шапки: мягкий градиент сверху, как в макете.
+    final top = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final headerAll = Container(
+      padding: EdgeInsets.only(top: top),
+      decoration: style.glass
+          ? null
+          : BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  style.mono
+                      ? const Color(0xFF2A2A2A)
+                      : scheme.primary.withValues(alpha: 0.22),
+                  Colors.transparent,
+                ],
+              ),
             ),
-          if (playlist != null && playlist.isFollowed)
-            IconButton(
-              tooltip: 'Убрать из моих плейлистов',
-              onPressed: () async {
-                final ok = await AppActions.confirm(context,
-                    title: 'Убрать плейлист?',
-                    body: '«${playlist.name}» пропадёт из твоих плейлистов. '
-                        'Вернуть можно снова по ссылке или со страницы автора.',
-                    action: 'Убрать');
-                if (ok && context.mounted) {
-                  Navigator.of(context).pop();
-                  store.deletePlaylist(playlist.id);
-                }
-              },
-              icon: const Icon(Icons.remove_circle_outline, color: Colors.white70),
-            ),
-          if (playlist != null) ...[
-            IconButton(
-              tooltip: 'Поделиться ссылкой',
-              onPressed: () => _share(context, playlist, all),
-              icon: const Icon(Icons.ios_share_rounded, color: Colors.white70),
-            ),
-          ],
-          Builder(builder: (context) {
-            final off = context.watch<OfflineService>();
-            final pinned = off.isPinned(playlistId);
-            final done = tracks.where(off.isDownloaded).length;
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: pinned ? 'Удалить загрузки' : 'Скачать для прослушивания без интернета',
-                  onPressed: tracks.isEmpty && !pinned ? null : () => off.pin(playlistId, !pinned),
-                  icon: Icon(
-                    pinned ? Icons.arrow_circle_down_rounded : Icons.arrow_circle_down_outlined,
-                    color: pinned ? scheme.primary : Colors.white70,
-                  ),
-                ),
-                if (pinned && done < tracks.length)
-                  Text('$done/${tracks.length}',
-                      style: const TextStyle(color: HutredTheme.muted, fontSize: 12)),
-              ],
-            );
-          }),
-          const Spacer(),
-          IconButton(
-            tooltip: 'Перемешать',
-            onPressed: tracks.isEmpty ? null : () => player.shufflePlay(tracks),
-            icon: const ShuffleIcon(on: false, smart: false, size: 26),
-          ),
-          const SizedBox(width: 8),
-          IconButton.filled(
-            tooltip: 'Слушать',
-            iconSize: 30,
-            style: IconButton.styleFrom(fixedSize: const Size.square(52)),
-            onPressed: tracks.isEmpty ? null : () => player.playTracks(tracks),
-            icon: const Icon(Icons.play_arrow_rounded),
-          ),
-        ],
-      ),
+      child: Column(children: [header, actions, columns]),
     );
 
     Widget tile(int i) => TrackTile(
           key: ValueKey(tracks[i].id),
           track: tracks[i],
+          number: i + 1,
           inFavorites: playlist == null,
           onTap: () => player.playTracks(tracks, start: i),
           // В «Любимых треках» «убрать» снимает ♥ — трек остаётся в медиатеке.
@@ -441,20 +615,20 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
 
     return Scaffold(
-      appBar: AppBar(),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(backgroundColor: Colors.transparent),
       body: playlist == null || playlist.isFollowed || tracks.isEmpty || _q.isNotEmpty
           ? ListView(
               padding: const EdgeInsets.only(bottom: 96),
               children: [
-                header,
-                actions,
+                headerAll,
                 if (all.isEmpty) empty,
                 for (var i = 0; i < tracks.length; i++) tile(i),
               ],
             )
           : ReorderableListView.builder(
               padding: const EdgeInsets.only(bottom: 96),
-              header: Column(children: [header, actions]),
+              header: headerAll,
               itemCount: tracks.length,
               onReorder: (o, n) => store.reorderPlaylist(playlist.id, o, n),
               itemBuilder: (_, i) => tile(i),

@@ -175,7 +175,7 @@ class PlayerBar extends StatelessWidget {
           : null,
       clipBehavior: floating ? Clip.antiAlias : Clip.none,
       child: Container(
-        height: floating ? 88 : 96,
+        height: floating ? 80 : (style.sharp ? 92 : 84),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: floating
             ? null
@@ -197,7 +197,7 @@ class PlayerBar extends StatelessWidget {
                     TrackContextMenu(
                       track: track,
                       child: Hero(
-                          tag: 'artwork', child: Artwork(track: track, size: 60, radius: 6)),
+                          tag: 'artwork', child: Artwork(track: track, size: 52, radius: 6)),
                     ),
                     const SizedBox(width: 12),
                     Flexible(
@@ -246,15 +246,13 @@ class PlayerBar extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Текст: открыть/закрыть полноэкранный плеер.
-                  // Текст: в полноэкранном плеере прячет/показывает только текст,
-                  // закрыть плеер целиком — кнопкой «Свернуть».
-                  IconButton(
-                    tooltip: settings.fullscreenLyrics && inFullScreen
-                        ? 'Скрыть текст'
-                        : 'Текст',
-                    isSelected: settings.fullscreenLyrics && inFullScreen,
-                    onPressed: () {
+                  // Текст, обложка, очередь: в полноэкранном плеере прячут/показывают
+                  // свою часть, снаружи — открывают плеер с ней.
+                  _PanelToggle(
+                    label: 'Текст',
+                    icon: LucideIcons.micVocal,
+                    on: settings.fullscreenLyrics && inFullScreen,
+                    onTap: () {
                       if (inFullScreen) {
                         settings.fullscreenLyrics = !settings.fullscreenLyrics;
                       } else {
@@ -262,16 +260,12 @@ class PlayerBar extends StatelessWidget {
                         NowPlayingScreen.open(context);
                       }
                     },
-                    icon: const Icon(LucideIcons.micVocal, size: 20),
-                    selectedIcon: Icon(LucideIcons.micVocal, size: 20, color: scheme.primary),
                   ),
-                  // Обложка: большая обложка слева от текста.
-                  IconButton(
-                    tooltip: settings.fullscreenCover && inFullScreen
-                        ? 'Скрыть обложку'
-                        : 'Обложка',
-                    isSelected: settings.fullscreenCover && inFullScreen,
-                    onPressed: () {
+                  _PanelToggle(
+                    label: 'Обложка',
+                    icon: LucideIcons.disc3,
+                    on: settings.fullscreenCover && inFullScreen,
+                    onTap: () {
                       if (inFullScreen) {
                         settings.fullscreenCover = !settings.fullscreenCover;
                       } else {
@@ -279,16 +273,12 @@ class PlayerBar extends StatelessWidget {
                         NowPlayingScreen.open(context);
                       }
                     },
-                    icon: const Icon(LucideIcons.disc3, size: 20),
-                    selectedIcon: Icon(LucideIcons.disc3, size: 20, color: scheme.primary),
                   ),
-                  // Очередь: панель справа от текста.
-                  IconButton(
-                    tooltip: settings.queuePanel && inFullScreen
-                        ? 'Скрыть очередь'
-                        : 'Очередь',
-                    isSelected: settings.queuePanel && inFullScreen,
-                    onPressed: () {
+                  _PanelToggle(
+                    label: 'Очередь',
+                    icon: LucideIcons.listMusic,
+                    on: settings.queuePanel && inFullScreen,
+                    onTap: () {
                       if (inFullScreen) {
                         settings.queuePanel = !settings.queuePanel;
                       } else {
@@ -296,9 +286,6 @@ class PlayerBar extends StatelessWidget {
                         NowPlayingScreen.open(context);
                       }
                     },
-                    icon: const Icon(LucideIcons.listMusic, size: 20),
-                    selectedIcon:
-                        Icon(LucideIcons.listMusic, size: 20, color: scheme.primary),
                   ),
                   const SizedBox(width: 4),
                   const SizedBox(width: 150, child: VolumeSlider()),
@@ -309,8 +296,54 @@ class PlayerBar extends StatelessWidget {
         ),
       ),
     );
-    return floating
-        ? Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: bar)
-        : bar;
+    return floating ? Padding(padding: const EdgeInsets.only(top: 12), child: bar) : bar;
+  }
+}
+
+/// Кнопка панели плеера: у «Стекла» — капсула со словом, у остальных — значок.
+class _PanelToggle extends StatelessWidget {
+  const _PanelToggle({
+    required this.label,
+    required this.icon,
+    required this.on,
+    required this.onTap,
+  });
+  final String label;
+  final IconData icon;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    if (style.glass) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Material(
+          color: on ? accent.withValues(alpha: 0.22) : Colors.white.withValues(alpha: 0.07),
+          shape: const StadiumBorder(),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: on ? Colors.white : const Color(0xFFD6D6E2))),
+            ),
+          ),
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: on ? 'Скрыть: ${label.toLowerCase()}' : label,
+      isSelected: on,
+      onPressed: onTap,
+      icon: Icon(icon, size: 20),
+      selectedIcon: Icon(icon, size: 20, color: accent),
+    );
   }
 }

@@ -1,5 +1,4 @@
 
-import '../../services/jam_service.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -9,6 +8,7 @@ import '../../models/track.dart';
 import '../../services/account_service.dart';
 import '../../services/cover_service.dart';
 import '../../services/offline_service.dart';
+import '../../services/jam_service.dart';
 import '../../services/library_store.dart';
 import '../../services/player_service.dart';
 import '../../services/track_fixes.dart';
@@ -45,7 +45,12 @@ class TrackTile extends StatelessWidget {
     this.onRemoveFromPlaylist,
     this.trailingAction,
     this.inFavorites = false,
+    this.number,
   });
+
+  /// Номер в списке: на компьютере в стиле «Моно»/«Резкий» строка
+  /// становится строкой таблицы (# · название · альбом · время).
+  final int? number;
 
   final Track track;
   final VoidCallback onTap;
@@ -75,6 +80,136 @@ class TrackTile extends StatelessWidget {
     final desktop = HutredTheme.desktop;
     final store = context.read<LibraryStore>();
     final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
+    final style = HutredStyle.of(context);
+    final wide = MediaQuery.sizeOf(context).width >= 800;
+    final menu = TrackMenuButton(
+        track: track,
+        compact: desktop,
+        inFavorites: inFavorites,
+        onRemoveFromPlaylist: onRemoveFromPlaylist);
+    final time = Text(
+      track.duration == null ? '' : formatDuration(track.duration),
+      textAlign: TextAlign.right,
+      style: const TextStyle(
+        color: HutredTheme.muted,
+        fontFeatures: [FontFeature.tabularFigures()],
+      ),
+    );
+    Widget? heart(bool hovered) => desktop && saved != null
+        ? _RowAction(
+            visible: hovered || saved.favorite,
+            tooltip: saved.favorite ? 'Убрать из любимых' : 'В любимые',
+            icon: saved.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            color: saved.favorite ? scheme.primary : null,
+            onTap: () => store.toggleFavorite(saved.id),
+          )
+        : null;
+    final titleText = Text(
+      track.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontWeight: style.glass ? FontWeight.w700 : FontWeight.w600,
+        color: isCurrent ? scheme.primary : null,
+      ),
+    );
+    final artistText = Text(track.artist,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 13, color: HutredTheme.muted));
+
+    // Строка по макетам: «Стекло» — скруглённая карточка, играющая подсвечена;
+    // «Моно»/«Резкий» на компьютере со номером — строка таблицы.
+    Widget? custom(bool hovered) {
+      if (style.glass) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Material(
+          color: isCurrent
+              ? scheme.primary.withValues(alpha: 0.14)
+              : hovered
+                  ? Colors.white.withValues(alpha: 0.07)
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: isCurrent ? player.togglePlay : onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(children: [
+                Artwork(track: track, size: 44, radius: 6),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [titleText, artistText]),
+                ),
+                if (isCurrent)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: EqualizerBars(
+                        playing: player.playing && !player.loading, color: scheme.primary),
+                  ),
+                if (heart(hovered) != null) heart(hovered)!,
+                const SizedBox(width: 8),
+                time,
+                if (trailingAction != null) trailingAction!,
+                menu,
+              ]),
+            ),
+          ),
+        ),
+        );
+      }
+      if (number == null || !wide) return null;
+      final n = isCurrent
+          ? EqualizerBars(playing: player.playing && !player.loading, color: scheme.primary)
+          : Text('$number',
+              style: const TextStyle(
+                  color: Color(0xFF737373), fontFeatures: [FontFeature.tabularFigures()]));
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Material(
+        color: hovered ? Colors.white.withValues(alpha: 0.06) : Colors.transparent,
+        borderRadius: BorderRadius.circular(style.radius),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(style.radius),
+          onTap: isCurrent ? player.togglePlay : onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            child: Row(children: [
+              SizedBox(width: 40, child: Align(alignment: Alignment.centerLeft, child: n)),
+              Expanded(
+                flex: 10,
+                child: Row(children: [
+                  Artwork(track: track, size: 40, radius: 4),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [titleText, artistText]),
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                flex: 8,
+                child: Text(track.shownAlbum,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: HutredTheme.muted)),
+              ),
+              if (heart(hovered) != null) heart(hovered)!,
+              SizedBox(width: 56, child: time),
+              if (trailingAction != null) trailingAction!,
+              menu,
+            ]),
+          ),
+        ),
+      ),
+      );
+    }
+
     return TrackContextMenu(
       track: track,
       compact: desktop,
@@ -82,7 +217,7 @@ class TrackTile extends StatelessWidget {
       onRemoveFromPlaylist: onRemoveFromPlaylist,
       child: _Hover(builder: (hovered) => Opacity(
         opacity: hidden ? 0.4 : 1,
-        child: ListTile(
+        child: custom(hovered) ?? ListTile(
       // Как в Spotify: нажал на играющий трек ещё раз — пауза/продолжить.
       onTap: isCurrent ? player.togglePlay : onTap,
       leading: Stack(

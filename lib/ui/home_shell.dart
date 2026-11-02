@@ -21,10 +21,9 @@ import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/transfer_screen.dart';
 import 'screens/wave_screen.dart';
-import 'widgets/account_button.dart';
 import 'widgets/blurred_background.dart';
-import 'widgets/logo.dart';
 import 'widgets/mini_player.dart';
+import 'shell_nav.dart';
 import 'theme.dart';
 
 /// Каркас приложения: на широком экране боковая панель, на телефоне — нижняя.
@@ -175,36 +174,63 @@ class _HomeShellState extends State<HomeShell> {
       }),
     );
 
+    final style = HutredStyle.of(context);
+    final items = <NavItem>[
+      for (final id in order) (id: id, icon: navTabs[id]!.icon, label: navTabs[id]!.label),
+    ];
+    void onSelect(String id) => _select(order.indexOf(id));
+
     if (wide) {
+      // Три раскладки по макетам: A — боковая панель, B — стеклянные панели,
+      // C — меню сверху.
+      if (style.glass) {
+        return Scaffold(
+          body: Padding(
+            padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + 4, 12, 12),
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: Row(
+                children: [
+                  GlassRail(items: items, selected: _current, onSelect: onSelect),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(child: GlassPanel(child: body)),
+                        const MiniPlayer(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+      if (style.sharp) {
+        return Scaffold(
+          body: Column(
+            children: [
+              SharpTopNav(items: items, selected: _current, onSelect: onSelect),
+              Expanded(
+                child: MediaQuery.removePadding(
+                    context: context, removeTop: true, child: body),
+              ),
+              const MiniPlayer(),
+            ],
+          ),
+        );
+      }
       return Scaffold(
         body: Row(
           children: [
-            NavigationRail(
-              extended: extended,
-              selectedIndex: _tab,
-              onDestinationSelected: _select,
-              labelType: extended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  children: [
-                    _Logo(extended: extended),
-                    const SizedBox(height: 12),
-                    // Аккаунт — сразу под логотипом, чтобы не искать.
-                    AccountButton(extended: extended),
-                  ],
-                ),
-              ),
-              destinations: [
-                for (final id in order)
-                  NavigationRailDestination(
-                    icon: Icon(navTabs[id]!.icon),
-                    selectedIcon: Icon(navTabs[id]!.selected),
-                    label: Text(navTabs[id]!.label),
-                  ),
-              ],
+            MonoSidebar(
+              items: items,
+              selected: _current,
+              onSelect: onSelect,
+              compact: !extended,
             ),
-            if (!HutredStyle.of(context).glass) const VerticalDivider(width: 1),
             Expanded(
               child: Column(
                 children: [
@@ -225,49 +251,7 @@ class _HomeShellState extends State<HomeShell> {
           const MiniPlayer(),
         ],
       ),
-      // Подписи в одну строку: длинные не переносятся и не «прыгают».
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarTheme.of(context).copyWith(
-          labelTextStyle: WidgetStatePropertyAll(
-              TextStyle(fontSize: order.length > 5 ? 10.5 : 12, overflow: TextOverflow.ellipsis)),
-        ),
-        child: NavigationBar(
-          selectedIndex: _tab,
-          onDestinationSelected: _select,
-          height: 64,
-          labelBehavior: order.length > 5
-              ? NavigationDestinationLabelBehavior.onlyShowSelected
-              : NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: [
-            for (final id in order)
-              NavigationDestination(
-                icon: Icon(navTabs[id]!.icon),
-                selectedIcon: Icon(navTabs[id]!.selected),
-                label: navTabs[id]!.label,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Logo extends StatelessWidget {
-  const _Logo({required this.extended});
-  final bool extended;
-
-  @override
-  Widget build(BuildContext context) {
-    const mark = HutredLogo(size: 36);
-    if (!extended) return mark;
-    // Логин уже виден на кнопке аккаунта ниже — здесь только название.
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        mark,
-        const SizedBox(width: 12),
-        Text('Hutred', style: HutredStyle.of(context).display(22)),
-      ],
+      bottomNavigationBar: PhoneNav(items: items, selected: _current, onSelect: onSelect),
     );
   }
 }

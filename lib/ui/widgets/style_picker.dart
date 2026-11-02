@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,20 +9,52 @@ import '../theme.dart';
 /// Три карточки стилей с маленьким превью. Выбор меняет шрифт, формы,
 /// цвет и фон сразу, без перезапуска.
 class StylePicker extends StatelessWidget {
-  const StylePicker({super.key});
+  const StylePicker({super.key, this.live = false});
+
+  /// Применить сразу (первый запуск); иначе — после перезапуска.
+  final bool live;
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<SettingsStore>();
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final info in appStyles)
-          _StyleCard(
-            info: info,
-            selected: s.style == info.id,
-            onTap: () => s.applyStyle(info.id),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final info in appStyles)
+              _StyleCard(
+                info: info,
+                selected: s.chosenStyle == info.id,
+                onTap: () => live ? s.applyStyleNow(info.id) : s.applyStyle(info.id),
+              ),
+          ],
+        ),
+        if (s.styleRestartNeeded)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Row(children: [
+              Icon(Icons.restart_alt_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                    'Чтобы стиль применился полностью, перезапусти Hutred',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              if (Platform.isWindows)
+                TextButton(
+                  onPressed: () async {
+                    // Настройки уже сохранены; запускаем себя заново и выходим.
+                    await Future.delayed(const Duration(milliseconds: 400));
+                    await Process.start(Platform.resolvedExecutable, const [],
+                        mode: ProcessStartMode.detached);
+                    exit(0);
+                  },
+                  child: const Text('Перезапустить'),
+                ),
+            ]),
           ),
       ],
     );

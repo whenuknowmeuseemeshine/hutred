@@ -272,7 +272,7 @@ class ThemePickerScreen extends StatelessWidget {
                 const SizedBox(height: 24),
                 const Text('Стиль', style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 10),
-                const StylePicker(),
+                const StylePicker(live: true),
                 const SizedBox(height: 24),
                 const Text('Цвет', style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 10),
