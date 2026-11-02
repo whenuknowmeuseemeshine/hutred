@@ -16,6 +16,9 @@ import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
 import '../icons.dart';
+import '../widgets/style_bits.dart';
+import '../../services/wave_service.dart';
+import 'artist_screen.dart';
 
 enum _Mode { tracks, playlists }
 
@@ -217,75 +220,120 @@ class _SearchScreenState extends State<SearchScreen> {
         ? const <Track>[]
         : store.search(q);
 
+    final st = HutredStyle.of(context);
+    final wide = MediaQuery.sizeOf(context).width >= 800;
+    final pad = stylePagePadding(context);
+
+    // Поле поиска по макету: большая капсула (Моно, Стекло) или рамка (Резкий).
+    final field = TextField(
+      controller: _ctrl,
+      focusNode: _focus,
+      onChanged: _onChanged,
+      onSubmitted: _submit,
+      textInputAction: TextInputAction.search,
+      style: TextStyle(fontSize: st.sharp ? 20 : 16, fontWeight: st.sharp ? FontWeight.w600 : FontWeight.w500),
+      decoration: InputDecoration(
+        hintText: 'Песня, исполнитель, альбом или ссылка',
+        prefixIcon: Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: Icon(Ic.search),
+        ),
+        suffixIcon: _query.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Очистить',
+                icon: Icon(Ic.close),
+                onPressed: () {
+                  _ctrl.clear();
+                  _onChanged('');
+                  _focus.requestFocus();
+                },
+              ),
+        filled: !st.sharp,
+        fillColor: st.glass ? Colors.white.withValues(alpha: 0.08) : const Color(0xFF1F1F1F),
+        contentPadding: const EdgeInsets.symmetric(vertical: 17, horizontal: 16),
+        border: st.sharp
+            ? const OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: Color(0xFF333333)))
+            : OutlineInputBorder(
+                borderRadius: BorderRadius.circular(99), borderSide: BorderSide.none),
+        enabledBorder: st.sharp
+            ? const OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: Color(0xFF333333)))
+            : OutlineInputBorder(
+                borderRadius: BorderRadius.circular(99), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(st.sharp ? 0 : 99),
+            borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5)),
+      ),
+    );
+
+    // Всё найденное подряд: для «лучшего результата» и списка исполнителей.
+    final combined = <(String, Track)>[
+      for (final t in local) ('library', t),
+      for (final key in _online(settings))
+        if (enabled.contains(key))
+          for (final t in _results[key]?.tracks ?? const <Track>[]) (key, t),
+    ];
+    final showHero = q.length >= 2 && !_isUrl && _mode == _Mode.tracks && combined.isNotEmpty;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Поиск')),
       body: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-              child: TextField(
-                controller: _ctrl,
-                focusNode: _focus,
-                onChanged: _onChanged,
-                onSubmitted: _submit,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: 'Песня, исполнитель, альбом или ссылка',
-                  prefixIcon: Icon(Ic.search),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Очистить',
-                          icon: Icon(Ic.close),
-                          onPressed: () {
-                            _ctrl.clear();
-                            _onChanged('');
-                            _focus.requestFocus();
+              padding: EdgeInsets.fromLTRB(
+                  pad.left, MediaQuery.paddingOf(context).top + pad.top, pad.right, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (Navigator.of(context).canPop())
+                    IconButton(
+                      tooltip: 'Назад',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const BackButtonIcon(),
+                    ),
+                  if (!wide) ...[
+                    Text('Поиск', style: st.display(30)),
+                    const SizedBox(height: 12),
+                  ],
+                  ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: st.sharp ? 900 : 560), child: field),
+                  const SizedBox(height: 14),
+                  // Где искать и что искать.
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final key in ['library', ..._online(settings)])
+                        StyleChip(
+                          label: _labels[key]!,
+                          selected: enabled.contains(key),
+                          onTap: () {
+                            settings.toggleSearchSource(key);
+                            if (settings.searchSources.contains(key)) _searchOnline();
                           },
                         ),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // Где искать и что искать.
-          SliverToBoxAdapter(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Row(
-                children: [
-                  for (final key in ['library', ..._online(settings)]) ...[
-                    FilterChip(
-                      showCheckmark: false,
-                      avatar: Icon(_icons[key], size: 16),
-                      label: Text(_labels[key]!),
-                      selected: enabled.contains(key),
-                      onSelected: (_) {
-                        settings.toggleSearchSource(key);
-                        if (settings.searchSources.contains(key)) _searchOnline();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  const SizedBox(width: 8),
-                  SegmentedButton<_Mode>(
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment(value: _Mode.tracks, label: Text('Треки')),
-                      ButtonSegment(value: _Mode.playlists, label: Text('Плейлисты')),
+                      const SizedBox(width: 10),
+                      StyleChip(
+                        label: 'Треки',
+                        selected: _mode == _Mode.tracks,
+                        onTap: () {
+                          setState(() => _mode = _Mode.tracks);
+                          _searchOnline();
+                        },
+                      ),
+                      StyleChip(
+                        label: 'Плейлисты',
+                        selected: _mode == _Mode.playlists,
+                        onTap: () {
+                          setState(() => _mode = _Mode.playlists);
+                          _searchOnline();
+                        },
+                      ),
                     ],
-                    selected: {_mode},
-                    onSelectionChanged: (s) {
-                      setState(() => _mode = s.first);
-                      _searchOnline();
-                    },
                   ),
                 ],
               ),
@@ -294,15 +342,25 @@ class _SearchScreenState extends State<SearchScreen> {
           if (q.isEmpty) ..._history(settings),
           if (_isUrl)
             SliverToBoxAdapter(
-              child: Card(
-                margin: const EdgeInsets.all(16),
-                child: ListTile(
-                  leading: Icon(Ic.link),
-                  title: const Text('Добавить по ссылке'),
-                  subtitle: Text(q, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: Icon(Ic.add),
-                  onTap: () => AppActions.addUrl(context, q),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(pad.left, 8, pad.right, 8),
+                child: StylePanel(
+                  padding: EdgeInsets.zero,
+                  child: ListTile(
+                    leading: Icon(Ic.link),
+                    title: const Text('Добавить по ссылке'),
+                    subtitle: Text(q, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: Icon(Ic.add),
+                    onTap: () => AppActions.addUrl(context, q),
+                  ),
                 ),
+              ),
+            ),
+          if (showHero)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(pad.left, 8, pad.right, 8),
+                child: _SearchHero(results: combined, labels: _labels),
               ),
             ),
           if (local.isNotEmpty) ...[
@@ -335,30 +393,36 @@ class _SearchScreenState extends State<SearchScreen> {
         SliverFillRemaining(hasScrollBody: false, child: _SearchHint()),
       ];
     }
+    final pad = stylePagePadding(context);
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
-          child: Row(
+          padding: EdgeInsets.fromLTRB(pad.left, 12, pad.right, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Недавние запросы',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              const Spacer(),
-              TextButton(onPressed: settings.clearHistory, child: const Text('Очистить')),
+              Row(children: [
+                const StyleCaption('Недавно искал'),
+                const Spacer(),
+                TextButton(onPressed: settings.clearHistory, child: const Text('Очистить')),
+              ]),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final q in h)
+                    GestureDetector(
+                      onSecondaryTap: () => settings.forgetQuery(q),
+                      onLongPress: () => settings.forgetQuery(q),
+                      child: StyleChip(label: q, icon: Ic.history, onTap: () => _useQuery(q)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text('Долгое нажатие или правый клик — убрать из истории',
+                  style: TextStyle(fontSize: 12, color: HutredTheme.muted)),
             ],
-          ),
-        ),
-      ),
-      SliverList.builder(
-        itemCount: h.length,
-        itemBuilder: (_, i) => ListTile(
-          leading: Icon(Ic.history, color: HutredTheme.muted),
-          title: Text(h[i]),
-          onTap: () => _useQuery(h[i]),
-          trailing: IconButton(
-            tooltip: 'Убрать из истории',
-            icon: Icon(Ic.close, size: 18),
-            onPressed: () => settings.forgetQuery(h[i]),
           ),
         ),
       ),
@@ -456,13 +520,12 @@ class _SearchScreenState extends State<SearchScreen> {
         child: InkWell(
           onTap: onToggle,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 8, 4),
+            padding: EdgeInsets.fromLTRB(stylePagePadding(context).left, 22, 16, 6),
             child: Row(
               children: [
-                Icon(_icons[key], size: 20, color: HutredTheme.muted),
+                Icon(_icons[key], size: 18, color: HutredTheme.muted),
                 const SizedBox(width: 8),
-                Text(_labels[key]!,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                StyleCaption(_labels[key]!),
                 const SizedBox(width: 8),
                 if (count > 0)
                   Text('$count', style: const TextStyle(color: HutredTheme.muted)),
@@ -573,5 +636,210 @@ class _SearchHint extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+
+/// Верх результатов по макету: «Лучший результат» (исполнитель первого
+/// трека, с джемом по нему), рядом — первые треки, ниже — исполнители.
+class _SearchHero extends StatelessWidget {
+  const _SearchHero({required this.results, required this.labels});
+  final List<(String, Track)> results;
+  final Map<String, String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final store = context.read<LibraryStore>();
+    final player = context.read<PlayerService>();
+    final first = results.first.$2;
+    final names = splitArtists(first.artist);
+    final artist = names.isEmpty ? first.artist : names.first;
+    final mine = store.tracks
+        .where((t) => t.artist.toLowerCase().contains(artist.toLowerCase()))
+        .toList();
+    final top = results.take(4).toList();
+    final artists = <String, Track>{};
+    for (final (_, t) in results) {
+      for (final a in splitArtists(t.artist)) {
+        artists.putIfAbsent(a, () => t);
+      }
+      if (artists.length >= 6) break;
+    }
+
+    final best = StylePanel(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(st.sharp ? 0 : 48),
+            child: Artwork(track: first, size: 96, radius: 0),
+          ),
+          const SizedBox(height: 14),
+          Text(artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: st.display(36)),
+          const SizedBox(height: 6),
+          Text(
+              mine.isEmpty
+                  ? 'Исполнитель'
+                  : 'Исполнитель · в медиатеке ${tracksWord(mine.length)}',
+              style: const TextStyle(color: HutredTheme.muted)),
+          const SizedBox(height: 16),
+          Wrap(spacing: 10, runSpacing: 10, children: [
+            StyleButton(
+              label: 'Джем по исполнителю',
+              icon: Ic.graphic_eq,
+              onPressed: () async {
+                final wave = context.read<WaveService>();
+                final seeds = [
+                  for (final t in mine.take(20)) (track: t, weight: 4),
+                  for (final (_, t) in results.where((r) => r.$2.artist.contains(artist)).take(10))
+                    (track: t, weight: 3),
+                ];
+                await wave.startCustom(seeds,
+                    label: 'Джем по исполнителю «$artist»', first: first);
+                if (context.mounted) {
+                  AppActions.toast(context, wave.error ?? 'Играет джем по исполнителю «$artist»');
+                }
+              },
+            ),
+            StyleButton(
+              label: 'Открыть',
+              primary: false,
+              onPressed: () => openArtist(context, artist),
+            ),
+          ]),
+        ],
+      ),
+    );
+
+    Widget badge(String key) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            color: st.sharp ? null : Colors.white.withValues(alpha: 0.07),
+            border: st.sharp ? Border.all(color: const Color(0xFF333333)) : null,
+            borderRadius: BorderRadius.circular(st.sharp ? 0 : 99),
+          ),
+          child: Text(st.sharp ? labels[key]!.toUpperCase() : labels[key]!,
+              style: st.sharp
+                  ? st.caption(color: HutredTheme.muted, size: 11)
+                  : const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w700, color: HutredTheme.muted)),
+        );
+
+    final tracks = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const StyleCaption('Треки'),
+        const SizedBox(height: 8),
+        for (final (i, (key, t)) in top.indexed)
+          Builder(builder: (context) {
+            final saved = store.findBySource(t.source, t.uri);
+            return InkWell(
+              borderRadius: BorderRadius.circular(st.radius),
+              onTap: () => player.playTracks(
+                  top.map((r) => store.findBySource(r.$2.source, r.$2.uri) ?? r.$2).toList(),
+                  start: i),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
+                child: Row(children: [
+                  Artwork(track: t, size: 44, radius: 4),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(t.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, color: HutredTheme.muted)),
+                    ]),
+                  ),
+                  badge(key),
+                  IconButton(
+                    tooltip: saved == null ? 'В медиатеку' : 'Уже в медиатеке',
+                    onPressed: saved == null
+                        ? () {
+                            AppActions.ensureInLibrary(context, t);
+                            AppActions.toast(context, 'Добавлено: «${t.title}»');
+                          }
+                        : null,
+                    icon: Icon(saved == null ? Ic.add_circle_outline : Ic.check_circle,
+                        color: saved == null ? null : Theme.of(context).colorScheme.primary),
+                  ),
+                  Text(formatDuration(t.duration),
+                      style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
+                ]),
+              ),
+            );
+          }),
+      ],
+    );
+
+    final artistRow = artists.length < 2
+        ? const SizedBox.shrink()
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 22),
+              const StyleCaption('Исполнители'),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 156,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: artists.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 18),
+                  itemBuilder: (_, i) {
+                    final e = artists.entries.elementAt(i);
+                    return InkWell(
+                      onTap: () => openArtist(context, e.key),
+                      child: SizedBox(
+                        width: 110,
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(st.sharp ? 0 : 55),
+                            child: Artwork(track: e.value, size: 110, radius: 0),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(e.key,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+
+    return LayoutBuilder(builder: (context, box) {
+      final row = box.maxWidth >= 760
+          ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                flex: 85,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  const StyleCaption('Лучший результат'),
+                  const SizedBox(height: 8),
+                  best,
+                ]),
+              ),
+              const SizedBox(width: 24),
+              Expanded(flex: 115, child: tracks),
+            ])
+          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const StyleCaption('Лучший результат'),
+              const SizedBox(height: 8),
+              best,
+              const SizedBox(height: 18),
+              tracks,
+            ]);
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: [row, artistRow]);
+    });
   }
 }
