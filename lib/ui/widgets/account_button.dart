@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../services/account_service.dart';
 import '../screens/account_screen.dart';
 import 'user_avatar.dart';
+import '../icons.dart';
 
 /// Кнопка аккаунта: «Войти», если не вошёл, или кружок с буквой почты.
 class AccountButton extends StatelessWidget {
@@ -25,13 +26,13 @@ class AccountButton extends StatelessWidget {
       return extended
           ? FilledButton.tonalIcon(
               onPressed: () => _open(context),
-              icon: const Icon(Icons.login, size: 18),
+              icon: Icon(Ic.login, size: 18),
               label: const Text('Войти'),
             )
           : IconButton(
               tooltip: 'Войти в аккаунт',
               onPressed: () => _open(context),
-              icon: const Icon(Icons.account_circle_outlined),
+              icon: Icon(Ic.account_circle_outlined),
             );
     }
 

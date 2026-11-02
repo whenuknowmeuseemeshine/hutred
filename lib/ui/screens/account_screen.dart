@@ -9,6 +9,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/logo.dart';
 import '../widgets/user_avatar.dart';
+import '../icons.dart';
 
 /// Вход, регистрация и состояние синхронизации.
 class AccountScreen extends StatelessWidget {
@@ -275,7 +276,7 @@ class _Profile extends StatelessWidget {
                   tooltip: 'Сменить аватарку',
                   iconSize: 18,
                   onPressed: () => _pickAvatar(context),
-                  icon: const Icon(Icons.photo_camera_outlined),
+                  icon: Icon(Ic.photo_camera_outlined),
                 ),
               ),
             ],
@@ -296,7 +297,7 @@ class _Profile extends StatelessWidget {
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                 ),
                 const SizedBox(width: 6),
-                const Icon(Icons.edit_outlined, size: 18, color: HutredTheme.muted),
+                Icon(Ic.edit_outlined, size: 18, color: HutredTheme.muted),
               ],
             ),
           ),
@@ -305,11 +306,11 @@ class _Profile extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(color: HutredTheme.muted)),
         if (acc.isAdmin)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 6),
             child: Center(
               child: Chip(
-                avatar: Icon(Icons.shield_outlined, size: 16),
+                avatar: Icon(Ic.shield_outlined, size: 16),
                 label: Text('Админ'),
                 visualDensity: VisualDensity.compact,
               ),
@@ -326,7 +327,7 @@ class _Profile extends StatelessWidget {
           leading: acc.syncing
               ? const SizedBox.square(
                   dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-              : Icon(acc.syncError == null ? Icons.cloud_done_outlined : Icons.cloud_off,
+              : Icon(acc.syncError == null ? Ic.cloud_done_outlined : Ic.cloud_off,
                   color: acc.syncError == null ? null : Theme.of(context).colorScheme.error),
           title: Text(status),
           trailing: TextButton(
@@ -344,7 +345,7 @@ class _Profile extends StatelessWidget {
             secondary: acc.uploading
                 ? const SizedBox.square(
                     dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.cloud_sync_outlined),
+                : Icon(Ic.cloud_sync_outlined),
             title: const Text('Хранить свои файлы в облаке'),
             subtitle: Text('$status. Файлы будут на телефоне и не пропадут, '
                 'даже если удалить их с компьютера (до 50 МБ на файл, всего 1 ГБ бесплатно)'),
@@ -356,7 +357,7 @@ class _Profile extends StatelessWidget {
           );
         }),
         ListTile(
-          leading: const Icon(Icons.move_down),
+          leading: Icon(Ic.move_down),
           title: const Text('Перенести треки, добавленные без входа'),
           onTap: () async {
             final n = await acc.importGuestLibrary();
@@ -374,7 +375,7 @@ class _Profile extends StatelessWidget {
                 action: 'Выйти');
             if (ok) await acc.signOut();
           },
-          icon: const Icon(Icons.logout),
+          icon: Icon(Ic.logout),
           label: const Text('Выйти'),
         ),
       ],

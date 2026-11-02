@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/track.dart';
+import '../icons.dart';
 
 /// Подходит ли трек под поиск: все слова есть в названии, исполнителе или альбоме.
 bool trackMatches(Track t, String query) {
@@ -46,7 +47,7 @@ class _FilterFieldState extends State<FilterField> {
           isDense: true,
           hintText: widget.hint,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+          prefixIcon: Icon(Ic.search_rounded, size: 20),
           suffixIcon: _c.text.isEmpty
               ? null
               : IconButton(
@@ -56,7 +57,7 @@ class _FilterFieldState extends State<FilterField> {
                     setState(() {});
                     widget.onChanged('');
                   },
-                  icon: const Icon(Icons.close_rounded),
+                  icon: Icon(Ic.close_rounded),
                 ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(20),

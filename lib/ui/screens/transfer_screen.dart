@@ -10,6 +10,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
+import '../icons.dart';
 
 /// Перенос треков с других площадок.
 class TransferScreen extends StatefulWidget {
@@ -86,7 +87,7 @@ class _TransferScreenState extends State<TransferScreen> {
                 t.reset();
                 _input.clear();
               },
-              icon: const Icon(Icons.restart_alt),
+              icon: Icon(Ic.restart_alt),
             ),
           const SizedBox(width: 8),
         ],
@@ -121,12 +122,12 @@ class _TransferScreenState extends State<TransferScreen> {
               children: [
                 FilledButton.icon(
                   onPressed: busy ? null : _start,
-                  icon: const Icon(Icons.search),
+                  icon: Icon(Ic.search),
                   label: const Text('Найти треки'),
                 ),
                 OutlinedButton.icon(
                   onPressed: busy ? null : _pickFile,
-                  icon: const Icon(Icons.upload_file),
+                  icon: Icon(Ic.upload_file),
                   label: const Text('Файл CSV или TXT'),
                 ),
               ],
@@ -154,20 +155,20 @@ class _TransferScreenState extends State<TransferScreen> {
               ],
             ),
             const SizedBox(height: 24),
-            const _Hint(
-              icon: Icons.table_chart_outlined,
+            _Hint(
+              icon: Ic.table_chart_outlined,
               title: 'Длинный плейлист Spotify (больше 50 треков)',
               text: 'Открой exportify.net, войди через Spotify, скачай плейлист '
                   'в CSV и загрузи его кнопкой «Файл CSV».',
             ),
-            const _Hint(
-              icon: Icons.link,
+            _Hint(
+              icon: Ic.link,
               title: 'По ссылке',
               text: 'Треки, плейлисты и альбомы Spotify, открытые плейлисты и альбомы '
                   'Яндекс Музыки, плейлисты YouTube и SoundCloud.',
             ),
-            const _Hint(
-              icon: Icons.notes,
+            _Hint(
+              icon: Ic.notes,
               title: 'Любая другая площадка',
               text: 'Скопируй названия треков текстом — по одному в строке, '
                   'как «Исполнитель — Название».',
@@ -220,7 +221,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     const SizedBox(width: 12),
                     FilledButton.icon(
                       onPressed: t.selectedCount == 0 ? null : _save,
-                      icon: const Icon(Icons.download_done),
+                      icon: Icon(Ic.download_done),
                       label: Text('Добавить ${t.selectedCount}'),
                     ),
                   ],
@@ -251,7 +252,7 @@ class _ItemTile extends StatelessWidget {
                   dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))));
     } else if (found == null) {
       leading = SizedBox.square(
-          dimension: 44, child: Icon(Icons.search_off, color: scheme.error));
+          dimension: 44, child: Icon(Ic.search_off, color: scheme.error));
     } else {
       leading = Artwork(track: found, size: 44, radius: 4);
     }
@@ -283,7 +284,7 @@ class _ItemTile extends StatelessWidget {
           if (item.done)
             PopupMenuButton<String>(
               tooltip: 'Искать в другом месте',
-              icon: const Icon(Icons.manage_search, size: 20),
+              icon: Icon(Ic.manage_search, size: 20),
               onSelected: (where) => t.retry(item, where: where),
               itemBuilder: (_) => [
                 if (context.read<SettingsStore>().hasSpotifyKeys)

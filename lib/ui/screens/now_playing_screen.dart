@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
@@ -16,6 +15,7 @@ import '../widgets/lyrics_view.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/track_tile.dart';
 import '../theme.dart';
+import '../icons.dart';
 
 /// Полноэкранный плеер: обложка, текст-караоке и очередь.
 class NowPlayingScreen extends StatelessWidget {
@@ -99,7 +99,7 @@ class _TopBar extends StatelessWidget {
         IconButton(
           tooltip: 'Свернуть',
           onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
+          icon: Icon(Ic.keyboard_arrow_down_rounded, size: 32),
         ),
         Expanded(
           child: Text(
@@ -114,7 +114,7 @@ class _TopBar extends StatelessWidget {
           IconButton(
             tooltip: 'Не нравится',
             onPressed: () => context.read<WaveService>().dislike(track),
-            icon: const Icon(Icons.thumb_down_alt_outlined),
+            icon: Icon(Ic.thumb_down_alt_outlined),
           ),
         TrackMenuButton(track: track),
       ],
@@ -281,7 +281,7 @@ class _LyricsCard extends StatelessWidget {
                   const Spacer(),
                   TextButton.icon(
                     onPressed: () => LyricsPage.open(context, color),
-                    icon: const Icon(Icons.open_in_full, size: 16),
+                    icon: Icon(Ic.open_in_full, size: 16),
                     label: const Text('Развернуть'),
                     style: TextButton.styleFrom(foregroundColor: Colors.white),
                   ),
@@ -430,7 +430,7 @@ class _WideLayout extends StatelessWidget {
           child: IconButton(
             tooltip: 'Свернуть',
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
+            icon: Icon(Ic.keyboard_arrow_down_rounded, size: 32),
           ),
         ),
         Expanded(
@@ -550,7 +550,7 @@ class _QueuePanel extends StatelessWidget {
                 IconButton(
                   tooltip: 'Закрыть',
                   onPressed: onClose,
-                  icon: const Icon(Icons.close, size: 20),
+                  icon: Icon(Ic.close, size: 20),
                 ),
               ],
             ),
@@ -627,7 +627,7 @@ class QueueList extends StatelessWidget {
           subtitle: Row(
             children: [
               if (player.isRecommended(t)) ...[
-                Icon(Icons.auto_awesome,
+                Icon(Ic.auto_awesome,
                     size: 13, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 4),
               ],
@@ -638,9 +638,9 @@ class QueueList extends StatelessWidget {
           ),
           trailing: ReorderableDragStartListener(
             index: k,
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.all(8),
-              child: Icon(Icons.drag_handle),
+              child: Icon(Ic.drag_handle),
             ),
           ),
         );
@@ -655,7 +655,7 @@ class QueueList extends StatelessWidget {
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 24),
             color: Colors.red.withValues(alpha: 0.3),
-            child: const Icon(Icons.remove_circle_outline),
+            child: Icon(Ic.remove_circle_outline),
           ),
           onDismissed: (_) => player.removeFromQueue(i),
           child: withMenu,
@@ -733,7 +733,7 @@ class _GlassNarrowState extends State<_GlassNarrow> {
       children: [
         Row(
           children: [
-            round(Icons.keyboard_arrow_down_rounded, 'Свернуть',
+            round(Ic.keyboard_arrow_down_rounded, 'Свернуть',
                 () => Navigator.of(context).pop()),
             Expanded(
               child: Column(children: [
@@ -784,13 +784,13 @@ class _GlassNarrowState extends State<_GlassNarrow> {
                 ],
               ),
             ),
-            round(LucideIcons.x, 'Не моё — больше не играть', () async {
+            round(Ic.close, 'Не моё — больше не играть', () async {
               await context.read<WaveService>().toggleDislike(track);
               if (player.current?.id == track.id) await player.next();
             }),
             const SizedBox(width: 10),
             round(
-              liked ? Icons.favorite_rounded : LucideIcons.heart,
+              liked ? Ic.favorite_rounded : Ic.favorite_border,
               liked ? 'Убрать из любимых' : 'В любимые',
               () {
                 if (saved == null) {
@@ -928,8 +928,8 @@ class _SharpWide extends StatelessWidget {
           runSpacing: 10,
           children: [
             box(
-              const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(LucideIcons.x, size: 18),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Ic.close, size: 18),
                 SizedBox(width: 8),
                 Text('Не моё', style: TextStyle(fontWeight: FontWeight.w600)),
               ]),
@@ -938,18 +938,18 @@ class _SharpWide extends StatelessWidget {
                 if (player.current?.id == track.id) await player.next();
               },
             ),
-            box(const Icon(Icons.skip_previous_rounded), player.previous, width: 52),
+            box(Icon(Ic.skip_previous_rounded), player.previous, width: 52),
             box(
-              Icon(player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              Icon(player.playing ? Ic.pause_rounded : Ic.play_arrow_rounded,
                   color: HutredTheme.onAccent(accent), size: 26),
               player.togglePlay,
               filled: true,
               width: 72,
             ),
-            box(const Icon(Icons.skip_next_rounded), player.next, width: 52),
+            box(Icon(Ic.skip_next_rounded), player.next, width: 52),
             box(
               Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(liked ? Icons.favorite_rounded : LucideIcons.heart,
+                Icon(liked ? Ic.favorite_rounded : Ic.favorite_border,
                     size: 18, color: liked ? accent : null),
                 const SizedBox(width: 8),
                 Text(liked ? 'В любимых' : 'В любимые',
@@ -1023,7 +1023,7 @@ class _SharpWide extends StatelessWidget {
           child: IconButton(
             tooltip: 'Свернуть',
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
+            icon: Icon(Ic.keyboard_arrow_down_rounded, size: 32),
           ),
         ),
         Expanded(

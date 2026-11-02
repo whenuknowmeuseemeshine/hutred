@@ -12,6 +12,7 @@ import '../services/transfer_service.dart';
 import '../services/youtube_source.dart';
 import 'theme.dart';
 import 'widgets/artwork.dart';
+import 'icons.dart';
 
 /// Общие действия: добавление источников, плейлисты, правка треков.
 class AppActions {
@@ -46,7 +47,7 @@ class AppActions {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.smart_display_outlined),
+              leading: Icon(Ic.smart_display_outlined),
               title: const Text('С YouTube'),
               subtitle: const Text(
                   'Ссылка на видео, плейлист или YouTube Music'),
@@ -56,7 +57,7 @@ class AppActions {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.audio_file_outlined),
+              leading: Icon(Ic.audio_file_outlined),
               title: Text(ImportService.isDesktop ? 'Файлы или папка' : 'Аудиофайлы'),
               subtitle: Text(ImportService.isDesktop
                   ? 'Отдельные треки или целая папка с подпапками'
@@ -67,7 +68,7 @@ class AppActions {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.link),
+              leading: Icon(Ic.link),
               title: const Text('По ссылке'),
               subtitle: const Text('SoundCloud, mp3, интернет-радио и другие ссылки'),
               onTap: () {
@@ -111,17 +112,17 @@ class AppActions {
                     tooltip: 'Закрыть',
                     iconSize: 20,
                     onPressed: () => Navigator.pop(d),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: Icon(Ic.close_rounded),
                   ),
                 ]),
                 const SizedBox(height: 4),
-                option(d, Icons.smart_display_outlined, 'С YouTube',
+                option(d, Ic.smart_display_outlined, 'С YouTube',
                     'Ссылка на видео, плейлист или YouTube Music',
                     () => addUrlDialog(context, youtube: true)),
-                option(d, Icons.folder_open_rounded, 'Файлы или папка',
+                option(d, Ic.folder_open_rounded, 'Файлы или папка',
                     'Отдельные треки или целая папка с подпапками',
                     () => addFromDevice(context)),
-                option(d, Icons.link_rounded, 'По ссылке',
+                option(d, Ic.link_rounded, 'По ссылке',
                     'SoundCloud, Spotify, mp3, интернет-радио',
                     () => addUrlDialog(context)),
               ],
@@ -197,16 +198,16 @@ class AppActions {
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.pop(d, 'files'),
-            child: const ListTile(
-              leading: Icon(Icons.audio_file_outlined),
+            child: ListTile(
+              leading: Icon(Ic.audio_file_outlined),
               title: Text('Файлы'),
               subtitle: Text('Выбрать один или несколько треков'),
             ),
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(d, 'folder'),
-            child: const ListTile(
-              leading: Icon(Icons.folder_open_outlined),
+            child: ListTile(
+              leading: Icon(Ic.folder_open_outlined),
               title: Text('Папку'),
               subtitle: Text('Все треки из неё и подпапок'),
             ),
@@ -362,8 +363,8 @@ class AppActions {
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.pop(d, '__new__'),
-            child: const Row(children: [
-              Icon(Icons.add),
+            child: Row(children: [
+              Icon(Ic.add),
               SizedBox(width: 12),
               Text('Новый плейлист'),
             ]),
@@ -401,8 +402,8 @@ class AppActions {
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.pop(d, '__new__'),
-            child: const Row(children: [
-              Icon(Icons.add),
+            child: Row(children: [
+              Icon(Ic.add),
               SizedBox(width: 12),
               Text('Новый плейлист'),
             ]),
@@ -502,7 +503,7 @@ class AppActions {
                               });
                             }
                           },
-                          icon: const Icon(Icons.image_outlined),
+                          icon: Icon(Ic.image_outlined),
                           label: const Text('Выбрать обложку'),
                         ),
                         if (!removeCover && (pickedCover ?? t.artworkUrl) != null)

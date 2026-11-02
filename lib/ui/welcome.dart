@@ -9,6 +9,7 @@ import 'screens/account_screen.dart';
 import 'theme.dart';
 import 'widgets/style_picker.dart';
 import 'widgets/artwork.dart';
+import 'icons.dart';
 
 /// Первый экран: войти или создать аккаунт, потом уже пользоваться.
 class WelcomeScreen extends StatelessWidget {
@@ -170,7 +171,7 @@ class _ArtistPickerScreenState extends State<ArtistPickerScreen> {
                   onSubmitted: (_) => _search(),
                   decoration: InputDecoration(
                     hintText: 'Имя исполнителя',
-                    prefixIcon: const Icon(Icons.search_rounded),
+                    prefixIcon: Icon(Ic.search_rounded),
                     suffixIcon: _searching
                         ? const Padding(
                             padding: EdgeInsets.all(14),
@@ -178,7 +179,7 @@ class _ArtistPickerScreenState extends State<ArtistPickerScreen> {
                                 dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                           )
                         : IconButton(
-                            onPressed: _search, icon: const Icon(Icons.arrow_forward_rounded)),
+                            onPressed: _search, icon: Icon(Ic.arrow_forward_rounded)),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -218,7 +219,7 @@ class _ArtistPickerScreenState extends State<ArtistPickerScreen> {
                       trailing: IconButton(
                         tooltip: 'Убрать',
                         onPressed: () => setState(() => _picked.remove(a.name)),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: Icon(Ic.close_rounded),
                       ),
                     ),
                 ],

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/settings_store.dart';
 import '../theme.dart';
+import '../icons.dart';
 
 /// Три карточки стилей с маленьким превью. Выбор меняет шрифт, формы,
 /// цвет и фон сразу, без перезапуска.
@@ -28,7 +29,14 @@ class StylePicker extends StatelessWidget {
               _StyleCard(
                 info: info,
                 selected: s.chosenStyle == info.id,
-                onTap: () => live ? s.applyStyleNow(info.id) : s.applyStyle(info.id),
+                onTap: () {
+                  if (live) {
+                    s.applyStyleNow(info.id);
+                    Ic.style = info.id;
+                  } else {
+                    s.applyStyle(info.id);
+                  }
+                },
               ),
           ],
         ),
@@ -36,7 +44,7 @@ class StylePicker extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 12),
             child: Row(children: [
-              Icon(Icons.restart_alt_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
+              Icon(Ic.restart_alt_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(

@@ -19,13 +19,14 @@ import '../spotify_check.dart';
 import '../screens/artist_screen.dart';
 import '../theme.dart';
 import 'artwork.dart';
+import '../icons.dart';
 
 IconData sourceIcon(TrackSource s) => switch (s) {
-      TrackSource.local => Icons.insert_drive_file_outlined,
-      TrackSource.url => Icons.public,
-      TrackSource.youtube => Icons.smart_display_outlined,
-      TrackSource.soundcloud => Icons.cloud_outlined,
-      TrackSource.spotify => Icons.graphic_eq,
+      TrackSource.local => Ic.insert_drive_file_outlined,
+      TrackSource.url => Ic.public,
+      TrackSource.youtube => Ic.smart_display_outlined,
+      TrackSource.soundcloud => Ic.cloud_outlined,
+      TrackSource.spotify => Ic.graphic_eq,
     };
 
 String sourceLabel(TrackSource s) => switch (s) {
@@ -99,7 +100,7 @@ class TrackTile extends StatelessWidget {
         ? _RowAction(
             visible: hovered || saved.favorite,
             tooltip: saved.favorite ? 'Убрать из любимых' : 'В любимые',
-            icon: saved.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            icon: saved.favorite ? Ic.favorite_rounded : Ic.favorite_border_rounded,
             color: saved.favorite ? scheme.primary : null,
             onTap: () => store.toggleFavorite(saved.id),
           )
@@ -252,7 +253,7 @@ class TrackTile extends StatelessWidget {
       subtitle: Row(
         children: [
           if (track.favorite && !desktop) ...[
-            Icon(Icons.favorite, size: 13, color: scheme.primary),
+            Icon(Ic.favorite, size: 13, color: scheme.primary),
             const SizedBox(width: 4),
           ],
           _DownloadMark(track: track),
@@ -277,7 +278,7 @@ class TrackTile extends StatelessWidget {
               _RowAction(
                 visible: hovered || saved.favorite,
                 tooltip: saved.favorite ? 'Убрать из любимых' : 'В любимые',
-                icon: saved.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                icon: saved.favorite ? Ic.favorite_rounded : Ic.favorite_border_rounded,
                 color: saved.favorite ? scheme.primary : null,
                 onTap: () => store.toggleFavorite(saved.id),
               ),
@@ -325,41 +326,41 @@ List<PopupMenuEntry<String>> trackMenuItems(BuildContext context, Track track,
         ),
       );
   return [
-    item('radio', Icons.graphic_eq_rounded, 'Джем по треку'),
-    if (context.read<JamService>().active) item('jamAdd', Icons.group_add_outlined, 'Добавить в джем'),
-    item('next', Icons.playlist_play, 'Играть следующим'),
-    item('queue', Icons.queue_music, 'Добавить в очередь'),
-    if (hasArtist) item('artist', Icons.person_outline, 'К исполнителю'),
+    item('radio', Ic.graphic_eq_rounded, 'Джем по треку'),
+    if (context.read<JamService>().active) item('jamAdd', Ic.group_add_outlined, 'Добавить в джем'),
+    item('next', Ic.playlist_play, 'Играть следующим'),
+    item('queue', Ic.queue_music, 'Добавить в очередь'),
+    if (hasArtist) item('artist', Ic.person_outline, 'К исполнителю'),
     if (context.read<WaveService>().isDisliked(track))
-      item('undislike', Icons.thumb_down, 'Вернуть трек (снова играть)')
+      item('undislike', Ic.thumb_down, 'Вернуть трек (снова играть)')
     else
-      item('dislike', Icons.thumb_down_outlined, 'Не нравится — скрыть'),
-    if (hasArtist) item('block', Icons.block, 'Не показывать исполнителя…'),
+      item('dislike', Ic.thumb_down_outlined, 'Не нравится — скрыть'),
+    if (hasArtist) item('block', Ic.block, 'Не показывать исполнителя…'),
     if (context.read<OfflineService>().isDownloaded(track))
-      item('undownload', Icons.download_done, 'Удалить загрузку')
+      item('undownload', Ic.download_done, 'Удалить загрузку')
     else
-      item('download', Icons.download_outlined, 'Скачать'),
+      item('download', Ic.download_outlined, 'Скачать'),
     const PopupMenuDivider(),
-    item('playlist', Icons.add_circle_outline, 'Добавить в плейлист…'),
-    if (!inLibrary) item('library', Icons.library_add_outlined, 'Добавить в медиатеку'),
+    item('playlist', Ic.add_circle_outline, 'Добавить в плейлист…'),
+    if (!inLibrary) item('library', Ic.library_add_outlined, 'Добавить в медиатеку'),
     if (inLibrary && !compact && !inFavorites)
-      item('fav', saved.favorite ? Icons.favorite : Icons.favorite_border,
+      item('fav', saved.favorite ? Ic.favorite : Ic.favorite_border,
           saved.favorite ? 'Убрать из любимых' : 'В любимые'),
     if (inLibrary) ...[
       const PopupMenuDivider(),
-      item('edit', Icons.edit_outlined, 'Изменить сведения…'),
-      item('refresh', Icons.refresh_rounded, 'Обновить трек'),
+      item('edit', Ic.edit_outlined, 'Изменить сведения…'),
+      item('refresh', Ic.refresh_rounded, 'Обновить трек'),
       if (acc.signedIn)
-        item('hide', saved.hiddenFromFriends ? Icons.visibility : Icons.visibility_off_outlined,
+        item('hide', saved.hiddenFromFriends ? Ic.visibility : Ic.visibility_off_outlined,
             saved.hiddenFromFriends ? 'Показать друзьям' : 'Скрыть от друзей'),
       if (acc.signedIn && acc.isAdmin)
-        item('fix', Icons.public, 'Применить правки для всех'),
+        item('fix', Ic.public, 'Применить правки для всех'),
     ],
     if (canRemoveFromPlaylist)
       inFavorites
-          ? item('unlist', Icons.heart_broken_outlined, 'Убрать из любимых')
-          : item('unlist', Icons.playlist_remove, 'Убрать из плейлиста'),
-    if (inLibrary && !inFavorites) item('delete', Icons.delete_outline, 'Удалить из медиатеки'),
+          ? item('unlist', Ic.heart_broken_outlined, 'Убрать из любимых')
+          : item('unlist', Ic.playlist_remove, 'Убрать из плейлиста'),
+    if (inLibrary && !inFavorites) item('delete', Ic.delete_outline, 'Удалить из медиатеки'),
   ];
 }
 
@@ -555,7 +556,7 @@ class TrackMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Действия',
-      icon: const Icon(Icons.more_vert),
+      icon: Icon(Ic.more_vert),
       onSelected: (v) =>
           runTrackAction(context, track, v, onRemoveFromPlaylist: onRemoveFromPlaylist),
       itemBuilder: (_) => trackMenuItems(context, track,
@@ -705,7 +706,7 @@ class _DownloadMark extends StatelessWidget {
     if (off.isDownloaded(track)) {
       return Padding(
         padding: const EdgeInsets.only(right: 4),
-        child: Icon(Icons.arrow_circle_down, size: 14, color: accent),
+        child: Icon(Ic.arrow_circle_down, size: 14, color: accent),
       );
     }
     if (off.isDownloading(track)) {

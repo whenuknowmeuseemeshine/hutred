@@ -11,6 +11,7 @@ import '../services/soundcloud_source.dart';
 import '../services/spotify_service.dart';
 import '../services/youtube_source.dart';
 import 'theme.dart';
+import 'icons.dart';
 
 /// «Проверка связи»: что из сервисов открывается, а что нет.
 /// Удобно, чтобы друг прислал скриншот, если что-то не работает.
@@ -124,7 +125,7 @@ class _NetCheckDialogState extends State<_NetCheckDialog> {
                 leading: c.result == null
                     ? const SizedBox.square(
                         dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(c.ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                    : Icon(c.ok ? Ic.check_circle_rounded : Ic.error_outline_rounded,
                         color: c.ok ? scheme.primary : Colors.redAccent),
                 title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Text(c.result == null

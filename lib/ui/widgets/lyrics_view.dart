@@ -16,6 +16,7 @@ import '../../services/soundcloud_source.dart';
 import '../../services/youtube_source.dart';
 import '../actions.dart';
 import '../spotify_check.dart';
+import '../icons.dart';
 
 /// Панель текста: находит текст для трека и показывает его в режиме караоке.
 class LyricsPanel extends StatefulWidget {
@@ -407,14 +408,14 @@ class _LyricsPanelState extends State<LyricsPanel> {
     Widget body;
     if (_loading) {
       body = _Message(
-        icon: Icons.lyrics_outlined,
+        icon: Ic.lyrics_outlined,
         text: _loadingText,
         child: const SizedBox(
             width: 120, child: LinearProgressIndicator(minHeight: 2)),
       );
     } else if (lyrics == null || lyrics.isEmpty) {
       body = _Message(
-        icon: Icons.lyrics_outlined,
+        icon: Ic.lyrics_outlined,
         text: _error ?? 'Текст для этого трека не нашёлся',
         child: Wrap(
           spacing: 8,
@@ -423,18 +424,18 @@ class _LyricsPanelState extends State<LyricsPanel> {
           children: [
             OutlinedButton.icon(
               onPressed: () => _maybeFetch(force: true),
-              icon: const Icon(Icons.refresh),
+              icon: Icon(Ic.refresh),
               label: const Text('Искать текст'),
             ),
             FilledButton.tonalIcon(
               onPressed: _editLyrics,
-              icon: const Icon(Icons.edit_note),
+              icon: Icon(Ic.edit_note),
               label: const Text('Вставить свой'),
             ),
             if (context.watch<AccountService>().aiAllowed)
               FilledButton.tonalIcon(
                 onPressed: _aiSync,
-                icon: const Icon(Icons.auto_awesome),
+                icon: Icon(Ic.auto_awesome),
                 label: const Text('Распознать ИИ'),
               ),
           ],
@@ -477,22 +478,22 @@ class _LyricsPanelState extends State<LyricsPanel> {
               children: [
                 if (context.watch<AccountService>().aiAllowed)
                   _ToolButton(
-                    icon: Icons.auto_awesome,
+                    icon: Ic.auto_awesome,
                     tooltip: 'Подогнать под трек с помощью ИИ',
                     onPressed: _aiSync,
                   ),
                 _ToolButton(
-                  icon: Icons.swap_vert,
+                  icon: Ic.swap_vert,
                   tooltip: 'Сдвинуть текст раньше или позже',
                   onPressed: _shiftSheet,
                 ),
                 _ToolButton(
-                  icon: Icons.refresh,
+                  icon: Ic.refresh,
                   tooltip: 'Найти текст заново (везде)',
                   onPressed: () => _maybeFetch(force: true),
                 ),
                 _ToolButton(
-                  icon: Icons.edit_outlined,
+                  icon: Ic.edit_outlined,
                   tooltip: 'Редактировать или вставить свой текст',
                   onPressed: _editLyrics,
                 ),

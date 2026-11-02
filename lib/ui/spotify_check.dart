@@ -9,6 +9,7 @@ import '../services/player_service.dart';
 import '../services/settings_store.dart';
 import '../services/spotify_service.dart';
 import 'widgets/artwork.dart';
+import 'icons.dart';
 
 /// Сверка новых треков со Spotify: когда трек с YouTube или SoundCloud
 /// попадает в медиатеку, ищем его в Spotify и спрашиваем, подставить ли
@@ -188,9 +189,9 @@ class _Prompt extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             row('Сейчас', original),
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Icon(Icons.arrow_downward, size: 18),
+              child: Icon(Ic.arrow_downward, size: 18),
             ),
             row('Из Spotify', match),
             const SizedBox(height: 16),

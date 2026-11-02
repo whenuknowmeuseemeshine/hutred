@@ -15,6 +15,7 @@ import '../widgets/controls.dart';
 import '../widgets/filter_field.dart';
 import '../widgets/logo.dart';
 import '../widgets/track_tile.dart';
+import '../icons.dart';
 
 enum _Sort { recent, title, artist }
 
@@ -74,7 +75,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       leading: IconButton(
         tooltip: 'Отменить выбор',
         onPressed: () => setState(() => _sel = null),
-        icon: const Icon(Icons.close),
+        icon: Icon(Ic.close),
       ),
       title: Text(none ? 'Выбери треки' : 'Выбрано: ${picked.length}'),
       actions: [
@@ -87,7 +88,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               _sel!.addAll(visible.map((t) => t.id));
             }
           }),
-          icon: Icon(all ? Icons.deselect : Icons.select_all),
+          icon: Icon(all ? Ic.deselect : Ic.select_all),
         ),
         IconButton(
           tooltip: allFav ? 'Убрать из любимых' : 'В любимые',
@@ -98,18 +99,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   AppActions.toast(context,
                       allFav ? 'Убрано из любимых' : 'В любимых: ${tracksWord(picked.length)}');
                 },
-          icon: Icon(allFav ? Icons.favorite : Icons.favorite_border),
+          icon: Icon(allFav ? Ic.favorite : Ic.favorite_border),
         ),
         if (context.read<SettingsStore>().hasSpotifyKeys)
           IconButton(
             tooltip: 'Сведения из Spotify: точные название, исполнитель, альбом и обложка',
             onPressed: none ? null : () => _spotifyFix(picked),
-            icon: const Icon(Icons.graphic_eq),
+            icon: Icon(Ic.graphic_eq),
           ),
         IconButton(
           tooltip: 'Добавить в плейлист',
           onPressed: none ? null : () => AppActions.addManyToPlaylistDialog(context, picked),
-          icon: const Icon(Icons.playlist_add),
+          icon: Icon(Ic.playlist_add),
         ),
         IconButton(
           tooltip: 'Скачать',
@@ -119,7 +120,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   offline.downloadAll(picked);
                   AppActions.toast(context, 'Скачиваю: ${tracksWord(picked.length)}');
                 },
-          icon: const Icon(Icons.download_outlined),
+          icon: Icon(Ic.download_outlined),
         ),
         IconButton(
           tooltip: 'Удалить из медиатеки',
@@ -134,17 +135,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   store.removeTracks(picked.map((t) => t.id));
                   setState(() => _sel = null);
                 },
-          icon: const Icon(Icons.delete_outline),
+          icon: Icon(Ic.delete_outline),
         ),
         const SizedBox(width: 8),
       ],
     );
   }
 
-  static const _sortLabels = {
-    _Sort.recent: ('Недавно добавленные', Icons.schedule),
-    _Sort.title: ('По названию', Icons.sort_by_alpha),
-    _Sort.artist: ('По исполнителю', Icons.person_outline),
+  static final _sortLabels = {
+    _Sort.recent: ('Недавно добавленные', Ic.schedule),
+    _Sort.title: ('По названию', Ic.sort_by_alpha),
+    _Sort.artist: ('По исполнителю', Ic.person_outline),
   };
 
   String get _filterLabel => _downloadedOnly
@@ -154,10 +155,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           : (_source == null ? 'Все треки' : sourceLabel(_source!));
 
   IconData get _filterIcon => _downloadedOnly
-      ? Icons.arrow_circle_down
+      ? Ic.arrow_circle_down
       : _favOnly
-          ? Icons.favorite
-          : (_source == null ? Icons.library_music_outlined : sourceIcon(_source!));
+          ? Ic.favorite
+          : (_source == null ? Ic.library_music_outlined : sourceIcon(_source!));
 
   /// Пункт меню в том же стиле, что и меню трека: значок + текст + галочка.
   PopupMenuItem<T> _item<T>(T value, IconData icon, String text, bool selected) =>
@@ -170,7 +171,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             const SizedBox(width: 12),
             Expanded(child: Text(text)),
             if (selected)
-              Icon(Icons.check, size: 18, color: Theme.of(context).colorScheme.primary),
+              Icon(Ic.check, size: 18, color: Theme.of(context).colorScheme.primary),
           ],
         ),
       );
@@ -208,7 +209,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             const SizedBox(width: 8),
             Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(width: 4),
-            const Icon(Icons.expand_more, size: 18),
+            Icon(Ic.expand_more, size: 18),
           ],
         ),
       ),
@@ -260,7 +261,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           if (store.tracks.isNotEmpty)
             TextButton.icon(
               onPressed: () => setState(() => _sel = {}),
-              icon: const Icon(Icons.checklist_rtl, size: 20),
+              icon: Icon(Ic.checklist_rtl, size: 20),
               label: const Text('Выбрать'),
             ),
           const SizedBox(width: 8),
@@ -295,10 +296,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 : TrackSource.values.byName(v);
                           }),
                           items: () => [
-                            _item('all', Icons.library_music_outlined, 'Все треки',
+                            _item('all', Ic.library_music_outlined, 'Все треки',
                                 !_favOnly && !_downloadedOnly && _source == null),
-                            _item('fav', Icons.favorite_border, 'Любимые треки', _favOnly),
-                            _item('downloaded', Icons.arrow_circle_down, 'Скачанные',
+                            _item('fav', Ic.favorite_border, 'Любимые треки', _favOnly),
+                            _item('downloaded', Ic.arrow_circle_down, 'Скачанные',
                                 _downloadedOnly),
                             const PopupMenuDivider(),
                             for (final src in TrackSource.values)
@@ -361,8 +362,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                       },
                                 icon: Icon(
                                   pinned
-                                      ? Icons.arrow_circle_down_rounded
-                                      : Icons.arrow_circle_down_outlined,
+                                      ? Ic.arrow_circle_down_rounded
+                                      : Ic.arrow_circle_down_outlined,
                                   color: pinned
                                       ? Theme.of(context).colorScheme.primary
                                       : Colors.white70,
@@ -376,7 +377,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           iconSize: 28,
                           tooltip: 'Добавить музыку: файлы, папка, ссылка',
                           onPressed: () => AppActions.showAddSheet(context),
-                          icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70),
+                          icon: Icon(Ic.add_circle_outline_rounded, color: Colors.white70),
                         ),
                         const SizedBox(width: 8),
                         // Как в Spotify: выкл → перемешать → перемешать с рекомендациями.
@@ -398,7 +399,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           tooltip: 'Слушать всё',
                           iconSize: 32,
                           onPressed: tracks.isEmpty ? null : () => player.playAll(tracks),
-                          icon: const Icon(Icons.play_arrow_rounded),
+                          icon: Icon(Ic.play_arrow_rounded),
                         ),
                       ],
                     ),
@@ -457,7 +458,7 @@ class _EmptyLibrary extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.library_music_outlined,
+              Icon(Ic.library_music_outlined,
                   size: 64, color: Theme.of(context).colorScheme.primary),
               const SizedBox(height: 16),
               const Text('Медиатека пока пустая',
@@ -478,12 +479,12 @@ class _EmptyLibrary extends StatelessWidget {
                   // Обе кнопки в одном стиле: «с устройства» и «по ссылке».
                   FilledButton.tonalIcon(
                     onPressed: () => AppActions.addFromDevice(context),
-                    icon: const Icon(Icons.audio_file_outlined),
+                    icon: Icon(Ic.audio_file_outlined),
                     label: Text(ImportService.isDesktop ? 'Файлы или папка' : 'Файлы'),
                   ),
                   FilledButton.tonalIcon(
                     onPressed: () => AppActions.addUrlDialog(context),
-                    icon: const Icon(Icons.link),
+                    icon: Icon(Ic.link),
                     label: const Text('Ссылка'),
                   ),
                 ],

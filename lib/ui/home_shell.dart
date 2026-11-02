@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../services/account_service.dart';
@@ -25,6 +24,7 @@ import 'widgets/blurred_background.dart';
 import 'widgets/mini_player.dart';
 import 'shell_nav.dart';
 import 'theme.dart';
+import 'icons.dart';
 
 /// Каркас приложения: на широком экране боковая панель, на телефоне — нижняя.
 class HomeShell extends StatefulWidget {
@@ -35,14 +35,14 @@ class HomeShell extends StatefulWidget {
 }
 
 /// Все вкладки. Порядок пользователь меняет в Настройках.
-const navTabs = {
-  'wave': (icon: LucideIcons.audioWaveform, selected: LucideIcons.audioWaveform, label: 'Волна'),
-  'library': (icon: LucideIcons.library, selected: LucideIcons.library, label: 'Медиатека'),
-  'search': (icon: LucideIcons.search, selected: LucideIcons.search, label: 'Поиск'),
-  'playlists': (icon: LucideIcons.listMusic, selected: LucideIcons.listMusic, label: 'Плейлисты'),
-  'friends': (icon: LucideIcons.users, selected: LucideIcons.users, label: 'Друзья'),
-  'transfer': (icon: LucideIcons.arrowDownToLine, selected: LucideIcons.arrowDownToLine, label: 'Перенос'),
-  'settings': (icon: LucideIcons.settings, selected: LucideIcons.settings, label: 'Настройки'),
+final navTabs = {
+  'wave': (icon: Ic.waves, selected: Ic.waves, label: 'Волна'),
+  'library': (icon: Ic.library_music_outlined, selected: Ic.library_music_outlined, label: 'Медиатека'),
+  'search': (icon: Ic.search, selected: Ic.search, label: 'Поиск'),
+  'playlists': (icon: Ic.queue_music, selected: Ic.queue_music, label: 'Плейлисты'),
+  'friends': (icon: Ic.people_outline, selected: Ic.people_outline, label: 'Друзья'),
+  'transfer': (icon: Ic.move_to_inbox_outlined, selected: Ic.move_to_inbox_outlined, label: 'Перенос'),
+  'settings': (icon: Ic.settings_outlined, selected: Ic.settings_outlined, label: 'Настройки'),
 };
 
 class _HomeShellState extends State<HomeShell> {
@@ -326,7 +326,7 @@ class _JamBanner extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(children: [
-            const Icon(Icons.graphic_eq_rounded, size: 18),
+            Icon(Ic.graphic_eq_rounded, size: 18),
             const SizedBox(width: 10),
             Expanded(
               child: Text('Джем: $who',
@@ -334,7 +334,7 @@ class _JamBanner extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             ),
-            const Icon(Icons.chevron_right, size: 18),
+            Icon(Ic.chevron_right, size: 18),
           ]),
         ),
       ),
@@ -361,7 +361,7 @@ class _OfflineBanner extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     children: [
-                      const Icon(Icons.cloud_off, size: 18),
+                      Icon(Ic.cloud_off, size: 18),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -397,7 +397,7 @@ class _UpdateBanner extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
                 child: Row(
                   children: [
-                    const Icon(Icons.system_update_alt, size: 18),
+                    Icon(Ic.system_update_alt, size: 18),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../services/account_service.dart';
 import '../../services/offline_service.dart';
@@ -25,6 +24,7 @@ import '../home_shell.dart';
 import '../widgets/style_picker.dart';
 import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
+import '../icons.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -129,7 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const _Section('Фон'),
           ListTile(
-            leading: const Icon(Icons.wallpaper_outlined),
+            leading: Icon(Ic.wallpaper_outlined),
             title: const Text('Фон «Моей волны»'),
             subtitle: Text(s.waveBackground == null
                 ? 'Своя картинка или GIF за кругом «Волны»'
@@ -139,9 +139,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 IconButton(
                   tooltip: 'Убрать фон',
                   onPressed: () => s.setWaveBackground(null),
-                  icon: const Icon(Icons.close_rounded),
+                  icon: Icon(Ic.close_rounded),
                 ),
-              const Icon(Icons.chevron_right),
+              Icon(Ic.chevron_right),
             ]),
             onTap: () async {
               final res = await FilePicker.platform.pickFiles(
@@ -203,14 +203,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: TextButton.icon(
                 onPressed: s.reset,
-                icon: const Icon(Icons.restart_alt),
+                icon: Icon(Ic.restart_alt),
                 label: const Text('Вернуть цвета по умолчанию'),
               ),
             ),
           ),
           const _Section('Медиатека'),
           ListTile(
-            leading: const Icon(Icons.favorite_outline_rounded),
+            leading: Icon(Ic.favorite_outline_rounded),
             title: const Text('Любимые исполнители'),
             subtitle: Builder(builder: (context) {
               final fav = context.watch<WaveService>().favoriteArtists;
@@ -220,7 +220,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis);
             }),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Icon(Ic.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const ArtistPickerScreen(standalone: true))),
           ),
@@ -234,7 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const _Section('Воспроизведение'),
           SwitchListTile(
-            secondary: const Icon(Icons.swap_horiz_rounded),
+            secondary: Icon(Ic.swap_horiz_rounded),
             title: const Text('Плавный переход между треками'),
             subtitle: Text(s.crossfade
                 ? 'Конец трека затихает, следующий нарастает: ${s.crossfadeSec} с'
@@ -261,17 +261,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ]),
             ),
           ListTile(
-            leading: const Icon(Icons.equalizer_rounded),
+            leading: Icon(Ic.equalizer_rounded),
             title: const Text('Эквалайзер'),
             subtitle: Text(Platform.isAndroid
                 ? (s.eqOn ? 'Включён' : 'Выключен')
                 : 'Пока только на Android'),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Icon(Ic.chevron_right),
             onTap: () => Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const EqualizerScreen())),
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.volume_down_rounded),
+            secondary: Icon(Ic.volume_down_rounded),
             title: const Text('Плавная пауза'),
             subtitle: const Text('При паузе звук за полсекунды затихает, при продолжении — нарастает'),
             value: s.fadePause,
@@ -303,12 +303,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) => s.geniusLyrics = v,
           ),
           if (acc.isAdmin) ListTile(
-            leading: const Icon(Icons.auto_awesome),
+            leading: Icon(Ic.auto_awesome),
             title: const Text('ИИ для текстов'),
             subtitle: Text(s.hasAi
                 ? 'Подключён: подгоняет текст под трек и распознаёт песни без текста'
                 : 'Не подключён. Нужен бесплатный ключ Groq или ключ OpenAI'),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Icon(Ic.chevron_right),
             onTap: () => showDialog(
               context: context,
               builder: (_) => const _AiKeyDialog(),
@@ -338,12 +338,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: s.geniusCovers ? (v) => s.replaceYoutubeCovers = v : null,
           ),
           if (acc.isAdmin) ListTile(
-            leading: const Icon(Icons.key_outlined),
+            leading: Icon(Ic.key_outlined),
             title: const Text('Ключи Spotify'),
             subtitle: Text(s.hasSpotifyKeys
                 ? 'Заданы, Spotify используется для обложек'
                 : 'Не заданы, Spotify пропускается'),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Icon(Ic.chevron_right),
             onTap: () => showDialog(
               context: context,
               builder: (_) => const _SpotifyKeysDialog(),
@@ -356,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
             const _Section('Discord'),
             SwitchListTile(
-              secondary: const Icon(Icons.headset_mic_outlined),
+              secondary: Icon(Ic.headset_mic_outlined),
               title: const Text('Показывать трек в Discord'),
               subtitle: Text(s.discordAppId.isEmpty
                   ? 'Нужен Application ID — нажми ниже'
@@ -377,12 +377,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             if (acc.isAdmin)
               ListTile(
-                leading: const Icon(Icons.key_outlined),
+                leading: Icon(Ic.key_outlined),
                 title: const Text('Application ID для Discord'),
                 subtitle: Text(s.ownDiscordAppId.isEmpty
                     ? 'Не задан. discord.com/developers → New Application «Hutred» → скопируй Application ID'
                     : s.ownDiscordAppId),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: Icon(Ic.chevron_right),
                 onTap: () async {
                   final v = await AppActions.askText(context,
                       title: 'Application ID Discord',
@@ -398,7 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
           const _Section('Сеть'),
           SwitchListTile(
-            secondary: const Icon(Icons.vpn_lock_outlined),
+            secondary: Icon(Ic.vpn_lock_outlined),
             title: const Text('Обход блокировок (для России)'),
             subtitle: const Text(
                 'Как zapret, но только для Hutred и без прав администратора: '
@@ -408,7 +408,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) => s.dpiBypass = v,
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.dns_outlined),
+            secondary: Icon(Ic.dns_outlined),
             title: const Text('Только безопасный DNS'),
             subtitle: const Text(
                 'Мягкий режим: адреса сайтов через Cloudflare 1.1.1.1 и Google 8.8.8.8, '
@@ -428,7 +428,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
           ),
           ListTile(
-            leading: const Icon(Icons.network_check_rounded),
+            leading: Icon(Ic.network_check_rounded),
             title: const Text('Проверить связь'),
             subtitle: const Text(
                 'Что открывается, а что нет: SoundCloud, Spotify, YouTube, облако. '
@@ -447,23 +447,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Разделы настроек, собранные в несколько понятных групп.
-  static const _groups = <(String, IconData, String, List<String>)>[
-    ('Внешний вид', LucideIcons.palette, 'Стиль, цвет, фон, вкладки',
+  static final _groups = <(String, IconData, String, List<String>)>[
+    ('Внешний вид', Ic.palette_outlined, 'Стиль, цвет, фон, вкладки',
         ['Стиль', 'Акцентный цвет', 'Фон', 'Вкладки']),
-    ('Воспроизведение', LucideIcons.circlePlay, 'Плавный переход, пауза, эквалайзер',
+    ('Воспроизведение', Ic.play_circle_outline, 'Плавный переход, пауза, эквалайзер',
         ['Воспроизведение']),
-    ('Медиатека и волна', LucideIcons.library, 'Любимые исполнители, чёрный список',
+    ('Медиатека и волна', Ic.library_music_outlined, 'Любимые исполнители, чёрный список',
         ['Медиатека', 'Чёрный список']),
-    ('Тексты и обложки', LucideIcons.micVocal, 'Караоке, Spotify, Genius',
+    ('Тексты и обложки', Ic.lyrics_outlined, 'Караоке, Spotify, Genius',
         ['Тексты песен', 'Обложки']),
-    ('Сеть и YouTube', LucideIcons.globe, 'Обход блокировок, проверка связи, вход в YouTube',
+    ('Сеть и YouTube', Ic.public, 'Обход блокировок, проверка связи, вход в YouTube',
         ['Сеть', 'YouTube']),
-    ('Discord', LucideIcons.headphones, 'Трек в статусе Discord', ['Discord']),
-    ('Загрузки и кэш', LucideIcons.download, 'Скачанное, место на диске',
+    ('Discord', Ic.headphones, 'Трек в статусе Discord', ['Discord']),
+    ('Загрузки и кэш', Ic.download_outlined, 'Скачанное, место на диске',
         ['Загрузки и кэш']),
-    ('Обновления', LucideIcons.refreshCw, 'Версия, автообновление, трей',
+    ('Обновления', Ic.refresh, 'Версия, автообновление, трей',
         ['Обновления', 'Версия']),
-    ('Админ', LucideIcons.shieldCheck, 'Общие ключи для всех', ['Админ']),
+    ('Админ', Ic.verified_user_outlined, 'Общие ключи для всех', ['Админ']),
   ];
 
   /// Раздел → его пункты (с заголовком раздела).
@@ -495,7 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: Icon(g.$2),
             title: Text(g.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Text(g.$3),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Icon(Ic.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => _GroupPage(
                 title: g.$1,
@@ -530,12 +530,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) => setState(() => _q = v),
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: Icon(Ic.search),
                 hintText: 'Поиск по настройкам',
                 suffixIcon: _q.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.close),
+                        icon: Icon(Ic.close),
                         onPressed: () => setState(() {
                           _search.clear();
                           _q = '';
@@ -576,7 +576,7 @@ class _UpdateCheckTile extends StatelessWidget {
                         ? 'Доступна новая сборка ${u.latestBuild}'
                         : u.error ?? 'У тебя последняя версия';
     return ListTile(
-          leading: const Icon(Icons.system_update_alt),
+          leading: Icon(Ic.system_update_alt),
           title: Text(
               'Hutred, сборка ${UpdateService.build == 0 ? 'локальная' : UpdateService.build}'),
           subtitle: Text(status),
@@ -649,7 +649,7 @@ class _Swatch extends StatelessWidget {
           ),
         ),
         child: selected
-            ? Icon(Icons.check, color: HutredTheme.onAccent(color), size: 20)
+            ? Icon(Ic.check, color: HutredTheme.onAccent(color), size: 20)
             : null,
       ),
     );
@@ -691,7 +691,7 @@ class _CustomSwatch extends StatelessWidget {
               Colors.blue, Colors.purple, Colors.red,
             ]),
           ),
-          child: const Icon(Icons.colorize, size: 18, color: Colors.white),
+          child: Icon(Ic.colorize, size: 18, color: Colors.white),
         ),
       ),
     );
@@ -900,7 +900,7 @@ class _BackgroundCard extends StatelessWidget {
             Row(
               children: [
                 if (custom) ...[
-                  const Icon(Icons.colorize, size: 14, color: Colors.white),
+                  Icon(Ic.colorize, size: 14, color: Colors.white),
                   const SizedBox(width: 4),
                 ],
                 Expanded(
@@ -1048,7 +1048,7 @@ class _DownloadsTileState extends State<_DownloadsTile> {
     }
     final mb = _bytes == null ? '…' : (_bytes! / (1024 * 1024)).toStringAsFixed(1);
     return ListTile(
-      leading: const Icon(Icons.arrow_circle_down),
+      leading: Icon(Ic.arrow_circle_down),
       title: const Text('Загрузки'),
       subtitle: Text(
         'Скачано: ${tracksWord(off.count)}, $mb МБ'
@@ -1097,7 +1097,7 @@ class _CacheTileState extends State<_CacheTile> {
   Widget build(BuildContext context) {
     final mb = _bytes == null ? '…' : (_bytes! / (1024 * 1024)).toStringAsFixed(1);
     return ListTile(
-      leading: const Icon(Icons.storage_outlined),
+      leading: Icon(Ic.storage_outlined),
       title: const Text('Кэш прослушанного'),
       subtitle: Text('Занято $mb МБ. Временные файлы — можно очистить, загрузки останутся.'),
       trailing: TextButton(
@@ -1130,7 +1130,7 @@ class _YoutubeLoginTile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ListTile(
-          leading: const Icon(Icons.verified_user_outlined),
+          leading: Icon(Ic.verified_user_outlined),
           title: const Text('Вход для видео 18+'),
           subtitle: const Text(
               'yt-dlp возьмёт вход в YouTube из браузера, где ты уже залогинен'),
@@ -1297,7 +1297,7 @@ class _AdminTiles extends StatelessWidget {
     return Column(
       children: [
         SwitchListTile(
-          secondary: const Icon(Icons.auto_awesome),
+          secondary: Icon(Ic.auto_awesome),
           title: const Text('ИИ-подгонка текста для всех'),
           subtitle: const Text('Если выключено, кнопку ИИ видишь только ты'),
           value: aiForAll,
@@ -1305,7 +1305,7 @@ class _AdminTiles extends StatelessWidget {
               v ? 'Теперь ИИ доступен всем' : 'ИИ теперь только у тебя'),
         ),
         ListTile(
-          leading: const Icon(Icons.cloud_upload_outlined),
+          leading: Icon(Ic.cloud_upload_outlined),
           title: const Text('Применить мои ключи ИИ для всех'),
           subtitle: const Text('Раздаются всем автоматически, как только ты их вводишь. Кнопка — разослать заново'),
           enabled: s.ownAiKey.isNotEmpty,
@@ -1316,7 +1316,7 @@ class _AdminTiles extends StatelessWidget {
           }, 'Ключи ИИ разосланы всем'),
         ),
         ListTile(
-          leading: const Icon(Icons.cloud_upload_outlined),
+          leading: Icon(Ic.cloud_upload_outlined),
           title: const Text('Применить мой Discord ID для всех'),
           subtitle: const Text('Раздаётся всем автоматически. Кнопка — разослать заново'),
           enabled: s.ownDiscordAppId.isNotEmpty,
@@ -1324,7 +1324,7 @@ class _AdminTiles extends StatelessWidget {
               'Discord ID разослан всем'),
         ),
         ListTile(
-          leading: const Icon(Icons.cloud_upload_outlined),
+          leading: Icon(Ic.cloud_upload_outlined),
           title: const Text('Применить мои ключи Spotify для всех'),
           subtitle: const Text('Раздаются всем автоматически. Кнопка — разослать заново'),
           enabled: s.ownSpotifyId.isNotEmpty,
@@ -1355,7 +1355,7 @@ class _AccountTile extends StatelessWidget {
       subtitle: Text(acc.signedIn
           ? (acc.syncError ?? 'Медиатека синхронизируется между устройствами')
           : 'Чтобы медиатека была на телефоне и компьютере'),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Icon(Ic.chevron_right),
       onTap: () => Navigator.of(context)
           .push(MaterialPageRoute(builder: (_) => const AccountScreen())),
     );
@@ -1400,14 +1400,14 @@ class _NavOrderEditor extends StatelessWidget {
                         tooltip: s.isTabHidden(order[i]) ? 'Показать на панели' : 'Скрыть',
                         onPressed: () => s.setTabHidden(order[i], !s.isTabHidden(order[i])),
                         icon: Icon(s.isTabHidden(order[i])
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined),
+                            ? Ic.visibility_off_outlined
+                            : Ic.visibility_outlined),
                       ),
                     ReorderableDragStartListener(
                       index: i,
-                      child: const Padding(
+                      child: Padding(
                         padding: EdgeInsets.all(8),
-                        child: Icon(Icons.drag_handle),
+                        child: Icon(Ic.drag_handle),
                       ),
                     ),
                   ],
@@ -1421,7 +1421,7 @@ class _NavOrderEditor extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: TextButton.icon(
               onPressed: s.resetNavOrder,
-              icon: const Icon(Icons.restart_alt),
+              icon: Icon(Ic.restart_alt),
               label: const Text('Вернуть как было'),
             ),
           ),
@@ -1457,7 +1457,7 @@ class _UpdatesTilesState extends State<_UpdatesTiles> {
       children: [
         if (Platform.isWindows)
           SwitchListTile(
-            secondary: const Icon(Icons.autorenew),
+            secondary: Icon(Ic.autorenew),
             title: const Text('Обновляться автоматически'),
             subtitle: const Text(
                 'Новая версия скачивается сама и ставится, когда музыка не играет'),
@@ -1466,7 +1466,7 @@ class _UpdatesTilesState extends State<_UpdatesTiles> {
           ),
         if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
           SwitchListTile(
-            secondary: const Icon(Icons.close_fullscreen),
+            secondary: Icon(Ic.close_fullscreen),
             title: const Text('Крестик сворачивает в трей'),
             subtitle: const Text(
                 'Окно прячется к часам, музыка играет дальше. Выйти — правой кнопкой по значку'),
@@ -1475,7 +1475,7 @@ class _UpdatesTilesState extends State<_UpdatesTiles> {
           ),
         if (WindowsAutostart.supported)
           SwitchListTile(
-            secondary: const Icon(Icons.power_settings_new),
+            secondary: Icon(Ic.power_settings_new),
             title: const Text('Запускать вместе с Windows'),
             subtitle: const Text('Hutred тихо стартует в трее при включении компьютера'),
             value: _autostart ?? false,
@@ -1505,7 +1505,7 @@ class _BlacklistTiles extends StatelessWidget {
       children: [
         // Заголовок с иконкой — всегда, а под ним список (как у скрытых треков).
         ListTile(
-          leading: const Icon(Icons.person_off_outlined),
+          leading: Icon(Ic.person_off_outlined),
           title: Text(names.isEmpty
               ? 'Исполнителей в чёрном списке нет'
               : 'Исполнители в чёрном списке: ${names.length}'),
@@ -1523,7 +1523,7 @@ class _BlacklistTiles extends StatelessWidget {
             ),
           ),
         ListTile(
-          leading: const Icon(Icons.thumb_down_outlined),
+          leading: Icon(Ic.thumb_down_outlined),
           title: Text('Скрытые треки: ${wave.dislikedCount}'),
           subtitle: const Text('Треки с 👎 не играют в очередях, плейлистах и волне'),
           trailing: TextButton(

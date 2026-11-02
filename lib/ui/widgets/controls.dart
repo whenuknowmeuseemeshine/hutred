@@ -1,10 +1,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../services/player_service.dart';
 import '../theme.dart';
+import '../icons.dart';
 
 /// Полоса перемотки с временем.
 class SeekBar extends StatefulWidget {
@@ -136,7 +136,7 @@ class TransportControls extends StatelessWidget {
           tooltip: 'Предыдущий',
           iconSize: skipSize,
           onPressed: player.previous,
-          icon: const Icon(Icons.skip_previous_rounded),
+          icon: Icon(Ic.skip_previous_rounded),
         ),
         SizedBox(
           width: style.sharp ? playSize * 1.35 : playSize,
@@ -159,13 +159,13 @@ class TransportControls extends StatelessWidget {
                               strokeWidth: 2.5, color: playFg)),
                       // Грузится, но на паузе: значок «play» внутри кольца.
                       if (player.pausePending)
-                        Icon(Icons.play_arrow_rounded, size: 16, color: playFg),
+                        Icon(Ic.play_arrow_rounded, size: 16, color: playFg),
                     ],
                   )
                 : Icon(
                     player.playing
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
+                        ? Ic.pause_rounded
+                        : Ic.play_arrow_rounded,
                     size: playSize * 0.55),
           ),
         ),
@@ -173,7 +173,7 @@ class TransportControls extends StatelessWidget {
           tooltip: 'Следующий',
           iconSize: skipSize,
           onPressed: player.next,
-          icon: const Icon(Icons.skip_next_rounded),
+          icon: Icon(Ic.skip_next_rounded),
         ),
         IconButton(
           tooltip: switch (player.repeat) {
@@ -183,7 +183,7 @@ class TransportControls extends StatelessWidget {
           },
           onPressed: player.cycleRepeat,
           icon: Icon(
-            player.repeat == RepeatSetting.one ? LucideIcons.repeat1 : LucideIcons.repeat,
+            player.repeat == RepeatSetting.one ? Ic.repeat_one : Ic.repeat,
             color: player.repeat == RepeatSetting.off ? Colors.white70 : accent,
           ),
         ),
@@ -202,10 +202,10 @@ class VolumeSlider extends StatelessWidget {
       children: [
         Icon(
             player.volume == 0
-                ? LucideIcons.volumeX
+                ? Ic.volume_off
                 : player.volume < 0.5
-                    ? LucideIcons.volume1
-                    : LucideIcons.volume2,
+                    ? Ic.volume_down
+                    : Ic.volume_up,
             size: 18,
             color: Colors.white70),
         Expanded(

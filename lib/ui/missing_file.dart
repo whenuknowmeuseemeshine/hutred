@@ -7,6 +7,7 @@ import '../models/track.dart';
 import '../services/import_service.dart';
 import '../services/library_store.dart';
 import '../services/player_service.dart';
+import 'icons.dart';
 
 /// Файл трека переместили или переименовали: спрашиваем, где он теперь.
 /// Можно указать сам файл или папку — тогда в ней (и в подпапках) найдутся
@@ -49,7 +50,7 @@ class MissingFiles {
       final choice = await showDialog<String>(
         context: ctx,
         builder: (d) => AlertDialog(
-          icon: const Icon(Icons.find_in_page_outlined),
+          icon: Icon(Ic.find_in_page_outlined),
           title: const Text('Файл не найден'),
           content: SizedBox(
             width: 460,

@@ -34,6 +34,7 @@ import 'services/youtube_source.dart';
 import 'services/yt_dlp.dart';
 import 'ui/widgets/glass_backdrop.dart';
 import 'ui/home_shell.dart';
+import 'ui/icons.dart';
 import 'ui/missing_file.dart';
 import 'ui/spotify_check.dart';
 import 'ui/theme.dart';
@@ -56,6 +57,8 @@ Future<void> main(List<String> args) async {
   final account = AccountService(store: store, settings: settings);
   // Аккаунт решает, чью медиатеку открыть (без входа — локальную).
   await settings.load();
+  // Набор значков — по стилю, выбранному при запуске.
+  Ic.style = settings.style;
   DpiBypass.splitHello = !settings.dnsOnly;
   DpiBypass.watchZapret(() => settings.dpiBypass);
   settings.addListener(() {

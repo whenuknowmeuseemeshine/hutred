@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
@@ -10,6 +9,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
 import 'account_screen.dart';
+import '../icons.dart';
 
 /// Джем: слушать вместе с друзьями, позвать друга, микс по вкусам всех.
 class JamScreen extends StatelessWidget {
@@ -72,7 +72,7 @@ class JamScreen extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: FilledButton.icon(
                 onPressed: () => _run(context, jam.start),
-                icon: const Icon(LucideIcons.radioTower, size: 18),
+                icon: Icon(Ic.cell_tower, size: 18),
                 label: const Text('Начать джем'),
               ),
             ),
@@ -95,12 +95,12 @@ class JamScreen extends StatelessWidget {
                     await jam.startMix();
                     if (context.mounted) AppActions.toast(context, 'Играет микс джема');
                   }),
-                  icon: const Icon(LucideIcons.sparkles, size: 18),
+                  icon: Icon(Ic.auto_awesome, size: 18),
                   label: const Text('Микс джема'),
                 ),
               OutlinedButton.icon(
                 onPressed: () => _run(context, jam.leave),
-                icon: const Icon(LucideIcons.logOut, size: 18),
+                icon: Icon(Ic.logout, size: 18),
                 label: Text(jam.isHost ? 'Завершить джем' : 'Выйти из джема'),
               ),
             ]),
@@ -195,7 +195,7 @@ class _TrackRow extends StatelessWidget {
           ]),
         ),
         if (playing != null)
-          Icon(playing! ? LucideIcons.audioLines : LucideIcons.pause,
+          Icon(playing! ? Ic.graphic_eq : Ic.pause,
               size: 18, color: HutredTheme.muted),
       ]),
     );
@@ -220,7 +220,7 @@ class _InviteList extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: CircleAvatar(
             backgroundImage: fr.avatarUrl == null ? null : NetworkImage(fr.avatarUrl!),
-            child: fr.avatarUrl == null ? const Icon(LucideIcons.user, size: 18) : null,
+            child: fr.avatarUrl == null ? Icon(Ic.person_outline, size: 18) : null,
           ),
           title: Text(fr.name),
           subtitle: () {

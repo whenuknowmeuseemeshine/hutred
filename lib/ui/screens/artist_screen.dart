@@ -10,6 +10,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
+import '../icons.dart';
 
 final _artistSplit = RegExp(
   r'\s*(?:,|;|&|\s+x\s+|\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+|\s+и\s+)\s*',
@@ -199,7 +200,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                   onPressed: mine.isEmpty && suggested.isEmpty
                       ? null
                       : () => player.playAll(mine.isNotEmpty ? mine : suggested),
-                  icon: const Icon(Icons.play_arrow_rounded),
+                  icon: Icon(Ic.play_arrow_rounded),
                 ),
                 const SizedBox(width: 12),
                 Builder(builder: (context) {
@@ -209,7 +210,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                     onPressed: () => blocked
                         ? wave.unblockArtist(widget.name)
                         : wave.blockArtist(widget.name),
-                    icon: Icon(blocked ? Icons.check_circle_outline : Icons.block),
+                    icon: Icon(blocked ? Ic.check_circle_outline : Ic.block),
                     label: Text(blocked ? 'Вернуть исполнителя' : 'В чёрный список'),
                   );
                 }),
@@ -220,7 +221,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       final n = store.addTracks(suggested);
                       AppActions.toast(context, 'Добавлено: ${tracksWord(n)}');
                     },
-                    icon: const Icon(Icons.library_add_outlined),
+                    icon: Icon(Ic.library_add_outlined),
                     label: const Text('Добавить всё с SoundCloud'),
                   ),
               ],
@@ -269,7 +270,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                     store.addTracks([suggested[i]]);
                     AppActions.toast(context, 'Добавлено в медиатеку');
                   },
-                  icon: const Icon(Icons.add_circle_outline),
+                  icon: Icon(Ic.add_circle_outline),
                 ),
               ),
         ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../theme.dart';
+import '../icons.dart';
 
 /// Своя тонкая полоса сверху окна вместо системной: без значка и надписи,
 /// за неё можно таскать окно, двойной щелчок — развернуть, справа кнопки.
@@ -60,18 +61,18 @@ class _HutredTitleBarState extends State<HutredTitleBar> with WindowListener {
             ),
           ),
           _CaptionButton(
-            icon: Icons.remove_rounded,
+            icon: Ic.remove_rounded,
             tooltip: 'Свернуть',
             onTap: () => windowManager.minimize(),
           ),
           _CaptionButton(
-            icon: _max ? Icons.filter_none_rounded : Icons.crop_square_rounded,
+            icon: _max ? Ic.filter_none_rounded : Ic.crop_square_rounded,
             iconSize: _max ? 13 : 15,
             tooltip: _max ? 'Восстановить' : 'Развернуть',
             onTap: _toggleMax,
           ),
           _CaptionButton(
-            icon: Icons.close_rounded,
+            icon: Ic.close_rounded,
             tooltip: 'Закрыть',
             danger: true,
             // Дальше решает трей: спрятать или выйти.

@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/artwork.dart';
 import 'now_playing_screen.dart';
 import 'search_screen.dart';
+import '../icons.dart';
 
 /// «Моя волна»: один большой круг, который запускает поток музыки.
 class WaveScreen extends StatelessWidget {
@@ -50,8 +51,8 @@ class WaveScreen extends StatelessWidget {
                     }
                   },
                   icon: onWave && player.playing
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
+                      ? Ic.pause_rounded
+                      : Ic.play_arrow_rounded,
                 ),
                 const SizedBox(height: 24),
                 Text(
@@ -111,7 +112,7 @@ class WaveScreen extends StatelessWidget {
           if (!context.watch<SettingsStore>().visibleNav.contains('search'))
             IconButton(
               tooltip: 'Поиск',
-              icon: const Icon(Icons.search_rounded),
+              icon: Icon(Ic.search_rounded),
               onPressed: () => Navigator.of(context)
                   .push(MaterialPageRoute(builder: (_) => const SearchScreen())),
             ),
@@ -181,18 +182,18 @@ class _NowOnWave extends StatelessWidget {
               IconButton(
                 tooltip: 'Не нравится',
                 onPressed: () => wave.dislike(t),
-                icon: const Icon(Icons.thumb_down_alt_outlined),
+                icon: Icon(Ic.thumb_down_alt_outlined),
               ),
               IconButton(
                 tooltip: liked ? 'В избранном' : 'Нравится',
                 onPressed: liked ? null : () => wave.like(t),
-                icon: Icon(liked ? Icons.favorite : Icons.favorite_border,
+                icon: Icon(liked ? Ic.favorite : Ic.favorite_border,
                     color: liked ? Theme.of(context).colorScheme.primary : null),
               ),
               IconButton(
                 tooltip: 'Следующий',
                 onPressed: player.next,
-                icon: const Icon(Icons.skip_next_rounded),
+                icon: Icon(Ic.skip_next_rounded),
               ),
             ],
           ),
@@ -405,7 +406,7 @@ class _SharpWave extends StatelessWidget {
                 width: 64,
                 height: 64,
                 color: const Color(0xFF1B1B1B),
-                child: const Icon(Icons.graphic_eq_rounded, color: Color(0xFF555555)),
+                child: Icon(Ic.graphic_eq_rounded, color: Color(0xFF555555)),
               ),
             const SizedBox(width: 14),
             Expanded(
@@ -462,8 +463,8 @@ class _SharpWave extends StatelessWidget {
                         )
                       : Icon(
                           onWave && player.playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+                              ? Ic.pause_rounded
+                              : Ic.play_arrow_rounded,
                           color: HutredTheme.onAccent(accent)),
                 ),
               ),

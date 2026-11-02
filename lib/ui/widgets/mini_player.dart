@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../services/library_store.dart';
 import '../../services/player_service.dart';
@@ -12,6 +11,7 @@ import 'artwork.dart';
 import 'track_tile.dart';
 import 'controls.dart';
 import 'like_buttons.dart';
+import '../icons.dart';
 
 /// Мини-плеер внизу экрана. Нажатие открывает полноэкранный плеер.
 class MiniPlayer extends StatelessWidget {
@@ -107,7 +107,7 @@ class MiniPlayer extends StatelessWidget {
                     IconButton(
                       tooltip: 'Предыдущий',
                       onPressed: player.previous,
-                      icon: const Icon(Icons.skip_previous_rounded),
+                      icon: Icon(Ic.skip_previous_rounded),
                     ),
                   LikeButtons(track: track),
                   player.loading
@@ -123,13 +123,13 @@ class MiniPlayer extends StatelessWidget {
                           iconSize: 32,
                           onPressed: player.togglePlay,
                           icon: Icon(player.playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded),
+                              ? Ic.pause_rounded
+                              : Ic.play_arrow_rounded),
                         ),
                   IconButton(
                     tooltip: 'Следующий',
                     onPressed: player.next,
-                    icon: const Icon(Icons.skip_next_rounded),
+                    icon: Icon(Ic.skip_next_rounded),
                   ),
                 ],
               ),
@@ -250,7 +250,7 @@ class PlayerBar extends StatelessWidget {
                   // свою часть, снаружи — открывают плеер с ней.
                   _PanelToggle(
                     label: 'Текст',
-                    icon: LucideIcons.micVocal,
+                    icon: Ic.lyrics_outlined,
                     on: settings.fullscreenLyrics && inFullScreen,
                     onTap: () {
                       if (inFullScreen) {
@@ -263,7 +263,7 @@ class PlayerBar extends StatelessWidget {
                   ),
                   _PanelToggle(
                     label: 'Обложка',
-                    icon: LucideIcons.disc3,
+                    icon: Ic.album_outlined,
                     on: settings.fullscreenCover && inFullScreen,
                     onTap: () {
                       if (inFullScreen) {
@@ -276,7 +276,7 @@ class PlayerBar extends StatelessWidget {
                   ),
                   _PanelToggle(
                     label: 'Очередь',
-                    icon: LucideIcons.listMusic,
+                    icon: Ic.queue_music,
                     on: settings.queuePanel && inFullScreen,
                     onTap: () {
                       if (inFullScreen) {

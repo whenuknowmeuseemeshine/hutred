@@ -15,6 +15,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
+import '../icons.dart';
 
 enum _Mode { tracks, playlists }
 
@@ -62,11 +63,11 @@ class _SearchScreenState extends State<SearchScreen> {
     'soundcloud': 'SoundCloud',
     'youtube': 'YouTube',
   };
-  static const _icons = {
-    'library': Icons.library_music_outlined,
-    'spotify': Icons.graphic_eq,
-    'soundcloud': Icons.cloud_outlined,
-    'youtube': Icons.smart_display_outlined,
+  static final _icons = {
+    'library': Ic.library_music_outlined,
+    'spotify': Ic.graphic_eq,
+    'soundcloud': Ic.cloud_outlined,
+    'youtube': Ic.smart_display_outlined,
   };
 
   @override
@@ -231,12 +232,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   hintText: 'Песня, исполнитель, альбом или ссылка',
-                  prefixIcon: const Icon(Icons.search),
+                  prefixIcon: Icon(Ic.search),
                   suffixIcon: _query.isEmpty
                       ? null
                       : IconButton(
                           tooltip: 'Очистить',
-                          icon: const Icon(Icons.close),
+                          icon: Icon(Ic.close),
                           onPressed: () {
                             _ctrl.clear();
                             _onChanged('');
@@ -296,10 +297,10 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Card(
                 margin: const EdgeInsets.all(16),
                 child: ListTile(
-                  leading: const Icon(Icons.link),
+                  leading: Icon(Ic.link),
                   title: const Text('Добавить по ссылке'),
                   subtitle: Text(q, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: const Icon(Icons.add),
+                  trailing: Icon(Ic.add),
                   onTap: () => AppActions.addUrl(context, q),
                 ),
               ),
@@ -351,12 +352,12 @@ class _SearchScreenState extends State<SearchScreen> {
       SliverList.builder(
         itemCount: h.length,
         itemBuilder: (_, i) => ListTile(
-          leading: const Icon(Icons.history, color: HutredTheme.muted),
+          leading: Icon(Ic.history, color: HutredTheme.muted),
           title: Text(h[i]),
           onTap: () => _useQuery(h[i]),
           trailing: IconButton(
             tooltip: 'Убрать из истории',
-            icon: const Icon(Icons.close, size: 18),
+            icon: Icon(Ic.close, size: 18),
             onPressed: () => settings.forgetQuery(h[i]),
           ),
         ),
@@ -411,7 +412,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
                     : TextButton.icon(
                         onPressed: () => _loadMore(key),
-                        icon: const Icon(Icons.expand_more),
+                        icon: Icon(Ic.expand_more),
                         label: const Text('Показать ещё'),
                       ),
               ),
@@ -441,7 +442,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     AppActions.toast(context, 'Добавлено: «${t.title}»');
                   }
                 : null,
-            icon: Icon(saved == null ? Icons.add_circle_outline : Icons.check_circle,
+            icon: Icon(saved == null ? Ic.add_circle_outline : Ic.check_circle,
                 color: saved == null ? null : Theme.of(context).colorScheme.primary),
           ),
         );
@@ -471,7 +472,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       dimension: 14, child: CircularProgressIndicator(strokeWidth: 2)),
                 ],
                 const Spacer(),
-                Icon(collapsed ? Icons.expand_more : Icons.expand_less,
+                Icon(collapsed ? Ic.expand_more : Ic.expand_less,
                     color: HutredTheme.muted),
               ],
             ),
@@ -521,7 +522,7 @@ class _PlaylistTile extends StatelessWidget {
         children: [
           IconButton(
             tooltip: 'Слушать',
-            icon: const Icon(Icons.play_circle_outline),
+            icon: Icon(Ic.play_circle_outline),
             onPressed: () async {
               AppActions.toast(context, 'Загружаю плейлист…');
               try {
@@ -539,7 +540,7 @@ class _PlaylistTile extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Добавить в медиатеку',
-            icon: const Icon(Icons.library_add_outlined),
+            icon: Icon(Ic.library_add_outlined),
             onPressed: () => AppActions.addUrl(context, p.url),
           ),
         ],
@@ -553,13 +554,13 @@ class _SearchHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
         padding: EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.manage_search, size: 56, color: HutredTheme.muted),
+            Icon(Ic.manage_search, size: 56, color: HutredTheme.muted),
             SizedBox(height: 12),
             Text(
               'Выбери выше, где искать: в медиатеке, на SoundCloud или YouTube.\n'

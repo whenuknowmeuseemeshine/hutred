@@ -1,7 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/playlist.dart';
@@ -15,6 +14,7 @@ import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/filter_field.dart';
 import '../widgets/track_tile.dart';
+import '../icons.dart';
 
 class PlaylistsScreen extends StatelessWidget {
   const PlaylistsScreen({super.key});
@@ -38,7 +38,7 @@ class PlaylistsScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Новый плейлист',
             onPressed: () => _create(context),
-            icon: const Icon(Icons.playlist_add),
+            icon: Icon(Ic.playlist_add),
           ),
           const SizedBox(width: 8),
         ],
@@ -63,7 +63,7 @@ class PlaylistsScreen extends StatelessWidget {
                   end: Alignment.bottomRight,
                 ),
               ),
-              child: Icon(Icons.favorite,
+              child: Icon(Ic.favorite,
                   color: Theme.of(context).colorScheme.onPrimary),
             ),
             title: const Text('Любимые треки',
@@ -102,7 +102,7 @@ class PlaylistsScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: () => _create(context),
-                    icon: const Icon(Icons.playlist_add),
+                    icon: Icon(Ic.playlist_add),
                     label: const Text('Создать плейлист'),
                   ),
                 ],
@@ -288,7 +288,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 end: Alignment.bottomRight,
               ),
             ),
-            child: Icon(Icons.favorite, size: coverSize * 0.4, color: scheme.onPrimary),
+            child: Icon(Ic.favorite, size: coverSize * 0.4, color: scheme.onPrimary),
           )
         : GestureDetector(
             onTap: playlist.isFollowed ? null : () => _edit(context, playlist),
@@ -392,7 +392,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final playButton = style.glass
         ? FilledButton.icon(
             onPressed: canPlay ? play : null,
-            icon: const Icon(Icons.play_arrow_rounded),
+            icon: Icon(Ic.play_arrow_rounded),
             label: const Text('Слушать'),
           )
         : SizedBox(
@@ -407,7 +407,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 foregroundColor:
                     style.sharp ? HutredTheme.onAccent(scheme.primary) : Colors.black,
               ),
-              child: const Icon(Icons.play_arrow_rounded, size: 32),
+              child: Icon(Ic.play_arrow_rounded, size: 32),
             ),
           );
 
@@ -427,7 +427,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         children: [
           iconAction(
             pinned ? 'Удалить загрузки' : 'Скачать для прослушивания без интернета',
-            pinned ? Icons.arrow_circle_down_rounded : LucideIcons.circleArrowDown,
+            pinned ? Ic.arrow_circle_down_rounded : Ic.arrow_circle_down_outlined,
             tracks.isEmpty && !pinned ? null : () => off.pin(playlistId, !pinned),
             color: pinned ? scheme.primary : null,
           ),
@@ -439,7 +439,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     });
 
     final unfollow = playlist != null && playlist.isFollowed
-        ? iconAction('Убрать из моих плейлистов', LucideIcons.circleMinus, () async {
+        ? iconAction('Убрать из моих плейлистов', Ic.remove_circle_outline, () async {
             final ok = await AppActions.confirm(context,
                 title: 'Убрать плейлист?',
                 body: '«${playlist.name}» пропадёт из твоих плейлистов. '
@@ -452,11 +452,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           })
         : null;
     final edit = playlist != null && !playlist.isFollowed
-        ? iconAction('Изменить: название, описание, обложка', LucideIcons.pencil,
+        ? iconAction('Изменить: название, описание, обложка', Ic.edit_outlined,
             () => _edit(context, playlist))
         : null;
     final share = playlist != null
-        ? iconAction('Поделиться ссылкой', LucideIcons.share, () => _share(context, playlist, all))
+        ? iconAction('Поделиться ссылкой', Ic.ios_share, () => _share(context, playlist, all))
         : null;
     final search = all.length > 8
         ? ConstrainedBox(
@@ -480,13 +480,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             playButton,
             OutlinedButton.icon(
               onPressed: canPlay ? shuffle : null,
-              icon: const Icon(LucideIcons.shuffle, size: 16),
+              icon: Icon(Ic.shuffle, size: 16),
               label: const Text('Перемешать'),
             ),
             if (playlist != null)
               OutlinedButton.icon(
                 onPressed: () => _share(context, playlist, all),
-                icon: const Icon(LucideIcons.share, size: 16),
+                icon: Icon(Ic.ios_share, size: 16),
                 label: const Text('Поделиться'),
               ),
             download,
@@ -503,7 +503,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           children: [
             playButton,
             const SizedBox(width: 12),
-            iconAction('Перемешать', LucideIcons.shuffle, canPlay ? shuffle : null),
+            iconAction('Перемешать', Ic.shuffle, canPlay ? shuffle : null),
             download,
             if (share != null) share,
             if (edit != null) edit,
@@ -526,7 +526,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 if (edit != null) edit,
                 if (unfollow != null) unfollow,
                 const Spacer(),
-                iconAction('Перемешать', LucideIcons.shuffle, canPlay ? shuffle : null),
+                iconAction('Перемешать', Ic.shuffle, canPlay ? shuffle : null),
                 const SizedBox(width: 8),
                 playButton,
               ],

@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
 import 'account_screen.dart';
+import '../icons.dart';
 
 /// Друзья: добавить по логину, заявки, список друзей и их медиатеки.
 class FriendsScreen extends StatefulWidget {
@@ -73,13 +74,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
         actions: [
           TextButton.icon(
             onPressed: () => JamScreen.open(context),
-            icon: const Icon(Icons.graphic_eq_rounded, size: 18),
+            icon: Icon(Ic.graphic_eq_rounded, size: 18),
             label: const Text('Джем'),
           ),
           IconButton(
             tooltip: 'Обновить',
             onPressed: f.loading ? null : f.refresh,
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Ic.refresh),
           ),
           const SizedBox(width: 8),
         ],
@@ -106,7 +107,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 const SizedBox(width: 12),
                 FilledButton.icon(
                   onPressed: _sending ? null : _send,
-                  icon: const Icon(Icons.person_add_alt_1),
+                  icon: Icon(Ic.person_add_alt_1),
                   label: const Text('Добавить'),
                 ),
               ],
@@ -142,7 +143,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       IconButton(
                         tooltip: 'Отклонить',
                         onPressed: () => f.remove(r),
-                        icon: const Icon(Icons.close),
+                        icon: Icon(Ic.close),
                       ),
                       FilledButton(
                         onPressed: () => f.accept(r),
@@ -250,7 +251,7 @@ class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
                   ),
                   title: Text(l.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: Text(tracksWord(l.tracks.length)),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: Icon(Ic.chevron_right),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => FriendPlaylistScreen(
                       followId: l.id,
@@ -325,7 +326,7 @@ class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
                         tooltip: 'Слушать всё',
                         iconSize: 30,
                         onPressed: () => player.playAll(tracks),
-                        icon: const Icon(Icons.play_arrow_rounded),
+                        icon: Icon(Ic.play_arrow_rounded),
                       ),
                     ],
                   ),
@@ -346,7 +347,7 @@ class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
                           store.addTracks([t]);
                           AppActions.toast(context, 'Добавлено в медиатеку');
                         },
-                  icon: Icon(mine ? Icons.check_circle : Icons.add_circle_outline),
+                  icon: Icon(mine ? Ic.check_circle : Ic.add_circle_outline),
                 ),
               );
             },
@@ -442,7 +443,7 @@ class FriendPlaylistScreen extends StatelessWidget {
                 Row(children: [
                   FilledButton.icon(
                     onPressed: () => _addToMine(context),
-                    icon: const Icon(Icons.library_add_outlined),
+                    icon: Icon(Ic.library_add_outlined),
                     label: const Text('Добавить к себе'),
                   ),
                   const Spacer(),
@@ -450,7 +451,7 @@ class FriendPlaylistScreen extends StatelessWidget {
                     tooltip: 'Слушать',
                     iconSize: 30,
                     onPressed: () => player.playTracks(tracks),
-                    icon: const Icon(Icons.play_arrow_rounded),
+                    icon: Icon(Ic.play_arrow_rounded),
                   ),
                 ]),
               ],
