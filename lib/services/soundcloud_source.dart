@@ -524,6 +524,12 @@ class SoundcloudSource {
   List<Track> _toTracks(List? items) =>
       (items ?? const []).whereType<Map>().map(_toTrack).whereType<Track>().toList();
 
+  /// Сведения о треке по его id (для старых записей без названия).
+  Future<Track?> trackById(String id) async {
+    final data = await _getJson('/tracks/$id', {});
+    return data is Map ? _toTrack(data) : null;
+  }
+
   Track? _toTrack(Map j) {
     final id = j['id'];
     final title = j['title'] as String?;

@@ -320,11 +320,24 @@ class PlayerService extends ChangeNotifier {
 
   /// Трек скрыт («не нравится») или исполнитель в чёрном списке.
   bool Function(Track track)? isBlocked;
+
+  /// Исполнитель трека в чёрном списке — его не играем даже по нажатию.
+  String? Function(Track track)? blockedArtist;
   String? _allowId;
 
   Future<void> _loadCurrent({bool autoplay = true}) async {
     var t = current;
     if (t == null) return;
+    // Нажали на трек исполнителя из чёрного списка — не играем, объясняем.
+    final banned = blockedArtist?.call(t);
+    if (banned != null && t.id == _allowId) {
+      _allowId = null;
+      _error = '«$banned» в чёрном списке. Чтобы слушать, верни исполнителя '
+          '(Настройки → Медиатека и волна → Чёрный список)';
+      await _player.pause();
+      notifyListeners();
+      return;
+    }
     // Скрытые треки пропускаем (кроме того, на который нажали сами).
     final blocked = isBlocked;
     if (blocked != null && t.id != _allowId && blocked(t)) {

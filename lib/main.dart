@@ -129,6 +129,18 @@ Future<void> main(List<String> args) async {
   player.recommend = (seeds, count) => wave.recommendFrom(seeds, size: count);
   // Скрытые треки и исполнители из чёрного списка не играют.
   player.isBlocked = wave.isBlocked;
+  player.blockedArtist = wave.blockedArtistOf;
+  // Ошибки плеера (не играет трек, исполнитель в чёрном списке) — внизу экрана.
+  String? lastPlayerError;
+  player.addListener(() {
+    final e = player.error;
+    if (e != null && e != lastPlayerError) {
+      hutredMessengerKey.currentState
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e), duration: const Duration(seconds: 5)));
+    }
+    lastPlayerError = e;
+  });
   // Не советовать то, что уже есть в медиатеке (в том числе с другой площадки).
   player.isDuplicate = wave.isOwnedLike;
   final transfer = TransferService(
@@ -213,6 +225,9 @@ Future<void> main(List<String> args) async {
   ));
 }
 
+/// Для сообщений внизу экрана из любого места (например, из плеера).
+final hutredMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 class HutredApp extends StatelessWidget {
   const HutredApp({super.key});
 
@@ -222,6 +237,7 @@ class HutredApp extends StatelessWidget {
     return MaterialApp(
       title: 'Hutred',
       navigatorKey: hutredNavigatorKey,
+      scaffoldMessengerKey: hutredMessengerKey,
       debugShowCheckedModeBanner: false,
       theme: HutredTheme.build(settings.accent, settings.background),
       themeAnimationDuration: const Duration(milliseconds: 250),
@@ -257,6 +273,7 @@ class _Gate extends StatelessWidget {
     final acc = context.watch<AccountService>();
     final settings = context.watch<SettingsStore>();
     if (acc.enabled && !acc.signedIn && !settings.guest) return const WelcomeScreen();
+    if (acc.signedIn && settings.pickTheme) return const ThemePickerScreen();
     if (acc.signedIn && settings.pickArtists) return const ArtistPickerScreen();
     return const HomeShell();
   }

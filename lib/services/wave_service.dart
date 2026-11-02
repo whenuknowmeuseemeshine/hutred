@@ -170,6 +170,14 @@ class WaveService extends ChangeNotifier {
 
   bool isArtistBlocked(String name) => _blocked.contains(_norm(name));
 
+  /// Исполнитель трека из чёрного списка (или null).
+  String? blockedArtistOf(Track t) {
+    for (final a in artistsOf(t)) {
+      if (isArtistBlocked(a)) return _blockedNames[_norm(a)] ?? a;
+    }
+    return null;
+  }
+
   /// Чёрный список исполнителей (как их написали).
   List<String> get blockedArtists => _blockedNames.values.toList()..sort();
 
@@ -371,17 +379,53 @@ class WaveService extends ChangeNotifier {
 
   /// Скрытые треки списком (ключ, название, исполнитель). У старых записей
   /// без сведений ищем трек в медиатеке.
-  List<({String key, String title, String artist})> get dislikedTracks => [
-        for (final k in _disliked)
-          () {
-            final info = _dislikedInfo[k];
-            if (info != null) return (key: k, title: info.title, artist: info.artist);
-            for (final t in store.tracks) {
-              if (_key(t) == k) return (key: k, title: t.title, artist: t.artist);
-            }
-            return (key: k, title: 'Трек ${k.split(':').first}', artist: '');
-          }(),
-      ];
+  List<({String key, String title, String artist})> get dislikedTracks {
+    if (_disliked.any((k) => !_dislikedInfo.containsKey(k))) {
+      // Названия подтянутся в фоне (из медиатеки или SoundCloud).
+      Future.microtask(resolveDislikedNames);
+    }
+    return [
+      for (final k in _disliked)
+        _dislikedInfo[k] != null
+            ? (key: k, title: _dislikedInfo[k]!.title, artist: _dislikedInfo[k]!.artist)
+            : (key: k, title: 'Загружаю название…', artist: k.split(':').first),
+    ];
+  }
+
+  bool _resolving = false;
+
+  /// Дописывает названия старым скрытым трекам с SoundCloud (без сведений).
+  Future<void> resolveDislikedNames() async {
+    if (_resolving) return;
+    _resolving = true;
+    var changed = false;
+    try {
+      final known = {for (final t in store.tracks) _key(t): t};
+      for (final k in _disliked.toList()) {
+        if (_dislikedInfo.containsKey(k)) continue;
+        final t = known[k];
+        if (t != null) {
+          _dislikedInfo[k] = (title: t.title, artist: t.artist);
+          changed = true;
+          continue;
+        }
+        if (!k.startsWith('soundcloud:')) continue;
+        try {
+          final sc = await soundcloud.trackById(k.substring('soundcloud:'.length));
+          if (sc != null) {
+            _dislikedInfo[k] = (title: sc.title, artist: sc.artist);
+            changed = true;
+          }
+        } catch (_) {}
+      }
+    } finally {
+      _resolving = false;
+    }
+    if (changed) {
+      await _save();
+      notifyListeners();
+    }
+  }
 
   /// Вернуть один скрытый трек.
   Future<void> undislikeKey(String key) async {

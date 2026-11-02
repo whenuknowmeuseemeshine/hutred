@@ -12,6 +12,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/account_button.dart';
 import '../widgets/controls.dart';
+import '../widgets/filter_field.dart';
 import '../widgets/logo.dart';
 import '../widgets/track_tile.dart';
 
@@ -28,6 +29,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   _Sort _sort = _Sort.recent;
   TrackSource? _source;
   bool _favOnly = false;
+  String _q = '';
   bool _downloadedOnly = false;
 
   /// Режим выбора: id выбранных треков (null — режим выключен).
@@ -218,6 +220,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (_downloadedOnly && !offline.isDownloaded(t)) return false;
       if (_favOnly && !t.favorite) return false;
       if (_source != null && t.source != _source) return false;
+      if (_q.isNotEmpty && !trackMatches(t, _q)) return false;
       return true;
     }).toList();
     switch (_sort) {
@@ -275,6 +278,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        FilterField(
+                          width: 240,
+                          hint: 'Найти в медиатеке',
+                          onChanged: (v) => setState(() => _q = v.trim()),
+                        ),
                         _dropdown<String>(
                           tooltip: 'Что показывать',
                           icon: _filterIcon,

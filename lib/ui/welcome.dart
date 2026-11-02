@@ -246,3 +246,109 @@ class _ArtistPickerScreenState extends State<ArtistPickerScreen> {
     );
   }
 }
+
+
+/// После регистрации: выбрать оформление (меняется сразу, видно вживую).
+class ThemePickerScreen extends StatelessWidget {
+  const ThemePickerScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                const Text('Как будет выглядеть Hutred?',
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 6),
+                const Text('Выбери цвет и фон — потом можно поменять в Настройках → Внешний вид.',
+                    style: TextStyle(color: HutredTheme.muted)),
+                const SizedBox(height: 24),
+                const Text('Цвет', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final c in accentPresets)
+                      GestureDetector(
+                        onTap: () => s.accent = c,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: c,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: s.accent.toARGB32() == c.toARGB32()
+                                  ? Colors.white
+                                  : Colors.transparent,
+                              width: 3,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text('Фон', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final b in backgroundPresets)
+                      GestureDetector(
+                        onTap: () => s.backgroundId = b.id,
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 72,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: b.ink,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: s.background.id == b.id
+                                      ? s.accent
+                                      : Colors.white.withValues(alpha: 0.15),
+                                  width: s.background.id == b.id ? 3 : 1,
+                                ),
+                              ),
+                              alignment: Alignment.bottomLeft,
+                              padding: const EdgeInsets.all(8),
+                              child: Container(
+                                width: 22,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: s.accent,
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(b.name, style: const TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+                FilledButton(
+                  onPressed: () => s.pickTheme = false,
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  child: const Text('Дальше'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

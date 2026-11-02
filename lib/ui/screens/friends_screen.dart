@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/playlist.dart';
 import '../../models/track.dart';
 import '../../services/account_service.dart';
 import '../../services/friends_service.dart';
@@ -8,6 +9,7 @@ import '../../services/library_store.dart';
 import '../../services/player_service.dart';
 import '../actions.dart';
 import '../theme.dart';
+import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
 import 'account_screen.dart';
 
@@ -206,12 +208,56 @@ class FriendLibraryScreen extends StatefulWidget {
 
 class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
   late Future<List<Track>> _tracks;
+  late Future<List<({Playlist playlist, List<Track> tracks})>> _playlists;
 
   @override
   void initState() {
     super.initState();
-    _tracks = context.read<FriendsService>().libraryOf(widget.friend.userId);
+    final fs = context.read<FriendsService>();
+    _tracks = fs.libraryOf(widget.friend.userId);
+    _playlists = fs.playlistsOf(widget.friend.userId).catchError((_) =>
+        <({Playlist playlist, List<Track> tracks})>[]);
   }
+
+  Widget _playlistsRow() => FutureBuilder<List<({Playlist playlist, List<Track> tracks})>>(
+        future: _playlists,
+        builder: (context, snap) {
+          final lists = snap.data ?? const [];
+          if (lists.isEmpty) return const SizedBox.shrink();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text('Плейлисты',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              for (final l in lists)
+                ListTile(
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: l.playlist.cover != null && l.playlist.cover!.startsWith('http')
+                        ? Image.network(l.playlist.cover!, width: 48, height: 48, fit: BoxFit.cover)
+                        : Artwork(track: l.tracks.first, size: 48, radius: 4),
+                  ),
+                  title: Text(l.playlist.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(tracksWord(l.tracks.length)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => FriendPlaylistScreen(
+                        playlist: l.playlist, tracks: l.tracks, owner: widget.friend.name),
+                  )),
+                ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Text('Треки',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          );
+        },
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +294,9 @@ class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
             itemCount: tracks.length + 1,
             itemBuilder: (context, i) {
               if (i == 0) {
-                return Padding(
+                return Column(children: [
+                  _playlistsRow(),
+                  Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   child: Row(
                     children: [
@@ -263,7 +311,8 @@ class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
                       ),
                     ],
                   ),
-                );
+                ),
+                ]);
               }
               final t = tracks[i - 1];
               final mine = store.contains(t);
@@ -321,4 +370,75 @@ class _Section extends StatelessWidget {
         child: Text(text,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
       );
+}
+
+
+/// Плейлист друга: слушать или добавить себе целиком.
+class FriendPlaylistScreen extends StatelessWidget {
+  const FriendPlaylistScreen(
+      {super.key, required this.playlist, required this.tracks, required this.owner});
+  final Playlist playlist;
+  final List<Track> tracks;
+  final String owner;
+
+  void _addToMine(BuildContext context) {
+    final store = context.read<LibraryStore>();
+    store.addTracks(tracks);
+    final p = store.createPlaylist(playlist.name);
+    store.addToPlaylist(p.id, [
+      for (final t in tracks) (store.findBySource(t.source, t.uri) ?? t).id,
+    ]);
+    store.updatePlaylist(p.id,
+        description: playlist.description,
+        cover: (playlist.cover ?? '').startsWith('http') ? playlist.cover : null);
+    AppActions.toast(context, '«${playlist.name}» добавлен в твои плейлисты');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.read<PlayerService>();
+    return Scaffold(
+      appBar: AppBar(title: Text(playlist.name)),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 120),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Плейлист $owner · ${tracksWord(tracks.length)}',
+                    style: const TextStyle(color: HutredTheme.muted)),
+                if (playlist.description.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(playlist.description, style: const TextStyle(color: HutredTheme.muted)),
+                ],
+                const SizedBox(height: 12),
+                Row(children: [
+                  FilledButton.icon(
+                    onPressed: () => _addToMine(context),
+                    icon: const Icon(Icons.library_add_outlined),
+                    label: const Text('Добавить к себе'),
+                  ),
+                  const Spacer(),
+                  IconButton.filled(
+                    tooltip: 'Слушать',
+                    iconSize: 30,
+                    onPressed: () => player.playTracks(tracks),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+          for (var i = 0; i < tracks.length; i++)
+            TrackTile(
+              key: ValueKey(tracks[i].id),
+              track: tracks[i],
+              onTap: () => player.playTracks(tracks, start: i),
+            ),
+        ],
+      ),
+    );
+  }
 }

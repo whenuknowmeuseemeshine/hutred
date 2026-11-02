@@ -38,8 +38,9 @@ const accentPresets = <Color>[
 
 /// Настройки приложения: цвета и источники текстов/обложек.
 class SettingsStore extends ChangeNotifier {
-  Color _accent = accentPresets.first;
-  String _backgroundId = backgroundPresets.first.id;
+  // По умолчанию чёрно-белая тема: белый акцент на чёрном.
+  Color _accent = const Color(0xFFEDEDED);
+  String _backgroundId = 'black';
   bool _youtubeLyrics = true;
   bool _geniusLyrics = true;
   bool _geniusCovers = true;
@@ -67,7 +68,7 @@ class SettingsStore extends ChangeNotifier {
   String _aiModel = 'whisper-large-v3';
   String _spotifyId = '';
   String _spotifySecret = '';
-  bool _tintFromCover = true;
+  bool _tintFromCover = false;
   bool _cloudFiles = true;
   bool _spotifyCheck = true;
   bool _autoFavorite = true;
@@ -81,6 +82,7 @@ class SettingsStore extends ChangeNotifier {
   bool _guest = false;
   bool _dnsOnly = false;
   bool _pickArtists = false;
+  bool _pickTheme = false;
   String _discordAppId = '';
   File? _file;
 
@@ -166,6 +168,13 @@ class SettingsStore extends ChangeNotifier {
   bool get guest => _guest;
   set guest(bool v) {
     _guest = v;
+    _save();
+  }
+
+  /// Только что зарегистрировался — сначала предложить выбрать тему.
+  bool get pickTheme => _pickTheme;
+  set pickTheme(bool v) {
+    _pickTheme = v;
     _save();
   }
 
@@ -459,7 +468,7 @@ class SettingsStore extends ChangeNotifier {
       _aiModel = j['aiModel'] as String? ?? _aiModel;
       _spotifyId = j['spotifyId'] as String? ?? '';
       _spotifySecret = j['spotifySecret'] as String? ?? '';
-      _tintFromCover = j['tintFromCover'] as bool? ?? true;
+      _tintFromCover = j['tintFromCover'] as bool? ?? false;
       _cloudFiles = j['cloudFiles'] as bool? ?? true;
       _spotifyCheck = j['spotifyCheck'] as bool? ?? true;
       _autoFavorite = j['autoFavorite'] as bool? ?? true;
@@ -473,6 +482,7 @@ class SettingsStore extends ChangeNotifier {
       _guest = j['guest'] as bool? ?? false;
       _dnsOnly = j['dnsOnly'] as bool? ?? false;
       _pickArtists = j['pickArtists'] as bool? ?? false;
+      _pickTheme = j['pickTheme'] as bool? ?? false;
       _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
       debugPrint('Не удалось прочитать настройки: $e');
@@ -504,6 +514,7 @@ class SettingsStore extends ChangeNotifier {
         'guest': _guest,
         'dnsOnly': _dnsOnly,
         'pickArtists': _pickArtists,
+        'pickTheme': _pickTheme,
         'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
         'volume': _volume,

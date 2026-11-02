@@ -113,7 +113,11 @@ class SignInFormState extends State<SignInForm> {
       if (_register) {
         final needConfirm = await acc.signUp(email, password, username: username);
         // После входа спросим любимых исполнителей — «Волна» заработает сразу.
-        if (mounted) context.read<SettingsStore>().pickArtists = true;
+        if (mounted) {
+          context.read<SettingsStore>()
+            ..pickTheme = true
+            ..pickArtists = true;
+        }
         if (needConfirm) {
           setState(() {
             _message = 'Аккаунт создан. Открой письмо на $email и нажми ссылку, '

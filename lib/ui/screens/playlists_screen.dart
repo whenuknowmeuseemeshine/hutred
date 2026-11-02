@@ -13,6 +13,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/controls.dart';
+import '../widgets/filter_field.dart';
 import '../widgets/track_tile.dart';
 
 class PlaylistsScreen extends StatelessWidget {
@@ -154,9 +155,17 @@ class _Collage extends StatelessWidget {
 }
 
 /// Плейлист или «Любимые треки» (когда playlistId == null).
-class PlaylistDetailScreen extends StatelessWidget {
+class PlaylistDetailScreen extends StatefulWidget {
   const PlaylistDetailScreen({super.key, required this.playlistId});
   final String? playlistId;
+
+  @override
+  State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
+}
+
+class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
+  String _q = '';
+  String? get playlistId => widget.playlistId;
 
   Future<void> _edit(BuildContext context, Playlist p) async {
     final store = context.read<LibraryStore>();
@@ -238,7 +247,9 @@ class PlaylistDetailScreen extends StatelessWidget {
     if (playlistId != null && playlist == null) {
       return Scaffold(appBar: AppBar(), body: const Center(child: Text('Плейлист удалён')));
     }
-    final tracks = playlist == null ? store.favorites : store.tracksOf(playlist);
+    final all = playlist == null ? store.favorites : store.tracksOf(playlist);
+    // Поиск внутри плейлиста. Пока ищем — перетаскивать нельзя.
+    final tracks = _q.isEmpty ? all : all.where((t) => trackMatches(t, _q)).toList();
     final name = playlist?.name ?? 'Любимые треки';
     final wide = MediaQuery.sizeOf(context).width >= 600;
     final coverSize = wide ? 180.0 : 132.0;
@@ -292,7 +303,7 @@ class PlaylistDetailScreen extends StatelessWidget {
                       style: const TextStyle(color: HutredTheme.muted)),
                 ],
                 const SizedBox(height: 6),
-                Text(tracksWord(tracks.length),
+                Text(tracksWord(all.length),
                     style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
               ],
             ),
@@ -305,6 +316,18 @@ class PlaylistDetailScreen extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 0, 16, 8),
       child: Row(
         children: [
+          if (all.length > 8) ...[
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: FilterField(
+                  hint: 'Найти в плейлисте',
+                  onChanged: (v) => setState(() => _q = v.trim()),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
           if (playlist != null) ...[
             IconButton(
               tooltip: 'Изменить: название, описание, обложка',
@@ -313,7 +336,7 @@ class PlaylistDetailScreen extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Поделиться ссылкой',
-              onPressed: () => _share(context, playlist, tracks),
+              onPressed: () => _share(context, playlist, all),
               icon: const Icon(Icons.ios_share_rounded, color: Colors.white70),
             ),
           ],
@@ -380,13 +403,13 @@ class PlaylistDetailScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(),
-      body: playlist == null || tracks.isEmpty
+      body: playlist == null || tracks.isEmpty || _q.isNotEmpty
           ? ListView(
               padding: const EdgeInsets.only(bottom: 96),
               children: [
                 header,
                 actions,
-                if (tracks.isEmpty) empty,
+                if (all.isEmpty) empty,
                 for (var i = 0; i < tracks.length; i++) tile(i),
               ],
             )

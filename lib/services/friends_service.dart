@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/playlist.dart';
 import '../models/track.dart';
 import 'account_service.dart';
 
@@ -185,6 +186,47 @@ class FriendsService extends ChangeNotifier {
   }
 
   /// Треки из медиатеки друга (только те, что он не скрыл).
+  /// Плейлисты друга с их треками (пустые и из одних своих файлов — пропускаем).
+  Future<List<({Playlist playlist, List<Track> tracks})>> playlistsOf(String userId) async {
+    final rows = await _db
+        .from('library_items')
+        .select('kind, item_id, data')
+        .eq('user_id', userId)
+        .eq('deleted', false)
+        .limit(6000);
+    final byId = <String, Track>{};
+    final lists = <Playlist>[];
+    for (final r in rows) {
+      final d = r['data'];
+      if (d is! Map) continue;
+      try {
+        final j = Map<String, dynamic>.from(d);
+        if (r['kind'] == 'playlist') {
+          lists.add(Playlist.fromJson(j));
+        } else if (r['kind'] == 'track') {
+          final orig = '${j['id']}';
+          j['id'] = Track.newId();
+          j['plays'] = 0;
+          j['favorite'] = false;
+          j.remove('cloudPath');
+          final t = Track.fromJson(j);
+          if (t.source != TrackSource.local && !t.hiddenFromFriends) byId[orig] = t;
+        }
+      } catch (_) {}
+    }
+    return [
+      for (final p in lists)
+        if (p.trackIds.any(byId.containsKey))
+          (
+            playlist: p,
+            tracks: [
+              for (final id in p.trackIds)
+                if (byId[id] != null) byId[id]!,
+            ],
+          ),
+    ];
+  }
+
   Future<List<Track>> libraryOf(String userId) async {
     final rows = await _db
         .from('library_items')

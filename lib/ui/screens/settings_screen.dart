@@ -1484,24 +1484,25 @@ class _BlacklistTiles extends StatelessWidget {
     final names = wave.blockedArtists;
     return Column(
       children: [
-        if (names.isEmpty)
-          const ListTile(
-            leading: Icon(Icons.person_off_outlined),
-            title: Text('Исполнителей в чёрном списке нет'),
-            subtitle: Text('Добавить — в меню трека «Не показывать исполнителя…» '
-                'или на странице исполнителя'),
-          )
-        else
-          for (final n in names)
-            ListTile(
-              leading: const Icon(Icons.block),
-              title: Text(n),
-              subtitle: const Text('Не играет нигде, даже на фитах'),
-              trailing: TextButton(
-                onPressed: () => wave.unblockArtist(n),
-                child: const Text('Вернуть'),
-              ),
+        // Заголовок с иконкой — всегда, а под ним список (как у скрытых треков).
+        ListTile(
+          leading: const Icon(Icons.person_off_outlined),
+          title: Text(names.isEmpty
+              ? 'Исполнителей в чёрном списке нет'
+              : 'Исполнители в чёрном списке: ${names.length}'),
+          subtitle: const Text('Не играют нигде, даже на фитах. Добавить — в меню трека '
+              '«Не показывать исполнителя…» или на странице исполнителя'),
+        ),
+        for (final n in names)
+          ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.only(left: 72, right: 16),
+            title: Text(n),
+            trailing: TextButton(
+              onPressed: () => wave.unblockArtist(n),
+              child: const Text('Вернуть'),
             ),
+          ),
         ListTile(
           leading: const Icon(Icons.thumb_down_outlined),
           title: Text('Скрытые треки: ${wave.dislikedCount}'),
