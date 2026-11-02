@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
 import '../icons.dart';
+import '../widgets/style_bits.dart';
 
 /// Перенос треков с других площадок.
 class TransferScreen extends StatefulWidget {
@@ -70,110 +71,273 @@ class _TransferScreenState extends State<TransferScreen> {
     _input.clear();
   }
 
+  /// Выбранная плитка-источник: от неё зависят подсказка и вид поля.
+  String _src = 'spotify';
+
+  static const _sources = [
+    ('spotify', 'Spotify', Color(0xFF1ED760)),
+    ('yandex', 'Яндекс Музыка', Color(0xFFFFCC00)),
+    ('youtube', 'YouTube', Color(0xFFFF3D3D)),
+    ('soundcloud', 'SoundCloud', Color(0xFFFF7A1A)),
+    ('csv', 'Файл CSV', Color(0xFF4DA3FF)),
+    ('text', 'Списком', Color(0xFFA78BFA)),
+  ];
+
+  static const _hints = {
+    'spotify': 'Ссылка на трек, альбом или плейлист Spotify. Плейлист длиннее 50 треков — '
+        'скачай его в CSV на exportify.net и выбери «Файл CSV».',
+    'yandex': 'Ссылка на открытый плейлист или альбом Яндекс Музыки.',
+    'youtube': 'Ссылка на плейлист YouTube или YouTube Music.',
+    'soundcloud': 'Ссылка на плейлист или альбом SoundCloud.',
+    'csv': 'Файл CSV (например, из Exportify) или TXT со списком треков.',
+    'text': 'Вставь названия — по одному в строке, как «Исполнитель — Название». '
+        'Подойдёт список из любой площадки.',
+  };
+
   @override
   Widget build(BuildContext context) {
     final t = context.watch<TransferService>();
     final busy = t.stage == TransferStage.reading || t.stage == TransferStage.matching;
     final scheme = Theme.of(context).colorScheme;
+    final st = HutredStyle.of(context);
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final pad = stylePagePadding(context);
+    final accent = scheme.primary;
+    final multi = _src == 'text';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Перенос'),
-        actions: [
-          if (t.items.isNotEmpty)
-            IconButton(
-              tooltip: 'Начать заново',
-              onPressed: () {
-                t.reset();
-                _input.clear();
-              },
-              icon: Icon(Ic.restart_alt),
-            ),
-          const SizedBox(width: 8),
-        ],
+    Widget tile((String, String, Color) src) {
+      final on = _src == src.$1;
+      final r = BorderRadius.circular(st.sharp ? 0 : st.glass ? 18 : 12);
+      final onC = st.sharp && on ? HutredTheme.onAccent(accent) : HutredTheme.text;
+      return Material(
+        color: on
+            ? (st.sharp
+                ? accent
+                : st.glass
+                    ? accent.withValues(alpha: 0.22)
+                    : const Color(0xFF1F1F1F))
+            : (st.sharp
+                ? Colors.transparent
+                : st.glass
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : const Color(0xFF141414)),
+        shape: RoundedRectangleBorder(
+          borderRadius: r,
+          side: st.sharp
+              ? BorderSide(color: on ? accent : const Color(0xFF2A2A2A))
+              : st.glass
+                  ? BorderSide(
+                      color: on
+                          ? accent.withValues(alpha: 0.6)
+                          : Colors.white.withValues(alpha: 0.08))
+                  : on
+                      ? const BorderSide(color: Color(0xFFF5F5F5))
+                      : BorderSide.none,
+        ),
+        child: InkWell(
+          borderRadius: r,
+          onTap: () {
+            setState(() => _src = src.$1);
+            if (src.$1 == 'csv') _pickFile();
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: st.sharp && on ? HutredTheme.onAccent(accent) : src.$3,
+                  borderRadius: BorderRadius.circular(st.sharp ? 0 : 8),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(src.$2,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.w700, color: onC)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    final findButton = StyleButton(
+      label: 'Найти треки',
+      icon: Ic.search,
+      onPressed: busy ? null : _start,
+    );
+
+    final field = Container(
+      padding: EdgeInsets.fromLTRB(18, multi ? 10 : 4, 6, multi ? 10 : 4),
+      decoration: BoxDecoration(
+        color: st.sharp
+            ? null
+            : st.glass
+                ? Colors.white.withValues(alpha: 0.08)
+                : const Color(0xFF1F1F1F),
+        border: st.sharp ? Border.all(color: const Color(0xFF333333)) : null,
+        borderRadius: BorderRadius.circular(st.sharp ? 0 : multi ? 18 : 99),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+      child: Row(
+        crossAxisAlignment: multi ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
-          if (t.items.isEmpty) ...[
-            const Text(
-              'Перенеси свою музыку из Spotify, Яндекс Музыки, YouTube, SoundCloud '
-              'или любой другой площадки. Hutred найдёт каждый трек и сложит их '
-              'в медиатеку и новый плейлист.',
-              style: TextStyle(color: HutredTheme.muted, height: 1.4),
-            ),
-            const SizedBox(height: 16),
-            TextField(
+          Padding(
+            padding: EdgeInsets.only(top: multi ? 12 : 0),
+            child: Icon(multi ? Ic.notes : Ic.link, size: 18, color: HutredTheme.muted),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
               controller: _input,
-              minLines: 4,
-              maxLines: 10,
               enabled: !busy,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Ссылка на плейлист или список, по треку в строке:\n'
-                    'Исполнитель — Название',
+              minLines: multi ? 5 : 1,
+              maxLines: multi ? 12 : 1,
+              onSubmitted: multi ? null : (_) => _start(),
+              decoration: InputDecoration(
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                hintText: multi
+                    ? 'Исполнитель — Название\nИсполнитель — Название'
+                    : 'Вставь ссылку на плейлист',
               ),
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilledButton.icon(
-                  onPressed: busy ? null : _start,
-                  icon: Icon(Ic.search),
-                  label: const Text('Найти треки'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: busy ? null : _pickFile,
-                  icon: Icon(Ic.upload_file),
-                  label: const Text('Файл CSV или TXT'),
-                ),
-              ],
+          ),
+          const SizedBox(width: 8),
+          if (!multi) findButton,
+        ],
+      ),
+    );
+
+    final setup = <Widget>[
+      LayoutBuilder(builder: (context, box) {
+        final cols = box.maxWidth >= 760 ? 6 : 3;
+        const gap = 10.0;
+        final w = (box.maxWidth - gap * (cols - 1)) / cols;
+        return Wrap(spacing: gap, runSpacing: gap, children: [
+          for (final src in _sources) SizedBox(width: w, child: tile(src)),
+        ]);
+      }),
+      const SizedBox(height: 14),
+      field,
+      if (multi) ...[const SizedBox(height: 10), Align(alignment: Alignment.centerLeft, child: findButton)],
+      const SizedBox(height: 10),
+      Text(_hints[_src]!, style: const TextStyle(fontSize: 13, color: HutredTheme.muted, height: 1.4)),
+      const SizedBox(height: 14),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('Искать сначала на  ', style: TextStyle(color: HutredTheme.muted, fontSize: 13)),
+          for (final (key, label) in [
+            if (context.watch<SettingsStore>().hasSpotifyKeys) ('spotify', 'Spotify'),
+            ('soundcloud', 'SoundCloud'),
+            ('youtube', 'YouTube'),
+          ])
+            StyleChip(
+              label: label,
+              selected: t.searchFirst == key ||
+                  (key == 'soundcloud' &&
+                      t.searchFirst == 'spotify' &&
+                      !context.read<SettingsStore>().hasSpotifyKeys),
+              onTap: () => t.setSearchFirst(key),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Text('Искать сначала на', style: TextStyle(color: HutredTheme.muted)),
-                const SizedBox(width: 12),
-                SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  segments: [
-                    if (context.watch<SettingsStore>().hasSpotifyKeys)
-                      const ButtonSegment(value: 'spotify', label: Text('Spotify')),
-                    const ButtonSegment(value: 'soundcloud', label: Text('SoundCloud')),
-                    const ButtonSegment(value: 'youtube', label: Text('YouTube')),
-                  ],
-                  selected: {
-                    t.searchFirst == 'spotify' && !context.read<SettingsStore>().hasSpotifyKeys
-                        ? 'soundcloud'
-                        : t.searchFirst
-                  },
-                  onSelectionChanged: (v) => t.setSearchFirst(v.first),
-                ),
-              ],
+        ],
+      ),
+    ];
+
+    final notFound = t.items.where((i) => i.done && i.found == null).toList();
+    final results = StylePanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(
+                busy
+                    ? 'Ищу треки… ${t.doneCount} из ${t.items.length}'
+                    : 'Нашёл ${t.foundCount} из ${t.items.length}',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
             ),
-            const SizedBox(height: 24),
-            _Hint(
-              icon: Ic.table_chart_outlined,
-              title: 'Длинный плейлист Spotify (больше 50 треков)',
-              text: 'Открой exportify.net, войди через Spotify, скачай плейлист '
-                  'в CSV и загрузи его кнопкой «Файл CSV».',
+            if (!busy)
+              TextButton.icon(
+                onPressed: () {
+                  t.reset();
+                  _input.clear();
+                },
+                icon: Icon(Ic.restart_alt, size: 18),
+                label: const Text('Заново'),
+              ),
+          ]),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(st.sharp ? 0 : 3),
+            child: LinearProgressIndicator(
+              value: t.items.isEmpty ? null : t.doneCount / t.items.length,
+              minHeight: st.sharp ? 2 : 6,
+              color: accent,
+              backgroundColor: const Color(0xFF2A2A2A),
             ),
-            _Hint(
-              icon: Ic.link,
-              title: 'По ссылке',
-              text: 'Треки, плейлисты и альбомы Spotify, открытые плейлисты и альбомы '
-                  'Яндекс Музыки, плейлисты YouTube и SoundCloud.',
+          ),
+          const SizedBox(height: 8),
+          for (final item in t.items) _ItemTile(item: item),
+        ],
+      ),
+    );
+
+    final savePanel = StylePanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const StyleCaption('Куда сложить'),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(
+              hintText: 'Название плейлиста',
+              helperText: 'Пусто — только в медиатеку',
             ),
-            _Hint(
-              icon: Ic.notes,
-              title: 'Любая другая площадка',
-              text: 'Скопируй названия треков текстом — по одному в строке, '
-                  'как «Исполнитель — Название».',
+          ),
+          const SizedBox(height: 14),
+          StyleButton(
+            label: 'Добавить ${t.selectedCount}',
+            icon: Ic.add,
+            onPressed: t.stage == TransferStage.ready && t.selectedCount > 0 ? _save : null,
+          ),
+          if (notFound.isNotEmpty && !busy) ...[
+            const SizedBox(height: 10),
+            StyleButton(
+              label: 'Искать ненайденные на YouTube (${notFound.length})',
+              primary: false,
+              onPressed: () {
+                for (final i in notFound) {
+                  t.retry(i, where: 'youtube');
+                }
+              },
             ),
           ],
+        ],
+      ),
+    );
+
+    final top = MediaQuery.paddingOf(context).top + pad.top;
+    return Scaffold(
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(pad.left, top, pad.right, 120),
+        children: [
+          Text('Перенос музыки', style: st.display(wide ? 48 : 30)),
+          const SizedBox(height: 8),
+          const Text(
+            'Вставь ссылку на плейлист из любого сервиса — Hutred найдёт каждый трек '
+            'и сложит в медиатеку и новый плейлист.',
+            style: TextStyle(color: HutredTheme.muted, height: 1.4),
+          ),
+          const SizedBox(height: 18),
+          if (t.items.isEmpty) ...setup,
           if (busy && t.items.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 24),
@@ -184,51 +348,16 @@ class _TransferScreenState extends State<TransferScreen> {
               padding: const EdgeInsets.only(top: 16),
               child: Text(t.error!, style: TextStyle(color: scheme.error)),
             ),
-          if (t.items.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              busy
-                  ? 'Ищу треки… ${t.doneCount} из ${t.items.length}'
-                  : 'Найдено ${t.foundCount} из ${t.items.length}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: t.items.isEmpty ? null : t.doneCount / t.items.length,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            const SizedBox(height: 12),
-            for (final item in t.items) _ItemTile(item: item),
-          ],
+          if (t.items.isNotEmpty)
+            wide
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: results),
+                    const SizedBox(width: 24),
+                    SizedBox(width: 320, child: savePanel),
+                  ])
+                : Column(children: [savePanel, const SizedBox(height: 16), results]),
         ],
       ),
-      bottomNavigationBar: t.stage == TransferStage.ready && t.foundCount > 0
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _name,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          labelText: 'Плейлист (оставь пустым — только в медиатеку)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton.icon(
-                      onPressed: t.selectedCount == 0 ? null : _save,
-                      icon: Icon(Ic.download_done),
-                      label: Text('Добавить ${t.selectedCount}'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : null,
     );
   }
 }
@@ -281,6 +410,18 @@ class _ItemTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (!item.done)
+            const Text('ищу…', style: TextStyle(color: HutredTheme.muted, fontSize: 13))
+          else if (found != null)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Ic.check, size: 16, color: const Color(0xFF4ADE80)),
+              const SizedBox(width: 4),
+              Text(sourceLabel(found.source),
+                  style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 13)),
+            ])
+          else
+            Text('Не нашёл',
+                style: TextStyle(color: Colors.amber.shade300, fontSize: 13)),
           if (item.done)
             PopupMenuButton<String>(
               tooltip: 'Искать в другом месте',
@@ -303,33 +444,4 @@ class _ItemTile extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Hint extends StatelessWidget {
-  const _Hint({required this.icon, required this.title, required this.text});
-  final IconData icon;
-  final String title;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(text, style: const TextStyle(color: HutredTheme.muted, height: 1.35)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
 }
