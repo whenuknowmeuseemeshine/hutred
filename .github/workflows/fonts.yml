@@ -13,13 +13,10 @@ jobs:
       - run: |
           pip install fonttools
           mkdir -p tmpf assets/fonts
-          curl -fsSL -o tmpf/Manrope.ttf "https://github.com/google/fonts/raw/main/ofl/manrope/Manrope%5Bwght%5D.ttf"
-          curl -fsSL -o tmpf/SpaceGrotesk.ttf "https://github.com/google/fonts/raw/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf"
-          for w in 400:Regular 500:Medium 600:SemiBold 700:Bold 800:ExtraBold; do
-            n=${w%%:*}; s=${w##*:}
-            fonttools varLib.instancer tmpf/Manrope.ttf wght=$n -o assets/fonts/Manrope-$s.ttf
-            if [ $n -le 700 ]; then fonttools varLib.instancer tmpf/SpaceGrotesk.ttf wght=$n -o assets/fonts/SpaceGrotesk-$s.ttf; fi
+          curl -fsSL -o tmpf/Unbounded.ttf "https://github.com/google/fonts/raw/main/ofl/unbounded/Unbounded%5Bwght%5D.ttf"
+          for w in 500:Medium 600:SemiBold 700:Bold; do
+            fonttools varLib.instancer tmpf/Unbounded.ttf wght=${w%%:*} -o assets/fonts/Unbounded-${w##*:}.ttf
           done
-          ls -la assets/fonts
+          git rm -q .github/workflows/fonts.yml
           git config user.name Hutred; git config user.email noreply@hutred.local
-          git add assets/fonts && git commit -m "Fonts: Manrope, Space Grotesk (static instances)" && git push
+          git add assets/fonts && git commit -m "Fonts: Unbounded" && git push
