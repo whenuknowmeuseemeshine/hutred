@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../services/library_store.dart';
 import '../../services/player_service.dart';
@@ -261,8 +262,8 @@ class PlayerBar extends StatelessWidget {
                         NowPlayingScreen.open(context);
                       }
                     },
-                    icon: const Icon(Icons.lyrics_outlined, size: 20),
-                    selectedIcon: Icon(Icons.lyrics, size: 20, color: scheme.primary),
+                    icon: const Icon(LucideIcons.micVocal, size: 20),
+                    selectedIcon: Icon(LucideIcons.micVocal, size: 20, color: scheme.primary),
                   ),
                   // Обложка: большая обложка слева от текста.
                   IconButton(
@@ -278,8 +279,8 @@ class PlayerBar extends StatelessWidget {
                         NowPlayingScreen.open(context);
                       }
                     },
-                    icon: const Icon(Icons.album_outlined, size: 20),
-                    selectedIcon: Icon(Icons.album, size: 20, color: scheme.primary),
+                    icon: const Icon(LucideIcons.disc3, size: 20),
+                    selectedIcon: Icon(LucideIcons.disc3, size: 20, color: scheme.primary),
                   ),
                   // Очередь: панель справа от текста.
                   IconButton(
@@ -295,9 +296,9 @@ class PlayerBar extends StatelessWidget {
                         NowPlayingScreen.open(context);
                       }
                     },
-                    icon: const Icon(Icons.queue_music_outlined, size: 20),
+                    icon: const Icon(LucideIcons.listMusic, size: 20),
                     selectedIcon:
-                        Icon(Icons.queue_music, size: 20, color: scheme.primary),
+                        Icon(LucideIcons.listMusic, size: 20, color: scheme.primary),
                   ),
                   const SizedBox(width: 4),
                   const SizedBox(width: 150, child: VolumeSlider()),

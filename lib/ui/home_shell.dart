@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../services/account_service.dart';
@@ -33,13 +34,13 @@ class HomeShell extends StatefulWidget {
 
 /// Все вкладки. Порядок пользователь меняет в Настройках.
 const navTabs = {
-  'wave': (icon: Icons.waves_outlined, selected: Icons.waves, label: 'Волна'),
-  'library': (icon: Icons.library_music_outlined, selected: Icons.library_music, label: 'Медиатека'),
-  'search': (icon: Icons.search, selected: Icons.saved_search, label: 'Поиск'),
-  'playlists': (icon: Icons.queue_music_outlined, selected: Icons.queue_music, label: 'Плейлисты'),
-  'friends': (icon: Icons.people_outline, selected: Icons.people, label: 'Друзья'),
-  'transfer': (icon: Icons.move_to_inbox_outlined, selected: Icons.move_to_inbox, label: 'Перенос'),
-  'settings': (icon: Icons.settings_outlined, selected: Icons.settings, label: 'Настройки'),
+  'wave': (icon: LucideIcons.audioWaveform, selected: LucideIcons.audioWaveform, label: 'Волна'),
+  'library': (icon: LucideIcons.library, selected: LucideIcons.library, label: 'Медиатека'),
+  'search': (icon: LucideIcons.search, selected: LucideIcons.search, label: 'Поиск'),
+  'playlists': (icon: LucideIcons.listMusic, selected: LucideIcons.listMusic, label: 'Плейлисты'),
+  'friends': (icon: LucideIcons.users, selected: LucideIcons.users, label: 'Друзья'),
+  'transfer': (icon: LucideIcons.arrowDownToLine, selected: LucideIcons.arrowDownToLine, label: 'Перенос'),
+  'settings': (icon: LucideIcons.settings, selected: LucideIcons.settings, label: 'Настройки'),
 };
 
 class _HomeShellState extends State<HomeShell> {
@@ -218,33 +219,15 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const mark = HutredLogo(size: 44);
+    const mark = HutredLogo(size: 36);
     if (!extended) return mark;
-    final name = context.watch<AccountService>().username;
+    // Логин уже виден на кнопке аккаунта ниже — здесь только название.
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         mark,
         const SizedBox(width: 12),
-        // У боковой панели нет ограничения по ширине — задаём его сами.
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 160),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Hutred', style: HutredStyle.of(context).display(22)),
-              // Логин пользователя под названием.
-              if (name != null)
-                Text('@$name',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ],
-          ),
-        ),
+        Text('Hutred', style: HutredStyle.of(context).display(22)),
       ],
     );
   }

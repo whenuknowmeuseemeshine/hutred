@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../services/player_service.dart';
 import '../theme.dart';
@@ -182,7 +183,7 @@ class TransportControls extends StatelessWidget {
           },
           onPressed: player.cycleRepeat,
           icon: Icon(
-            player.repeat == RepeatSetting.one ? Icons.repeat_one : Icons.repeat,
+            player.repeat == RepeatSetting.one ? LucideIcons.repeat1 : LucideIcons.repeat,
             color: player.repeat == RepeatSetting.off ? Colors.white70 : accent,
           ),
         ),
@@ -199,12 +200,17 @@ class VolumeSlider extends StatelessWidget {
     final player = context.watch<PlayerService>();
     return Row(
       children: [
-        Icon(player.volume == 0 ? Icons.volume_off : Icons.volume_down,
-            size: 20, color: Colors.white70),
+        Icon(
+            player.volume == 0
+                ? LucideIcons.volumeX
+                : player.volume < 0.5
+                    ? LucideIcons.volume1
+                    : LucideIcons.volume2,
+            size: 18,
+            color: Colors.white70),
         Expanded(
           child: Slider(value: player.volume, onChanged: player.setVolume),
         ),
-        const Icon(Icons.volume_up, size: 20, color: Colors.white70),
       ],
     );
   }

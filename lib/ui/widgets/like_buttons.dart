@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models/track.dart';
 import '../../services/library_store.dart';
@@ -40,7 +41,7 @@ class LikeButtons extends StatelessWidget {
             if (!liked) context.read<WaveService>().forgiveArtist(track);
           },
           icon: Icon(
-            liked ? Icons.favorite : Icons.favorite_border,
+            liked ? Icons.favorite_rounded : LucideIcons.heart,
             color: liked ? scheme.primary : null,
           ),
         ),
@@ -57,7 +58,7 @@ class LikeButtons extends StatelessWidget {
                   hidden ? 'Трек снова будет играть' : 'Трек скрыт и больше не попадётся');
             },
             icon: Icon(
-              hidden ? Icons.thumb_down : Icons.thumb_down_outlined,
+              hidden ? Icons.thumb_down_rounded : LucideIcons.thumbsDown,
               color: hidden ? scheme.error : null,
             ),
           );

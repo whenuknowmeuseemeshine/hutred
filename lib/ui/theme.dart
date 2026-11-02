@@ -123,8 +123,28 @@ class HutredTheme {
         ? const RoundedRectangleBorder()
         : RoundedRectangleBorder(borderRadius: BorderRadius.circular(style.glass ? 14 : 8));
     final onIndicator = style.sharp ? onAccent(accent) : text;
+    TextStyle? tight(TextStyle? t) => t?.copyWith(letterSpacing: 0);
+    final tt = base.textTheme;
     return base.copyWith(
       extensions: [style],
+      // У Material-шрифтов по умолчанию разрядка — с Inter текст расползается.
+      textTheme: tt.copyWith(
+        displayLarge: tight(tt.displayLarge),
+        displayMedium: tight(tt.displayMedium),
+        displaySmall: tight(tt.displaySmall),
+        headlineLarge: tight(tt.headlineLarge),
+        headlineMedium: tight(tt.headlineMedium),
+        headlineSmall: tight(tt.headlineSmall),
+        titleLarge: tight(tt.titleLarge),
+        titleMedium: tight(tt.titleMedium)?.copyWith(fontWeight: FontWeight.w600),
+        titleSmall: tight(tt.titleSmall),
+        bodyLarge: tight(tt.bodyLarge),
+        bodyMedium: tight(tt.bodyMedium),
+        bodySmall: tight(tt.bodySmall),
+        labelLarge: tight(tt.labelLarge),
+        labelMedium: tight(tt.labelMedium),
+        labelSmall: tight(tt.labelSmall),
+      ),
       // Страницы с прозрачным фоном: старая быстро гаснет, новая проявляется —
       // без наложения двух страниц друг на друга.
       pageTransitionsTheme: const PageTransitionsTheme(builders: {
@@ -251,7 +271,7 @@ class HutredTheme {
       dividerTheme: DividerThemeData(color: Colors.white.withValues(alpha: 0.08)),
       sliderTheme: base.sliderTheme.copyWith(
         trackHeight: style.sharp ? 2 : style.glass ? 5 : 4,
-        thumbShape: RoundSliderThumbShape(enabledThumbRadius: style.sharp ? 0 : 6),
+        thumbShape: RoundSliderThumbShape(enabledThumbRadius: style.sharp ? 0 : 5),
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
         activeTrackColor: style.mono ? text : accent,
         inactiveTrackColor: text.withValues(alpha: 0.2),

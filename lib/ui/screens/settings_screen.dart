@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../services/account_service.dart';
 import '../../services/offline_service.dart';
@@ -447,22 +448,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Разделы настроек, собранные в несколько понятных групп.
   static const _groups = <(String, IconData, String, List<String>)>[
-    ('Внешний вид', Icons.palette_outlined, 'Стиль, цвет, фон, вкладки',
+    ('Внешний вид', LucideIcons.palette, 'Стиль, цвет, фон, вкладки',
         ['Стиль', 'Акцентный цвет', 'Фон', 'Вкладки']),
-    ('Воспроизведение', Icons.play_circle_outline, 'Плавный переход, пауза, эквалайзер',
+    ('Воспроизведение', LucideIcons.circlePlay, 'Плавный переход, пауза, эквалайзер',
         ['Воспроизведение']),
-    ('Медиатека и волна', Icons.library_music_outlined, 'Любимые исполнители, чёрный список',
+    ('Медиатека и волна', LucideIcons.library, 'Любимые исполнители, чёрный список',
         ['Медиатека', 'Чёрный список']),
-    ('Тексты и обложки', Icons.lyrics_outlined, 'Караоке, Spotify, Genius',
+    ('Тексты и обложки', LucideIcons.micVocal, 'Караоке, Spotify, Genius',
         ['Тексты песен', 'Обложки']),
-    ('Сеть и YouTube', Icons.public, 'Обход блокировок, проверка связи, вход в YouTube',
+    ('Сеть и YouTube', LucideIcons.globe, 'Обход блокировок, проверка связи, вход в YouTube',
         ['Сеть', 'YouTube']),
-    ('Discord', Icons.headset_mic_outlined, 'Трек в статусе Discord', ['Discord']),
-    ('Загрузки и кэш', Icons.download_outlined, 'Скачанное, место на диске',
+    ('Discord', LucideIcons.headphones, 'Трек в статусе Discord', ['Discord']),
+    ('Загрузки и кэш', LucideIcons.download, 'Скачанное, место на диске',
         ['Загрузки и кэш']),
-    ('Обновления', Icons.system_update_alt, 'Версия, автообновление, трей',
+    ('Обновления', LucideIcons.refreshCw, 'Версия, автообновление, трей',
         ['Обновления', 'Версия']),
-    ('Админ', Icons.admin_panel_settings_outlined, 'Общие ключи для всех', ['Админ']),
+    ('Админ', LucideIcons.shieldCheck, 'Общие ключи для всех', ['Админ']),
   ];
 
   /// Раздел → его пункты (с заголовком раздела).
