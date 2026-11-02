@@ -140,8 +140,50 @@ class PlayerService extends ChangeNotifier {
   /// Пауза и продолжение плавно (затихание ~0,5 с).
   bool Function() fadeOnPause = () => true;
 
-  final AudioPlayer _a = AudioPlayer();
-  final AudioPlayer _b = AudioPlayer();
+  // Эквалайзер (пока только Android): у каждого из двух плееров свой.
+  final AndroidEqualizer? _eqA = Platform.isAndroid ? AndroidEqualizer() : null;
+  final AndroidEqualizer? _eqB = Platform.isAndroid ? AndroidEqualizer() : null;
+  late final AudioPlayer _a = AudioPlayer(
+      audioPipeline: AudioPipeline(androidAudioEffects: [if (_eqA != null) _eqA!]));
+  late final AudioPlayer _b = AudioPlayer(
+      audioPipeline: AudioPipeline(androidAudioEffects: [if (_eqB != null) _eqB!]));
+
+  bool _eqOn = false;
+  List<double> _eqGains = const [];
+
+  bool get eqSupported => _eqA != null;
+
+  /// Полосы эквалайзера (частоты и пределы) — появляются, когда что-то заиграло.
+  Future<AndroidEqualizerParameters?> eqParameters() async {
+    final eq = _eqA;
+    if (eq == null) return null;
+    try {
+      return await eq.parameters.timeout(const Duration(seconds: 3));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setEqualizer(bool on, List<double> gains) async {
+    _eqOn = on;
+    _eqGains = List.of(gains);
+    await _applyEq();
+  }
+
+  Future<void> _applyEq() async {
+    for (final eq in [_eqA, _eqB]) {
+      if (eq == null) continue;
+      try {
+        await eq.setEnabled(_eqOn);
+        final params = await eq.parameters.timeout(const Duration(seconds: 3));
+        for (var i = 0; i < params.bands.length && i < _eqGains.length; i++) {
+          await params.bands[i].setGain(_eqGains[i]
+              .clamp(params.minDecibels, params.maxDecibels)
+              .toDouble());
+        }
+      } catch (_) {}
+    }
+  }
   late AudioPlayer _player = _a;
   AudioPlayer get _other => identical(_player, _a) ? _b : _a;
 
@@ -376,6 +418,7 @@ class PlayerService extends ChangeNotifier {
         throw Exception('источник не ответил за 2 минуты');
       });
       if (token != _loadToken) return;
+      if (eqSupported && _eqOn) unawaited(_applyEq());
       await _player.setAudioSource(source).timeout(
           const Duration(seconds: 12), onTimeout: () {
         throw Exception('плеер не смог открыть поток');

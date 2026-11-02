@@ -312,7 +312,10 @@ class YoutubeSource {
     }
     // Не мучаем это видео повторно до перезапуска программы.
     _deadVideos.add(videoId);
-    throw lastError ?? Exception('YouTube не отдал звук');
+    final why = YtDlp.lastError;
+    throw Exception('YouTube не отдал звук'
+        '${why == null ? '' : ' (yt-dlp: ${why.length > 160 ? '${why.substring(0, 160)}…' : why})'}'
+        '${lastError == null ? '' : '. Библиотека: ${'$lastError'.split('\n').first}'}');
   }
 
   YoutubeApiClient? _goodClient;

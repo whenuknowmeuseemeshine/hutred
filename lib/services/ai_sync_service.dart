@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'cloud_relay.dart';
+
 import 'lyrics_service.dart';
 
 /// Слово, распознанное в треке, со временем звучания.
@@ -31,8 +33,14 @@ class AiSyncService {
       throw Exception('Файл больше 25 МБ — сервис ИИ его не примет');
     }
     final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-    final req = http.MultipartRequest('POST', Uri.parse('$base/audio/transcriptions'))
-      ..headers['Authorization'] = 'Bearer $apiKey'
+    // Запрос собираем функцией: если сервис не пустит напрямую (403 — например,
+    // из России), отправим его ещё раз через облако Hutred.
+    Future<http.MultipartRequest> build(bool viaRelay) async {
+    final target = Uri.parse('$base/audio/transcriptions');
+    final req = http.MultipartRequest('POST', viaRelay ? CloudRelay.wrap(target) : target)
+      ..headers.addAll(viaRelay
+          ? CloudRelay.headers({'Authorization': 'Bearer $apiKey'})
+          : {'Authorization': 'Bearer $apiKey'})
       ..fields['model'] = model
       ..fields['response_format'] = 'verbose_json'
       ..fields['timestamp_granularities[]'] = 'word'
@@ -45,8 +53,19 @@ class AiSyncService {
           filename: 'track${_ext(audio.path)}'));
     // Второе значение того же поля MultipartRequest не умеет — сегменты
     // приходят в verbose_json и так.
-    final streamed = await _client.send(req).timeout(const Duration(minutes: 3));
-    final body = await streamed.stream.bytesToString();
+    return req;
+    }
+
+    var streamed = await _client.send(await build(false)).timeout(const Duration(minutes: 3));
+    var body = await streamed.stream.bytesToString();
+    if (streamed.statusCode == 403 && CloudRelay.available) {
+      streamed = await _client.send(await build(true)).timeout(const Duration(minutes: 3));
+      body = await streamed.stream.bytesToString();
+    }
+    if (streamed.statusCode == 403) {
+      throw Exception('Сервис ИИ (Groq) отказал в доступе (403). Так бывает из стран, '
+          'где он не работает, или через VPN такой страны');
+    }
     if (streamed.statusCode == 401) {
       throw Exception('Сервис ИИ не принял ключ. Проверь его в Настройках');
     }

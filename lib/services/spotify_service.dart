@@ -156,7 +156,14 @@ extension SpotifyImport on SpotifyService {
       throw Exception('Spotify просит подождать ещё ${_PacedClient._wait(left)}: '
           'слишком много запросов с общих ключей');
     }
-    if (res.statusCode != 200) throw Exception('Spotify ответил ${res.statusCode}');
+    if (res.statusCode != 200) {
+      String msg = '';
+      try {
+        final e = jsonDecode(utf8.decode(res.bodyBytes));
+        msg = '${(e is Map ? e['error'] : null) is Map ? e['error']['message'] : ''}';
+      } catch (_) {}
+      throw Exception('Spotify ответил ${res.statusCode}${msg.isEmpty ? '' : ': $msg'}');
+    }
     final data = jsonDecode(utf8.decode(res.bodyBytes));
     final tracks = data is Map ? data['tracks'] : null;
     final items = (tracks is Map ? tracks['items'] as List? : null) ?? const [];
@@ -382,7 +389,11 @@ class _PacedClient extends http.BaseClient {
     if (!viaRelay || relay == null || request is! http.Request) {
       if (relay == null || request is! http.Request) return _inner.send(request);
       try {
-        return await _inner.send(_copy(request, request.url));
+        final direct = await _inner.send(_copy(request, request.url));
+        // Spotify не пускает из этой страны (403) — пробуем через облако.
+        if (direct.statusCode != 403) return direct;
+        await direct.stream.drain<void>();
+        viaRelay = true;
       } on Exception catch (e) {
         // Сертификат подменили / соединение рвётся — пробуем через облако.
         if (e is! HandshakeException && e is! SocketException && e is! TlsException &&

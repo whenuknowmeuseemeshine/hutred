@@ -18,6 +18,7 @@ import '../../services/dpi_bypass.dart';
 import '../net_check.dart';
 import '../theme.dart';
 import '../welcome.dart';
+import 'equalizer_screen.dart';
 import '../widgets/logo.dart';
 import '../home_shell.dart';
 import '../widgets/user_avatar.dart';
@@ -36,7 +37,7 @@ const _sectionKeywords = {
   'Акцентный цвет': 'цвет тема оформление акцент',
   'Фон': 'фон цвет тема оформление обои плеер подкрашивать волна картинка gif',
   'Медиатека': 'любимые избранное лайк добавленные исполнители волна',
-  'Воспроизведение': 'плавный переход crossfade кроссфейд пауза затихание громкость',
+  'Воспроизведение': 'плавный переход crossfade кроссфейд пауза затихание громкость эквалайзер eq басы частоты',
   'Вкладки': 'вкладки меню навигация порядок скрыть показать панель друзья перенос поиск',
   'Чёрный список': 'черный блок заблокировать исполнитель скрытые не нравится дизлайк',
   'Тексты песен': 'текст караоке субтитры genius ии ai groq whisper тайминги',
@@ -251,6 +252,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Text('12 с', style: TextStyle(color: HutredTheme.muted)),
               ]),
             ),
+          ListTile(
+            leading: const Icon(Icons.equalizer_rounded),
+            title: const Text('Эквалайзер'),
+            subtitle: Text(Platform.isAndroid
+                ? (s.eqOn ? 'Включён' : 'Выключен')
+                : 'Пока только на Android'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const EqualizerScreen())),
+          ),
           SwitchListTile(
             secondary: const Icon(Icons.volume_down_rounded),
             title: const Text('Плавная пауза'),
@@ -431,7 +442,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const _groups = <(String, IconData, String, List<String>)>[
     ('Внешний вид', Icons.palette_outlined, 'Цвет, фон, вкладки',
         ['Акцентный цвет', 'Фон', 'Вкладки']),
-    ('Воспроизведение', Icons.play_circle_outline, 'Плавный переход, пауза',
+    ('Воспроизведение', Icons.play_circle_outline, 'Плавный переход, пауза, эквалайзер',
         ['Воспроизведение']),
     ('Медиатека и волна', Icons.library_music_outlined, 'Любимые исполнители, чёрный список',
         ['Медиатека', 'Чёрный список']),

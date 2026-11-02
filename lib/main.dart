@@ -108,6 +108,8 @@ Future<void> main(List<String> args) async {
   await player.setVolume(settings.volume, remember: false);
   player.crossfadeSeconds = () => settings.crossfade ? settings.crossfadeSec : 0;
   player.fadeOnPause = () => settings.fadePause;
+  // Эквалайзер (Android).
+  unawaited(player.setEqualizer(settings.eqOn, settings.eqGains));
   // Трек в шторке Android и в «Исполняется» на iPhone.
   await MediaSession.init(player);
   // Последний трек и место в нём — с прошлого запуска (на паузе).

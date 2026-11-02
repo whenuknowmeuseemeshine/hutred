@@ -9,6 +9,9 @@ import 'package:flutter/foundation.dart';
 class YtDlp {
   static bool? _available;
 
+  /// Почему yt-dlp не скачал последний трек (для «Проверки связи» и ошибок).
+  static String? lastError;
+
   static bool get _desktop =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
@@ -70,8 +73,15 @@ class YtDlp {
         _available = true;
         if (r.exitCode != 0) {
           debugPrint('[yt-dlp] $url: ${r.stderr}');
+          final lines = '${r.stderr}'
+              .split('\n')
+              .map((l) => l.trim())
+              .where((l) => l.startsWith('ERROR') || l.contains('error'))
+              .toList();
+          lastError = lines.isEmpty ? 'код ${r.exitCode}' : lines.last;
           return null;
         }
+        lastError = null;
         return await findCached(dir, baseName);
       } on ProcessException {
         continue; // по этому пути yt-dlp нет
@@ -81,6 +91,7 @@ class YtDlp {
       }
     }
     _available = false;
+    lastError = 'yt-dlp не найден рядом с Hutred';
     debugPrint('[yt-dlp] не найден: установи его или положи yt-dlp.exe в папку проекта');
     return null;
   }

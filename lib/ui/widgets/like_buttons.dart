@@ -36,6 +36,8 @@ class LikeButtons extends StatelessWidget {
             } else {
               store.toggleFavorite(saved.id);
             }
+            // Лайк — сигнал «нравится»: исполнителя больше не штрафуем за пропуски.
+            if (!liked) context.read<WaveService>().forgiveArtist(track);
           },
           icon: Icon(
             liked ? Icons.favorite : Icons.favorite_border,

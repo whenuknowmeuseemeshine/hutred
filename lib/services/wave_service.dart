@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -20,13 +21,65 @@ class WaveService extends ChangeNotifier {
     required this.store,
     required this.player,
     required this.soundcloud,
-  });
+  }) {
+    _watchSkips();
+  }
 
   final LibraryStore store;
   final PlayerService player;
   final SoundcloudSource soundcloud;
 
   final _rand = Random();
+
+  // ---------- Пропуски, как в Яндекс Музыке ----------
+  // Пропустил трек «Волны» в первые 30 секунд — его больше не предлагаем,
+  // а похожее от того же исполнителя попадается реже.
+
+  /// Исполнитель → сколько раз его быстро пропускали в «Волне».
+  final Map<String, int> _skippedArtists = {};
+  final Set<String> _skippedTracks = {};
+  Track? _watchTrack;
+  Duration _watchPos = Duration.zero;
+  bool _watching = false;
+
+  void _watchSkips() {
+    if (_watching) return;
+    _watching = true;
+    player.positionStream.listen((p) => _watchPos = p);
+    player.addListener(() {
+      final cur = player.current;
+      final prev = _watchTrack;
+      if (cur?.id == prev?.id) return;
+      if (prev != null && isWaveTrack(prev)) {
+        final dur = prev.duration ?? const Duration(minutes: 3);
+        final early = _watchPos > Duration.zero &&
+            _watchPos < const Duration(seconds: 30) &&
+            _watchPos < dur * 0.5;
+        if (early) _onSkipped(prev);
+      }
+      _watchTrack = cur;
+      _watchPos = Duration.zero;
+    });
+  }
+
+  void _onSkipped(Track t) {
+    _skippedTracks.add(_key(t));
+    if (_skippedTracks.length > 1000) _skippedTracks.remove(_skippedTracks.first);
+    for (final a in artistsOf(t)) {
+      final k = a.toLowerCase();
+      _skippedArtists[k] = (_skippedArtists[k] ?? 0) + 1;
+    }
+    unawaited(_save());
+  }
+
+  /// Понравился трек — его исполнителя больше не «штрафуем» за пропуски.
+  void forgiveArtist(Track t) {
+    var changed = false;
+    for (final a in artistsOf(t)) {
+      changed |= _skippedArtists.remove(a.toLowerCase()) != null;
+    }
+    if (changed) unawaited(_save());
+  }
   final Set<String> _disliked = {};
 
   /// Название и исполнитель скрытых треков — чтобы показать их списком.
@@ -81,6 +134,10 @@ class WaveService extends ChangeNotifier {
       (j['dislikedArtists'] as Map? ?? const {}).forEach((k, v) {
         _dislikedArtists['$k'] = (v as num).toInt();
       });
+      (j['skippedArtists'] as Map? ?? const {}).forEach((k, v) {
+        _skippedArtists['$k'] = (v as num).toInt();
+      });
+      _skippedTracks.addAll(List<String>.from(j['skippedTracks'] as List? ?? const []));
       (j['favoriteArtists'] as Map? ?? const {}).forEach((k, v) {
         _favArtists['$k'] = [
           for (final t in (v as List? ?? const []))
@@ -106,6 +163,8 @@ class WaveService extends ChangeNotifier {
         },
         'dislikedArtists': _dislikedArtists,
         'blockedArtists': _blockedNames.values.toList(),
+        'skippedArtists': _skippedArtists,
+        'skippedTracks': _skippedTracks.toList(),
         'favoriteArtists': {
           for (final e in _favArtists.entries) e.key: [for (final t in e.value) t.toJson()],
         },
@@ -289,6 +348,10 @@ class WaveService extends ChangeNotifier {
       final artist = t.artist.toLowerCase();
       if (_suggested.contains(k) || isBlocked(t)) continue;
       if ((_dislikedArtists[artist] ?? 0) >= 2) continue;
+      // Быстро пропущенное — не предлагаем; часто пропускаемых — реже.
+      if (_skippedTracks.contains(k)) continue;
+      final skips = _skippedArtists[artist] ?? 0;
+      if (skips > 0 && _rand.nextDouble() < min(0.85, skips * 0.25)) continue;
       if (isOwnedLike(t)) continue;
       if ((perArtist[artist] ?? 0) >= 2) continue;
       if (t.durationMs != null && t.durationMs! < 60000) continue; // не сниппеты

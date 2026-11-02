@@ -81,6 +81,8 @@ class SettingsStore extends ChangeNotifier {
   bool _fadePause = true;
   bool _guest = false;
   bool _dnsOnly = false;
+  bool _eqOn = false;
+  List<double> _eqGains = const [];
   bool _pickArtists = false;
   bool _pickTheme = false;
   String _discordAppId = '';
@@ -155,6 +157,15 @@ class SettingsStore extends ChangeNotifier {
   set crossfadeSec(int v) {
     _crossfadeSec = v.clamp(1, 12);
     _save();
+  }
+
+  /// Эквалайзер: включён ли и усиление полос (дБ).
+  bool get eqOn => _eqOn;
+  List<double> get eqGains => _eqGains;
+  void setEqualizer(bool on, List<double> gains) {
+    _eqOn = on;
+    _eqGains = List.of(gains);
+    _saveSoon();
   }
 
   /// Обход в режиме «только безопасный DNS» (без разрезания соединения).
@@ -481,6 +492,8 @@ class SettingsStore extends ChangeNotifier {
       _fadePause = j['fadePause'] as bool? ?? true;
       _guest = j['guest'] as bool? ?? false;
       _dnsOnly = j['dnsOnly'] as bool? ?? false;
+      _eqOn = j['eqOn'] as bool? ?? false;
+      _eqGains = [for (final g in (j['eqGains'] as List? ?? const [])) (g as num).toDouble()];
       _pickArtists = j['pickArtists'] as bool? ?? false;
       _pickTheme = j['pickTheme'] as bool? ?? false;
       _discordAppId = j['discordAppId'] as String? ?? '';
@@ -513,6 +526,8 @@ class SettingsStore extends ChangeNotifier {
         'fadePause': _fadePause,
         'guest': _guest,
         'dnsOnly': _dnsOnly,
+        'eqOn': _eqOn,
+        'eqGains': _eqGains,
         'pickArtists': _pickArtists,
         'pickTheme': _pickTheme,
         'discordAppId': _discordAppId,
