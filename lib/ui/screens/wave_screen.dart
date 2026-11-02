@@ -99,10 +99,11 @@ class WaveScreen extends StatelessWidget {
         },
       );
 
+    final sharp = HutredStyle.of(context).sharp;
     return Scaffold(
       extendBodyBehindAppBar: bg != null,
       appBar: AppBar(
-        title: const Text('Моя волна'),
+        title: sharp ? null : const Text('Моя волна'),
         backgroundColor: bg != null ? Colors.transparent : null,
         actions: [
           // Вкладка «Поиск» скрыта (на телефоне по умолчанию) — поиск здесь.
@@ -118,7 +119,7 @@ class WaveScreen extends StatelessWidget {
         ],
       ),
       body: bg == null
-          ? content
+          ? (sharp ? const _SharpWave() : content)
           : Stack(
               fit: StackFit.expand,
               children: [
@@ -133,7 +134,7 @@ class WaveScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                SafeArea(child: content),
+                SafeArea(child: sharp ? const _SharpWave() : content),
               ],
             ),
     );
@@ -320,4 +321,202 @@ class _OrbPainter extends CustomPainter {
   @override
   bool shouldRepaint(_OrbPainter old) =>
       old.t != t || old.color != color || old.energy != energy;
+}
+
+
+/// «Резкий»: крупное «Моя волна», режимы, карточка текущего трека
+/// и пронумерованный список «Дальше».
+class _SharpWave extends StatelessWidget {
+  const _SharpWave();
+
+  @override
+  Widget build(BuildContext context) {
+    final wave = context.watch<WaveService>();
+    final player = context.watch<PlayerService>();
+    final store = context.read<LibraryStore>();
+    final accent = Theme.of(context).colorScheme.primary;
+    final style = HutredStyle.of(context);
+    final current = player.current;
+    final onWave = wave.isWaveTrack(current);
+    const mono = TextStyle(fontSize: 11, color: Color(0xFF8A8A8A), letterSpacing: 1);
+
+    // Режимы: обычная волна, только по любимым, по недавно добавленным.
+    final favs = store.favorites;
+    final recent = List.of(store.tracks)..sort((a, b) => b.addedAt.compareTo(a.addedAt));
+    final modes = <(String, String?, Future<void> Function())>[
+      ('Как обычно', null, wave.start),
+      if (favs.isNotEmpty)
+        ('По любимым', 'По любимым',
+            () => wave.startCustom([for (final t in favs) (track: t, weight: 3)],
+                label: 'По любимым')),
+      if (recent.isNotEmpty)
+        ('По свежим', 'По свежим',
+            () => wave.startCustom([for (final t in recent.take(20)) (track: t, weight: 3)],
+                label: 'По свежим')),
+    ];
+    final activeMode = onWave ? (wave.radioLabel) : '-';
+
+    final next = player.queue.skip(player.index + 1).take(onWave ? 6 : 0).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+      children: [
+        Text('ПОД НАСТРОЕНИЕ', style: mono.copyWith(color: accent)),
+        const SizedBox(height: 10),
+        Text('Моя\nволна', style: style.display(72).copyWith(height: 0.95)),
+        const SizedBox(height: 20),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (label, key, run) in modes)
+              InkWell(
+                onTap: wave.loading ? null : run,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: activeMode == key ? accent : Colors.transparent,
+                    border: Border.all(
+                        color: activeMode == key ? accent : const Color(0xFF333333)),
+                  ),
+                  child: Text(label,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: activeMode == key
+                              ? HutredTheme.onAccent(accent)
+                              : HutredTheme.text)),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        // Карточка: что играет в волне, или кнопка запуска.
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(border: Border.all(color: const Color(0xFF2A2A2A))),
+          child: Row(children: [
+            if (onWave && current != null)
+              GestureDetector(
+                onTap: () => NowPlayingScreen.open(context),
+                child: Artwork(track: current, size: 64, radius: 0),
+              )
+            else
+              Container(
+                width: 64,
+                height: 64,
+                color: const Color(0xFF1B1B1B),
+                child: const Icon(Icons.graphic_eq_rounded, color: Color(0xFF555555)),
+              ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(onWave && current != null ? current.title : 'Волна выключена',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+                Text(
+                    onWave && current != null
+                        ? current.artist
+                        : 'Бесконечный поток под твой вкус',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Color(0xFF8A8A8A))),
+                if (onWave)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: StreamBuilder<Duration>(
+                      stream: player.positionStream,
+                      builder: (context, snap) {
+                        final d = player.duration?.inMilliseconds ?? 0;
+                        final p = snap.data?.inMilliseconds ?? 0;
+                        return LinearProgressIndicator(
+                          value: d > 0 ? (p / d).clamp(0.0, 1.0) : 0,
+                          minHeight: 2,
+                          color: accent,
+                          backgroundColor: const Color(0xFF2A2A2A),
+                        );
+                      },
+                    ),
+                  ),
+              ]),
+            ),
+            const SizedBox(width: 14),
+            Material(
+              color: accent,
+              child: InkWell(
+                onTap: () {
+                  if (wave.loading) return;
+                  if (onWave) {
+                    player.togglePlay();
+                  } else {
+                    wave.start();
+                  }
+                },
+                child: SizedBox.square(
+                  dimension: 52,
+                  child: wave.loading
+                      ? Padding(
+                          padding: const EdgeInsets.all(15),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: HutredTheme.onAccent(accent)),
+                        )
+                      : Icon(
+                          onWave && player.playing
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          color: HutredTheme.onAccent(accent)),
+                ),
+              ),
+            ),
+          ]),
+        ),
+        if (wave.error != null) ...[
+          const SizedBox(height: 12),
+          Text(wave.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
+        if (next.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          const Text('ДАЛЬШЕ', style: mono),
+          const SizedBox(height: 8),
+          for (final (k, t) in next.indexed)
+            InkWell(
+              onTap: () => player.jumpTo(player.index + 1 + k),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: Color(0xFF1F1F1F)))),
+                child: Row(children: [
+                  SizedBox(
+                      width: 28,
+                      child: Text((k + 1).toString().padLeft(2, '0'),
+                          style: mono.copyWith(color: const Color(0xFF555555)))),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(t.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF8A8A8A))),
+                    ]),
+                  ),
+                  Text(formatDuration(t.duration), style: mono.copyWith(letterSpacing: 0)),
+                ]),
+              ),
+            ),
+        ],
+        const SizedBox(height: 20),
+        if (wave.dislikedCount > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: wave.resetDislikes,
+              child: Text('Сбросить дизлайки (${wave.dislikedCount})'),
+            ),
+          ),
+      ],
+    );
+  }
 }

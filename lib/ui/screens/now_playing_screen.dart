@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
@@ -66,14 +67,20 @@ class NowPlayingScreen extends StatelessWidget {
             ),
             child: SafeArea(
               child: LayoutBuilder(
-                builder: (context, box) => box.maxWidth >= 900
-                    ? const _WideLayout()
-                    : _NarrowLayout(tint: tint),
+                builder: (context, box) {
+                  final style = HutredStyle.of(context);
+                  if (box.maxWidth >= 900) {
+                    return style.sharp ? const _SharpWide() : const _WideLayout();
+                  }
+                  return style.glass ? const _GlassNarrow() : _NarrowLayout(tint: tint);
+                },
               ),
             ),
           ),
         );
 
+    // «Резкий»: ровный тёмный фон без подкраски.
+    if (HutredStyle.of(context).sharp) return page(ink);
     // Фон — из цвета обложки, как в больших стриминговых плеерах.
     if (!settings.tintFromCover) return page(Theme.of(context).colorScheme.primary);
     return CoverColorBuilder(track: track, builder: (context, c) => page(c));
@@ -675,4 +682,361 @@ class _ArtistLink extends StatelessWidget {
               style: const TextStyle(fontSize: 16, color: Colors.white70)),
         ),
       );
+}
+
+// ======================================================================
+// Плеер по макетам стилей.
+// ======================================================================
+
+/// «Стекло», телефон: большая скруглённая обложка со свечением, круглые
+/// кнопки, переключатель «Текст / Очередь» внизу.
+class _GlassNarrow extends StatefulWidget {
+  const _GlassNarrow();
+
+  @override
+  State<_GlassNarrow> createState() => _GlassNarrowState();
+}
+
+class _GlassNarrowState extends State<_GlassNarrow> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerService>();
+    final store = context.watch<LibraryStore>();
+    final wave = context.watch<WaveService>();
+    final track = store.byId(player.current!.id) ?? player.current!;
+    final accent = Theme.of(context).colorScheme.primary;
+    final from = wave.radioLabel ??
+        (wave.isWaveTrack(track) ? 'Моя волна' : sourceLabel(track.source));
+
+    Widget round(IconData icon, String tip, VoidCallback onTap, {Color? bg, Color? fg}) =>
+        Material(
+          color: bg ?? Colors.white.withValues(alpha: 0.1),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Tooltip(
+              message: tip,
+              child: SizedBox.square(
+                  dimension: 44, child: Icon(icon, size: 20, color: fg ?? Colors.white)),
+            ),
+          ),
+        );
+
+    final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
+    final liked = saved?.favorite ?? false;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(22, 4, 22, 32),
+      children: [
+        Row(
+          children: [
+            round(Icons.keyboard_arrow_down_rounded, 'Свернуть',
+                () => Navigator.of(context).pop()),
+            Expanded(
+              child: Column(children: [
+                const Text('ИГРАЕТ ИЗ',
+                    style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFC9C5E0))),
+                Text(from,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+              ]),
+            ),
+            TrackMenuButton(track: track),
+          ],
+        ),
+        const SizedBox(height: 18),
+        AspectRatio(
+          aspectRatio: 1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                    color: accent.withValues(alpha: 0.5), blurRadius: 70, offset: const Offset(0, 30)),
+              ],
+            ),
+            child: Hero(
+              tag: 'artwork',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Artwork(track: track, radius: 0),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 26),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(track.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: HutredStyle.of(context).display(26)),
+                  _ArtistLink(artist: track.artist),
+                ],
+              ),
+            ),
+            round(LucideIcons.x, 'Не моё — больше не играть', () async {
+              await context.read<WaveService>().toggleDislike(track);
+              if (player.current?.id == track.id) await player.next();
+            }),
+            const SizedBox(width: 10),
+            round(
+              liked ? Icons.favorite_rounded : LucideIcons.heart,
+              liked ? 'Убрать из любимых' : 'В любимые',
+              () {
+                if (saved == null) {
+                  store.addTracks([track.copyWith(favorite: true)]);
+                } else {
+                  store.toggleFavorite(saved.id);
+                }
+              },
+              bg: accent.withValues(alpha: 0.25),
+              fg: liked ? accent : Colors.white,
+            ),
+          ],
+        ),
+        const _ErrorLine(),
+        const SizedBox(height: 14),
+        const SeekBar(),
+        const SizedBox(height: 6),
+        const TransportControls(),
+        const SizedBox(height: 26),
+        // Переключатель «Текст / Очередь».
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          child: Row(children: [
+            for (final (i, label) in const [(0, 'Текст'), (1, 'Очередь')])
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _tab = i),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _tab == i ? Colors.white.withValues(alpha: 0.14) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(label,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: _tab == i ? Colors.white : const Color(0xFFC9C5E0))),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        if (_tab == 0)
+          SizedBox(height: 380, child: LyricsPanel(track: track))
+        else
+          for (final (k, t) in player.queue.skip(player.index + 1).take(10).indexed)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              onTap: () => player.jumpTo(player.index + 1 + k),
+              leading: Artwork(track: t, size: 44, radius: 6),
+              title: Text(t.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+      ],
+    );
+  }
+}
+
+/// «Резкий», компьютер: слева трек крупно и кнопки, справа текст и очередь.
+class _SharpWide extends StatelessWidget {
+  const _SharpWide();
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerService>();
+    final store = context.watch<LibraryStore>();
+    final wave = context.watch<WaveService>();
+    final track = store.byId(player.current!.id) ?? player.current!;
+    final accent = Theme.of(context).colorScheme.primary;
+    final style = HutredStyle.of(context);
+    const mono = TextStyle(fontSize: 12, color: Color(0xFF8A8A8A), letterSpacing: 1);
+    final from = wave.radioLabel?.toUpperCase() ??
+        (wave.isWaveTrack(track) ? 'ИЗ ВОЛНЫ' : sourceLabel(track.source).toUpperCase());
+    final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
+    final liked = saved?.favorite ?? false;
+    final next = player.queue.skip(player.index + 1).take(6).toList();
+
+    Widget box(Widget child, VoidCallback onTap, {bool filled = false, double? width}) =>
+        Material(
+          color: filled ? accent : Colors.transparent,
+          shape: filled
+              ? const RoundedRectangleBorder()
+              : const RoundedRectangleBorder(side: BorderSide(color: Color(0xFF333333))),
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              height: 52,
+              width: width,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: width == null ? 18 : 0),
+                child: Center(child: child),
+              ),
+            ),
+          ),
+        );
+
+    final left = ListView(
+      padding: const EdgeInsets.fromLTRB(32, 8, 32, 32),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380, maxHeight: 380),
+            child: Hero(tag: 'artwork', child: Artwork(track: track, radius: 0)),
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text('СЕЙЧАС ИГРАЕТ · $from', style: mono.copyWith(color: accent)),
+        const SizedBox(height: 8),
+        Text(track.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: style.display(72)),
+        const SizedBox(height: 6),
+        DefaultTextStyle.merge(
+          style: const TextStyle(fontSize: 22, color: Color(0xFF8A8A8A)),
+          child: _ArtistLink(artist: track.artist),
+        ),
+        const _ErrorLine(),
+        const SizedBox(height: 18),
+        const ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 560),
+          child: SeekBar(compact: true),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            box(
+              const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(LucideIcons.x, size: 18),
+                SizedBox(width: 8),
+                Text('Не моё', style: TextStyle(fontWeight: FontWeight.w600)),
+              ]),
+              () async {
+                await context.read<WaveService>().toggleDislike(track);
+                if (player.current?.id == track.id) await player.next();
+              },
+            ),
+            box(const Icon(Icons.skip_previous_rounded), player.previous, width: 52),
+            box(
+              Icon(player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: HutredTheme.onAccent(accent), size: 26),
+              player.togglePlay,
+              filled: true,
+              width: 72,
+            ),
+            box(const Icon(Icons.skip_next_rounded), player.next, width: 52),
+            box(
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(liked ? Icons.favorite_rounded : LucideIcons.heart,
+                    size: 18, color: liked ? accent : null),
+                const SizedBox(width: 8),
+                Text(liked ? 'В любимых' : 'В любимые',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ]),
+              () {
+                if (saved == null) {
+                  store.addTracks([track.copyWith(favorite: true)]);
+                } else {
+                  store.toggleFavorite(saved.id);
+                }
+              },
+            ),
+            const SizedBox(width: 220, child: VolumeSlider()),
+          ],
+        ),
+      ],
+    );
+
+    final right = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(32, 8, 32, 8),
+          child: Text('ТЕКСТ', style: mono),
+        ),
+        Expanded(child: LyricsPanel(track: track)),
+        const Divider(height: 1),
+        if (next.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(32, 16, 32, 6),
+            child: Text(wave.isWaveTrack(track) ? 'ДАЛЬШЕ В ВОЛНЕ' : 'ДАЛЬШЕ', style: mono),
+          ),
+          for (final (k, t) in next.take(5).indexed)
+            InkWell(
+              onTap: () => player.jumpTo(player.index + 1 + k),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
+                child: Row(children: [
+                  SizedBox(
+                      width: 28,
+                      child: Text((k + 1).toString().padLeft(2, '0'),
+                          style: mono.copyWith(color: const Color(0xFF555555)))),
+                  Artwork(track: t, size: 40, radius: 0),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(t.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF8A8A8A))),
+                    ]),
+                  ),
+                  Text(formatDuration(t.duration), style: mono.copyWith(letterSpacing: 0)),
+                ]),
+              ),
+            ),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            tooltip: 'Свернуть',
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
+          ),
+        ),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 11, child: left),
+              const VerticalDivider(width: 1, color: Color(0xFF222222)),
+              Expanded(flex: 9, child: right),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
