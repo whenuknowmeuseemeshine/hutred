@@ -20,7 +20,7 @@ UninstallDisplayIcon={app}\hutred.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=yes
+CloseApplications=force
 RestartApplications=no
 ArchitecturesInstallIn64BitMode=x64compatible
 

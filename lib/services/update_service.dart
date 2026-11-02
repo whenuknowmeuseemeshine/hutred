@@ -171,6 +171,12 @@ class UpdateService extends ChangeNotifier {
   /// установщик сам запустит его заново.
   Future<void> _install(File installer) async {
     try {
+      // yt-dlp мог как раз качать трек или обновляться — закрываем его,
+      // иначе установщик спросит, можно ли его закрыть.
+      try {
+        await Process.run('taskkill', ['/IM', 'yt-dlp.exe', '/F'])
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
       await Process.start(
         installer.path,
         ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS'],
