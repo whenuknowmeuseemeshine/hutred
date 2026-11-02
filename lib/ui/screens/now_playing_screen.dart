@@ -940,7 +940,7 @@ class _SharpWide extends StatelessWidget {
             ),
             box(Icon(Ic.skip_previous_rounded), player.previous, width: 52),
             box(
-              Icon(player.playing ? Ic.pause_rounded : Ic.play_arrow_rounded,
+              SwapIcon(player.playing ? Ic.pause_rounded : Ic.play_arrow_rounded,
                   color: HutredTheme.onAccent(accent), size: 26),
               player.togglePlay,
               filled: true,

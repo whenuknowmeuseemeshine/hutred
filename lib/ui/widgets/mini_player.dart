@@ -122,7 +122,7 @@ class MiniPlayer extends StatelessWidget {
                           tooltip: player.playing ? 'Пауза' : 'Играть',
                           iconSize: 32,
                           onPressed: player.togglePlay,
-                          icon: Icon(player.playing
+                          icon: SwapIcon(player.playing
                               ? Ic.pause_rounded
                               : Ic.play_arrow_rounded),
                         ),

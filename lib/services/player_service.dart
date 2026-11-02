@@ -199,12 +199,17 @@ class PlayerService extends ChangeNotifier {
   /// Плавно меняет громкость плеера. Прерывается, если началась другая плавность.
   Future<bool> _ramp(AudioPlayer p, double from, double to, Duration d,
       {int? token}) async {
-    const steps = 20;
+    const steps = 30;
     final t = token ?? ++_fadeToken;
     for (var i = 1; i <= steps; i++) {
       if (t != _fadeToken) return false;
       final k = i / steps;
-      await p.setVolume((from + (to - from) * k).clamp(0.0, 1.0));
+      // Громкость на слух логарифмическая: квадратичная кривая звучит ровно,
+      // без «провала» в конце затухания.
+      final v = to < from
+          ? to + (from - to) * (1 - k) * (1 - k)
+          : from + (to - from) * k * k;
+      await p.setVolume(v.clamp(0.0, 1.0));
       await Future<void>.delayed(d ~/ steps);
     }
     return t == _fadeToken;
@@ -317,7 +322,9 @@ class PlayerService extends ChangeNotifier {
   RepeatSetting get repeat => _repeat;
   bool get loading => _loading;
   String? get error => _error;
-  bool get playing => _player.playing;
+  /// Кнопки сразу показывают паузу/игру, не дожидаясь конца затухания.
+  bool get playing => _intent ?? _player.playing;
+  bool? _intent;
   double get volume => _userVolume;
   Duration get position => _resumeAt ?? _player.position;
   Duration? get duration => _player.duration ?? current?.duration;
@@ -545,7 +552,7 @@ class PlayerService extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (_player.playing) {
+    if (playing) {
       await pause();
     } else {
       if (_player.processingState == ProcessingState.completed) {
@@ -562,6 +569,8 @@ class PlayerService extends ChangeNotifier {
   /// Пауза: как в Spotify, звук не обрывается, а быстро затихает.
   Future<void> pause() async {
     if (!_player.playing) return;
+    _intent = false;
+    notifyListeners();
     await _killOther();
     final p = _player;
     if (fadeOnPause()) {
@@ -571,6 +580,7 @@ class PlayerService extends ChangeNotifier {
     }
     await p.pause();
     await p.setVolume(_userVolume);
+    _intent = null;
     notifyListeners();
     unawaited(_saveState());
   }
@@ -578,6 +588,7 @@ class PlayerService extends ChangeNotifier {
   /// Продолжить: звук плавно нарастает.
   Future<void> resume() async {
     final p = _player;
+    _intent = null;
     if (fadeOnPause()) {
       final t = ++_fadeToken;
       await p.setVolume(0);

@@ -162,7 +162,7 @@ class TransportControls extends StatelessWidget {
                         Icon(Ic.play_arrow_rounded, size: 16, color: playFg),
                     ],
                   )
-                : Icon(
+                : SwapIcon(
                     player.playing
                         ? Ic.pause_rounded
                         : Ic.play_arrow_rounded,
@@ -331,4 +331,25 @@ class _ShufflePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ShufflePainter old) => old.color != color || old.smart != smart;
+}
+
+/// Значок, который меняется плавно (пауза ↔ играть): лёгкое
+/// растворение с увеличением вместо резкой подмены.
+class SwapIcon extends StatelessWidget {
+  const SwapIcon(this.icon, {super.key, this.size, this.color});
+  final IconData icon;
+  final double? size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, a) => FadeTransition(
+          opacity: a,
+          child: ScaleTransition(scale: Tween(begin: 0.6, end: 1.0).animate(a), child: child),
+        ),
+        child: Icon(icon, key: ValueKey(icon), size: size, color: color),
+      );
 }

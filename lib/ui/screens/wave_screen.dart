@@ -10,6 +10,7 @@ import '../../services/settings_store.dart';
 import '../../services/wave_service.dart';
 import '../shell_nav.dart';
 import '../theme.dart';
+import '../widgets/controls.dart';
 import '../widgets/style_bits.dart';
 import '../widgets/track_tile.dart';
 import '../../models/track.dart';
@@ -352,13 +353,18 @@ class _WaveOrbState extends State<_WaveOrb> with SingleTickerProviderStateMixin 
                       color: const Color(0xFF38BDF8).withValues(alpha: 0.2), blurRadius: 180),
                 ])
               : null,
-          child: AnimatedBuilder(
+          // Пауза/игра: «дыхание» шара плавно затихает и разгоняется.
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: widget.playing ? 1 : 0.35),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeInOut,
+            builder: (context, energy, child) => AnimatedBuilder(
             animation: _c,
             builder: (context, _) => CustomPaint(
               painter: _OrbPainter(
                 t: reduce ? 0 : _c.value,
                 color: widget.color,
-                energy: widget.playing ? 1 : 0.35,
+                energy: energy,
               ),
               child: Center(
                 child: Container(
@@ -374,11 +380,12 @@ class _WaveOrbState extends State<_WaveOrb> with SingleTickerProviderStateMixin 
                           child: CircularProgressIndicator(
                               strokeWidth: 3, color: Colors.black),
                         )
-                      : Icon(widget.icon,
+                      : SwapIcon(widget.icon,
                           size: widget.size * 0.16, color: Colors.black),
                 ),
               ),
             ),
+          ),
           ),
         ),
       ),
@@ -603,7 +610,7 @@ class _SharpWave extends StatelessWidget {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: HutredTheme.onAccent(accent)),
                         )
-                      : Icon(
+                      : SwapIcon(
                           onWave && player.playing
                               ? Ic.pause_rounded
                               : Ic.play_arrow_rounded,
