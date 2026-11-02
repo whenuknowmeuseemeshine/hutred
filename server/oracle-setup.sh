@@ -27,7 +27,7 @@ DOMAIN="${IP//./-}.sslip.io"
 mkdir -p /opt/hutred
 echo "$DOMAIN" > /opt/hutred/domain
 
-curl -fsSL https://raw.githubusercontent.com/whenuknowmeuseemeshine/hutred/main/server/relay.py -o /opt/hutred/relay.py
+curl -fsSL https://raw.githubusercontent.com/whenuknowmeuseemeshine/hutred/dev/server/relay.py -o /opt/hutred/relay.py
 
 cat > /etc/systemd/system/hutred-relay.service <<UNIT
 [Unit]
@@ -56,7 +56,7 @@ CADDY
 # Обновлять посредника раз в сутки, если в репозитории вышла новая версия.
 cat > /etc/cron.daily/hutred-relay-update <<'CRON'
 #!/bin/sh
-curl -fsSL https://raw.githubusercontent.com/whenuknowmeuseemeshine/hutred/main/server/relay.py -o /tmp/relay.py && \
+curl -fsSL https://raw.githubusercontent.com/whenuknowmeuseemeshine/hutred/dev/server/relay.py -o /tmp/relay.py && \
   python3 -c "import ast;ast.parse(open('/tmp/relay.py').read())" && \
   ! cmp -s /tmp/relay.py /opt/hutred/relay.py && cp /tmp/relay.py /opt/hutred/relay.py && systemctl restart hutred-relay
 exit 0
