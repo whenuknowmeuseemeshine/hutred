@@ -1,5 +1,8 @@
 name: Fetch fonts
-on: workflow_dispatch
+on:
+  push:
+    branches: [dev]
+    paths: [".github/workflows/fonts.yml"]
 permissions:
   contents: write
 jobs:
