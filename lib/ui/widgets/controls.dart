@@ -152,7 +152,7 @@ class TransportControls extends StatelessWidget {
                 ? Stack(
                     alignment: Alignment.center,
                     children: [
-                      const SizedBox.square(
+                      SizedBox.square(
                           dimension: 24,
                           child: CircularProgressIndicator(
                               strokeWidth: 2.5, color: playFg)),
