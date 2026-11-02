@@ -30,26 +30,43 @@ class MiniPlayer extends StatelessWidget {
     // На компьютере — широкая панель в три части, как в настольных плеерах.
     if (wide) return PlayerBar(track: track);
 
-    return Material(
-      color: Color.alphaBlend(tint.withValues(alpha: 0.22), Theme.of(context).colorScheme.surface),
+    final style = HutredStyle.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    // Мини-плеер — отдельная плашка над нижним меню (у «Резкого» — без скруглений).
+    final radius = BorderRadius.circular(style.sharp ? 0 : style.glass ? 18 : 10);
+    final progress = StreamBuilder<Duration>(
+      stream: player.positionStream,
+      builder: (context, snap) {
+        final dur = player.duration?.inMilliseconds ?? 0;
+        final pos = snap.data?.inMilliseconds ?? 0;
+        return LinearProgressIndicator(
+          value: dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0,
+          minHeight: 2,
+          backgroundColor: Colors.white12,
+          color: style.sharp ? scheme.primary : Colors.white,
+        );
+      },
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+      child: Material(
+      color: style.glass
+          ? Colors.black.withValues(alpha: 0.45)
+          : style.sharp
+              ? scheme.surface
+              : Color.alphaBlend(tint.withValues(alpha: 0.18), scheme.surfaceContainerHighest),
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: style.mono
+            ? BorderSide.none
+            : BorderSide(color: Colors.white.withValues(alpha: style.sharp ? 0.16 : 0.1)),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => NowPlayingScreen.open(context),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            StreamBuilder<Duration>(
-              stream: player.positionStream,
-              builder: (context, snap) {
-                final dur = player.duration?.inMilliseconds ?? 0;
-                final pos = snap.data?.inMilliseconds ?? 0;
-                return LinearProgressIndicator(
-                  value: dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0,
-                  minHeight: 2,
-                  backgroundColor: Colors.white12,
-                  color: Colors.white,
-                );
-              },
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
               child: Row(
@@ -116,8 +133,10 @@ class MiniPlayer extends StatelessWidget {
                 ],
               ),
             ),
+            progress,
           ],
         ),
+      ),
       ),
     );
   }
@@ -139,14 +158,31 @@ class PlayerBar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final settings = context.watch<SettingsStore>();
 
-    return Material(
-      color: inFullScreen ? Colors.black.withValues(alpha: 0.25) : scheme.surface,
+    final style = HutredStyle.of(context);
+    // «Стекло»: панель парит над страницей; остальные — во всю ширину с линией сверху.
+    final floating = style.glass && !inFullScreen;
+    final bar = Material(
+      color: inFullScreen
+          ? Colors.black.withValues(alpha: 0.25)
+          : floating
+              ? const Color(0xFF14121F).withValues(alpha: 0.72)
+              : Theme.of(context).canvasColor,
+      shape: floating
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)))
+          : null,
+      clipBehavior: floating ? Clip.antiAlias : Clip.none,
       child: Container(
-        height: 100,
+        height: floating ? 88 : 96,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
-        ),
+        decoration: floating
+            ? null
+            : BoxDecoration(
+                border: Border(
+                    top: BorderSide(
+                        color: Colors.white.withValues(alpha: style.sharp ? 0.14 : 0.07))),
+              ),
         child: Row(
           children: [
             // Слева: обложка, название, сердечко.
@@ -272,5 +308,8 @@ class PlayerBar extends StatelessWidget {
         ),
       ),
     );
+    return floating
+        ? Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: bar)
+        : bar;
   }
 }

@@ -7,6 +7,7 @@ import '../services/soundcloud_source.dart';
 import '../services/wave_service.dart';
 import 'screens/account_screen.dart';
 import 'theme.dart';
+import 'widgets/style_picker.dart';
 import 'widgets/artwork.dart';
 
 /// Первый экран: войти или создать аккаунт, потом уже пользоваться.
@@ -266,8 +267,12 @@ class ThemePickerScreen extends StatelessWidget {
                 const Text('Как будет выглядеть Hutred?',
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 6),
-                const Text('Выбери цвет и фон — потом можно поменять в Настройках → Внешний вид.',
+                const Text('Выбери стиль, цвет и фон — потом можно поменять в Настройках → Внешний вид.',
                     style: TextStyle(color: HutredTheme.muted)),
+                const SizedBox(height: 24),
+                const Text('Стиль', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                const StylePicker(),
                 const SizedBox(height: 24),
                 const Text('Цвет', style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 10),

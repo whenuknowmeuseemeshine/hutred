@@ -14,6 +14,7 @@ import '../widgets/like_buttons.dart';
 import '../widgets/lyrics_view.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/track_tile.dart';
+import '../theme.dart';
 
 /// Полноэкранный плеер: обложка, текст-караоке и очередь.
 class NowPlayingScreen extends StatelessWidget {
@@ -47,7 +48,7 @@ class NowPlayingScreen extends StatelessWidget {
     }
     final track = store.byId(current.id) ?? current;
     final settings = context.watch<SettingsStore>();
-    final ink = Theme.of(context).scaffoldBackgroundColor;
+    final ink = Theme.of(context).canvasColor;
 
     Widget page(Color tint) => Scaffold(
           body: DecoratedBox(
@@ -501,8 +502,7 @@ class _BigCover extends StatelessWidget {
             Text(track.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
+                style: HutredStyle.of(context).display(26)),
             const SizedBox(height: 4),
             _ArtistLink(artist: track.artist),
           ],

@@ -57,7 +57,7 @@ class WaveScreen extends StatelessWidget {
                 Text(
                   onWave ? 'Волна играет' : 'Бесконечный поток под твой вкус',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                  style: HutredStyle.of(context).display(24),
                 ),
                 const SizedBox(height: 8),
                 Text(

@@ -21,6 +21,7 @@ import 'widgets/account_button.dart';
 import 'widgets/blurred_background.dart';
 import 'widgets/logo.dart';
 import 'widgets/mini_player.dart';
+import 'theme.dart';
 
 /// Каркас приложения: на широком экране боковая панель, на телефоне — нижняя.
 class HomeShell extends StatefulWidget {
@@ -163,7 +164,7 @@ class _HomeShellState extends State<HomeShell> {
                   ),
               ],
             ),
-            const VerticalDivider(width: 1),
+            if (!HutredStyle.of(context).glass) const VerticalDivider(width: 1),
             Expanded(
               child: Column(
                 children: [
@@ -232,9 +233,7 @@ class _Logo extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Hutred',
-                  style: TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+              Text('Hutred', style: HutredStyle.of(context).display(22)),
               // Логин пользователя под названием.
               if (name != null)
                 Text('@$name',

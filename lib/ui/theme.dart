@@ -6,6 +6,72 @@ import 'package:flutter/material.dart';
 
 import '../services/settings_store.dart';
 
+/// Стиль оформления (Моно / Стекло / Резкий): шрифты и формы.
+/// Достаётся через `HutredStyle.of(context)`.
+class HutredStyle extends ThemeExtension<HutredStyle> {
+  const HutredStyle({
+    required this.id,
+    required this.font,
+    required this.displayFont,
+    required this.radius,
+    required this.cardRadius,
+    required this.artScale,
+  });
+
+  final String id;
+
+  /// Основной шрифт и шрифт крупных заголовков.
+  final String font;
+  final String displayFont;
+
+  /// Скругление строк, полей и кнопок-плашек; карточек и окон.
+  final double radius;
+  final double cardRadius;
+
+  /// Во сколько раз скруглять обложки (0 — острые углы).
+  final double artScale;
+
+  bool get glass => id == 'glass';
+  bool get mono => id == 'mono';
+  bool get sharp => id == 'sharp';
+
+  static const monoStyle = HutredStyle(
+      id: 'mono', font: 'Inter', displayFont: 'Inter', radius: 8, cardRadius: 12, artScale: 1);
+  static const glassStyle = HutredStyle(
+      id: 'glass', font: 'Manrope', displayFont: 'Manrope', radius: 14, cardRadius: 22, artScale: 2);
+  static const sharpStyle = HutredStyle(
+      id: 'sharp', font: 'Inter', displayFont: 'Unbounded', radius: 0, cardRadius: 0, artScale: 0);
+
+  static HutredStyle byId(String id) => switch (id) {
+        'glass' => glassStyle,
+        'sharp' => sharpStyle,
+        _ => monoStyle,
+      };
+
+  static HutredStyle of(BuildContext context) =>
+      Theme.of(context).extension<HutredStyle>() ?? monoStyle;
+
+  /// Стиль крупного заголовка экрана (название плейлиста, «Моя волна»).
+  TextStyle display(double size) => TextStyle(
+        fontFamily: displayFont,
+        fontSize: sharp ? size * 0.82 : size,
+        fontWeight: sharp ? FontWeight.w700 : FontWeight.w800,
+        letterSpacing: sharp ? -size * 0.03 : -size * 0.035,
+        height: 1.05,
+      );
+
+  /// Форма кнопок: капсула или прямоугольник.
+  OutlinedBorder get buttonShape => sharp
+      ? const RoundedRectangleBorder()
+      : const StadiumBorder();
+
+  @override
+  HutredStyle copyWith() => this;
+
+  @override
+  HutredStyle lerp(HutredStyle? other, double t) => t < 0.5 ? this : (other ?? this);
+}
+
 /// Тёмная тема, цвета которой выбирает пользователь в настройках.
 class HutredTheme {
   static const text = Color(0xFFF2EFE8);
@@ -18,7 +84,11 @@ class HutredTheme {
   static bool get desktop =>
       !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
-  static ThemeData build(Color accent, BackgroundPreset bg) {
+  static ThemeData build(Color accent, BackgroundPreset bg, [String styleId = 'mono']) {
+    final style = HutredStyle.byId(styleId);
+    // У «Стекла» страницы прозрачные: под ними светящийся фон.
+    final page = style.glass ? Colors.transparent : bg.ink;
+    final panel = style.glass ? Colors.white.withValues(alpha: 0.04) : bg.surface;
     final scheme = ColorScheme.fromSeed(
       seedColor: accent,
       brightness: Brightness.dark,
@@ -37,18 +107,24 @@ class HutredTheme {
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: bg.ink,
+      scaffoldBackgroundColor: page,
       canvasColor: bg.ink,
       visualDensity: VisualDensity.adaptivePlatformDensity,
       // Без «андроидных» волн от нажатий на компьютере — только мягкая подсветка.
       splashFactory: desktop ? NoSplash.splashFactory : InkSparkle.splashFactory,
       hoverColor: Colors.white.withValues(alpha: 0.06),
       highlightColor: Colors.white.withValues(alpha: 0.04),
-      fontFamily: desktop && Platform.isWindows ? 'Segoe UI' : null,
+      fontFamily: style.font,
     );
-    final round12 = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
-    final round8 = RoundedRectangleBorder(borderRadius: BorderRadius.circular(8));
+    final round12 = RoundedRectangleBorder(borderRadius: BorderRadius.circular(style.cardRadius));
+    final round8 = RoundedRectangleBorder(borderRadius: BorderRadius.circular(style.radius));
+    final indicator = style.sharp ? accent : Colors.white.withValues(alpha: style.glass ? 0.12 : 0.10);
+    final indicatorShape = style.sharp
+        ? const RoundedRectangleBorder()
+        : RoundedRectangleBorder(borderRadius: BorderRadius.circular(style.glass ? 14 : 8));
+    final onIndicator = style.sharp ? onAccent(accent) : text;
     return base.copyWith(
+      extensions: [style],
       // Страницы с прозрачным фоном: старая быстро гаснет, новая проявляется —
       // без наложения двух страниц друг на друга.
       pageTransitionsTheme: const PageTransitionsTheme(builders: {
@@ -59,24 +135,29 @@ class HutredTheme {
         TargetPlatform.macOS: _FadeThrough(),
       }),
       appBarTheme: AppBarTheme(
-        backgroundColor: bg.ink,
+        backgroundColor: page,
         surfaceTintColor: Colors.transparent,
         centerTitle: false,
-        titleTextStyle: const TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.5,
-          color: text,
-        ),
+        titleTextStyle: style.display(28).copyWith(color: text),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: bg.surface,
-        indicatorColor: accent.withValues(alpha: 0.2),
+        backgroundColor: style.glass ? Colors.black.withValues(alpha: 0.35) : bg.surface,
+        indicatorColor: indicator,
+        indicatorShape: indicatorShape,
         surfaceTintColor: Colors.transparent,
+        iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
+            color: s.contains(WidgetState.selected) ? onIndicator : muted)),
       ),
       navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: bg.surface,
-        indicatorColor: accent.withValues(alpha: 0.2),
+        backgroundColor: panel,
+        indicatorColor: indicator,
+        indicatorShape: indicatorShape,
+        selectedIconTheme: IconThemeData(color: onIndicator),
+        unselectedIconTheme: const IconThemeData(color: muted),
+        selectedLabelTextStyle:
+            const TextStyle(color: text, fontWeight: FontWeight.w600, fontSize: 14),
+        unselectedLabelTextStyle:
+            const TextStyle(color: muted, fontWeight: FontWeight.w500, fontSize: 14),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: bg.raised,
@@ -108,7 +189,7 @@ class HutredTheme {
         textStyle: const TextStyle(fontSize: 12.5, color: text),
         decoration: BoxDecoration(
           color: const Color(0xFF2A2A2A),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(style.sharp ? 0 : 6),
           boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 8)],
         ),
       ),
@@ -119,17 +200,20 @@ class HutredTheme {
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(shape: const StadiumBorder()),
+        style: FilledButton.styleFrom(
+          shape: style.buttonShape,
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          shape: const StadiumBorder(),
+          shape: style.buttonShape,
           foregroundColor: text,
           side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(shape: const StadiumBorder()),
+        style: TextButton.styleFrom(shape: style.buttonShape),
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((s) =>
@@ -144,15 +228,15 @@ class HutredTheme {
         fillColor: Colors.white.withValues(alpha: 0.06),
         contentPadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         border: UnderlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(style.radius),
           borderSide: BorderSide.none,
         ),
         enabledBorder: UnderlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(style.radius),
           borderSide: BorderSide.none,
         ),
         focusedBorder: UnderlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(style.radius),
           borderSide: BorderSide(color: accent, width: 2),
         ),
         labelStyle: const TextStyle(color: muted),
@@ -166,12 +250,12 @@ class HutredTheme {
       ),
       dividerTheme: DividerThemeData(color: Colors.white.withValues(alpha: 0.08)),
       sliderTheme: base.sliderTheme.copyWith(
-        trackHeight: 3,
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+        trackHeight: style.sharp ? 2 : style.glass ? 5 : 4,
+        thumbShape: RoundSliderThumbShape(enabledThumbRadius: style.sharp ? 0 : 6),
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-        activeTrackColor: text,
+        activeTrackColor: style.mono ? text : accent,
         inactiveTrackColor: text.withValues(alpha: 0.2),
-        thumbColor: text,
+        thumbColor: style.mono ? text : accent,
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -181,8 +265,19 @@ class HutredTheme {
         shape: round8,
         width: desktop ? 420 : null,
       ),
-      listTileTheme: const ListTileThemeData(
-        contentPadding: EdgeInsets.symmetric(horizontal: 16),
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        shape: round8,
+      ),
+      cardTheme: CardThemeData(
+        color: style.glass ? Colors.white.withValues(alpha: 0.06) : bg.raised,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: round12,
+      ),
+      chipTheme: ChipThemeData(
+        shape: style.sharp ? const RoundedRectangleBorder() : const StadiumBorder(),
+        side: BorderSide(color: Colors.white.withValues(alpha: style.sharp ? 0.2 : 0.1)),
       ),
     );
   }

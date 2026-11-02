@@ -21,6 +21,7 @@ import '../welcome.dart';
 import 'equalizer_screen.dart';
 import '../widgets/logo.dart';
 import '../home_shell.dart';
+import '../widgets/style_picker.dart';
 import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
 
@@ -34,6 +35,7 @@ class SettingsScreen extends StatefulWidget {
 /// Слова, по которым находится раздел в поиске (кроме его названия).
 const _sectionKeywords = {
   'Аккаунт': 'вход войти логин аватар аватарка почта пароль облако синхронизация файлы',
+  'Стиль': 'стиль тема оформление дизайн шрифт моно стекло резкий вид',
   'Акцентный цвет': 'цвет тема оформление акцент',
   'Фон': 'фон цвет тема оформление обои плеер подкрашивать волна картинка gif',
   'Медиатека': 'любимые избранное лайк добавленные исполнители волна',
@@ -101,6 +103,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final acc = context.watch<AccountService>();
     return [
           const _AccountTile(),
+          const _Section('Стиль'),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: StylePicker(),
+          ),
           const _Section('Акцентный цвет'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -440,8 +447,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Разделы настроек, собранные в несколько понятных групп.
   static const _groups = <(String, IconData, String, List<String>)>[
-    ('Внешний вид', Icons.palette_outlined, 'Цвет, фон, вкладки',
-        ['Акцентный цвет', 'Фон', 'Вкладки']),
+    ('Внешний вид', Icons.palette_outlined, 'Стиль, цвет, фон, вкладки',
+        ['Стиль', 'Акцентный цвет', 'Фон', 'Вкладки']),
     ('Воспроизведение', Icons.play_circle_outline, 'Плавный переход, пауза, эквалайзер',
         ['Воспроизведение']),
     ('Медиатека и волна', Icons.library_music_outlined, 'Любимые исполнители, чёрный список',

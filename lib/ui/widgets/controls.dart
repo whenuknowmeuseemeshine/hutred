@@ -113,6 +113,10 @@ class TransportControls extends StatelessWidget {
     final accent = Theme.of(context).colorScheme.primary;
     final playSize = compact ? 36.0 : (big ? 68.0 : 52.0);
     final skipSize = compact ? 26.0 : 36.0;
+    final style = HutredStyle.of(context);
+    // «Резкий»: прямоугольная кнопка цвета акцента, остальные — белый круг.
+    final playBg = style.sharp ? accent : Colors.white;
+    final playFg = style.sharp ? HutredTheme.onAccent(accent) : Colors.black;
 
     return Row(
       mainAxisAlignment:
@@ -133,14 +137,15 @@ class TransportControls extends StatelessWidget {
           onPressed: player.previous,
           icon: const Icon(Icons.skip_previous_rounded),
         ),
-        SizedBox.square(
-          dimension: playSize,
+        SizedBox(
+          width: style.sharp ? playSize * 1.35 : playSize,
+          height: playSize,
           child: FilledButton(
             style: FilledButton.styleFrom(
-              shape: const CircleBorder(),
+              shape: style.sharp ? const RoundedRectangleBorder() : const CircleBorder(),
               padding: EdgeInsets.zero,
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
+              backgroundColor: playBg,
+              foregroundColor: playFg,
             ),
             onPressed: player.togglePlay,
             child: player.loading
@@ -150,10 +155,10 @@ class TransportControls extends StatelessWidget {
                       const SizedBox.square(
                           dimension: 24,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2.5, color: Colors.black)),
+                              strokeWidth: 2.5, color: playFg)),
                       // Грузится, но на паузе: значок «play» внутри кольца.
                       if (player.pausePending)
-                        const Icon(Icons.play_arrow_rounded, size: 16, color: Colors.black),
+                        Icon(Icons.play_arrow_rounded, size: 16, color: playFg),
                     ],
                   )
                 : Icon(

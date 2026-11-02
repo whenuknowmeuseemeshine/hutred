@@ -31,6 +31,7 @@ import 'services/transfer_service.dart';
 import 'services/wave_service.dart';
 import 'services/youtube_source.dart';
 import 'services/yt_dlp.dart';
+import 'ui/widgets/glass_backdrop.dart';
 import 'ui/home_shell.dart';
 import 'ui/missing_file.dart';
 import 'ui/spotify_check.dart';
@@ -244,10 +245,14 @@ class HutredApp extends StatelessWidget {
       navigatorKey: hutredNavigatorKey,
       scaffoldMessengerKey: hutredMessengerKey,
       debugShowCheckedModeBanner: false,
-      theme: HutredTheme.build(settings.accent, settings.background),
+      theme: HutredTheme.build(settings.accent, settings.background, settings.style),
       themeAnimationDuration: const Duration(milliseconds: 250),
       home: const _Gate(),
       builder: (context, child) {
+        if (settings.style == 'glass') {
+          child = GlassBackdrop(
+              accent: settings.accent, ink: settings.background.ink, child: child!);
+        }
         if (!HutredTheme.desktop || !Platform.isWindows) return child!;
         // Приложение занимает всё окно, полоса лежит поверх него, а
         // содержимому сообщаем «отступ сверху», как для строки состояния.

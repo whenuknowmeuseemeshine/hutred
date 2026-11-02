@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/track.dart';
 import '../../services/offline_service.dart';
+import '../theme.dart';
 
 /// Картинка по ссылке или по пути к файлу (своя обложка без облака).
 ImageProvider artworkProvider(String url) {
@@ -39,8 +40,10 @@ class Artwork extends StatelessWidget {
             errorBuilder: (_, __, ___) => fallback,
             gaplessPlayback: true,
           );
+    // Скругление зависит от стиля: у «Стекла» мягче, у «Резкого» углов нет.
+    final r = radius * HutredStyle.of(context).artScale;
     child = ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
+      borderRadius: BorderRadius.circular(size == null ? r : r.clamp(0, size! / 4)),
       child: AspectRatio(aspectRatio: 1, child: child),
     );
     return size == null ? child : SizedBox.square(dimension: size, child: child);

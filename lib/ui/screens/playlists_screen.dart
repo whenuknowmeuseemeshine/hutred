@@ -305,8 +305,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 Text(name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: wide ? 36 : 26, fontWeight: FontWeight.w900, height: 1.1)),
+                    style: HutredStyle.of(context).display(wide ? 48 : 28)),
                 if ((playlist?.description ?? '').isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(playlist!.description,

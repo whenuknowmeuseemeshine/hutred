@@ -15,7 +15,7 @@ class BlurredBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = imagePath;
     if (path == null) return child;
-    final ink = Theme.of(context).scaffoldBackgroundColor;
+    final ink = Theme.of(context).canvasColor;
     return Stack(
       fit: StackFit.expand,
       children: [

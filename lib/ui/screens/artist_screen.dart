@@ -171,8 +171,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       Text(widget.name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 40, fontWeight: FontWeight.w900, height: 1.1)),
+                          style: HutredStyle.of(context).display(48)),
                       const SizedBox(height: 6),
                       Text(
                         [

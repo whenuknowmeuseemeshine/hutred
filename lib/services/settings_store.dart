@@ -25,6 +25,24 @@ const backgroundPresets = [
   BackgroundPreset('wine', 'Вино', Color(0xFF1A0B0E), Color(0xFF261216), Color(0xFF341A20)),
 ];
 
+/// Стиль оформления: шрифт, скругления, фон. Цвета поверх него — свои.
+class AppStyleInfo {
+  const AppStyleInfo(this.id, this.name, this.hint, this.accent, this.background);
+  final String id;
+  final String name;
+  final String hint;
+
+  /// Цвет и фон, которые ставятся при выборе стиля (потом можно поменять).
+  final Color accent;
+  final String background;
+}
+
+const appStyles = [
+  AppStyleInfo('mono', 'Моно', 'Чёрно-белый, спокойный', Color(0xFFEDEDED), 'black'),
+  AppStyleInfo('glass', 'Стекло', 'Цветное свечение и мягкие формы', Color(0xFFA78BFA), 'midnight'),
+  AppStyleInfo('sharp', 'Резкий', 'Крупный шрифт, острые углы', Color(0xFFD4FF3F), 'graphite'),
+];
+
 const accentPresets = <Color>[
   Color(0xFFFFB547), // янтарь
   Color(0xFF1ED760), // зелёный
@@ -41,6 +59,7 @@ class SettingsStore extends ChangeNotifier {
   // По умолчанию чёрно-белая тема: белый акцент на чёрном.
   Color _accent = const Color(0xFFEDEDED);
   String _backgroundId = 'black';
+  String _style = 'mono';
   bool _youtubeLyrics = true;
   bool _geniusLyrics = true;
   bool _geniusCovers = true;
@@ -89,6 +108,20 @@ class SettingsStore extends ChangeNotifier {
   File? _file;
 
   Color get accent => _accent;
+
+  /// Стиль оформления: mono, glass или sharp.
+  String get style => _style;
+  AppStyleInfo get styleInfo =>
+      appStyles.firstWhere((x) => x.id == _style, orElse: () => appStyles.first);
+
+  /// Сменить стиль; вместе с ним ставятся его цвет и фон.
+  void applyStyle(String id) {
+    final info = appStyles.firstWhere((x) => x.id == id, orElse: () => appStyles.first);
+    _style = info.id;
+    _accent = info.accent;
+    _backgroundId = info.background;
+    _save();
+  }
   BackgroundPreset get background {
     if (_backgroundId == 'custom') return customBackground;
     return backgroundPresets.firstWhere((b) => b.id == _backgroundId,
@@ -442,6 +475,7 @@ class SettingsStore extends ChangeNotifier {
       final j = jsonDecode(await _file!.readAsString()) as Map<String, dynamic>;
       _accent = Color((j['accent'] as num?)?.toInt() ?? _accent.toARGB32());
       _backgroundId = j['background'] as String? ?? _backgroundId;
+      _style = j['style'] as String? ?? 'mono';
       final cb = (j['customBg'] as num?)?.toInt();
       if (cb != null) _customBg = Color(cb);
       _youtubeLyrics = j['youtubeLyrics'] as bool? ?? true;
@@ -508,6 +542,7 @@ class SettingsStore extends ChangeNotifier {
       await _file?.writeAsString(jsonEncode({
         'accent': _accent.toARGB32(),
         'background': _backgroundId,
+        'style': _style,
         'customBg': _customBg.toARGB32(),
         'youtubeLyrics': _youtubeLyrics,
         'geniusLyrics': _geniusLyrics,
@@ -595,8 +630,8 @@ class SettingsStore extends ChangeNotifier {
   }
 
   void reset() {
-    _accent = accentPresets.first;
-    _backgroundId = backgroundPresets.first.id;
+    _accent = styleInfo.accent;
+    _backgroundId = styleInfo.background;
     _save();
   }
 }
