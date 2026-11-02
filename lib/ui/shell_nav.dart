@@ -5,6 +5,8 @@ import '../services/account_service.dart';
 import 'theme.dart';
 import 'widgets/account_button.dart';
 import 'widgets/logo.dart';
+import 'widgets/user_avatar.dart';
+import 'screens/account_screen.dart';
 
 /// Вкладка для меню: id, значок, подпись.
 typedef NavItem = ({String id, IconData icon, String label});
@@ -65,10 +67,7 @@ class MonoSidebar extends StatelessWidget {
               ],
             ),
           ),
-          Align(
-            alignment: compact ? Alignment.center : Alignment.centerLeft,
-            child: AccountButton(extended: !compact),
-          ),
+          AccountBadge(compact: compact),
           const SizedBox(height: 14),
           for (final i in top) tile(i),
           const Spacer(),
@@ -202,7 +201,7 @@ class GlassRail extends StatelessWidget {
                 ),
               ),
             const Spacer(),
-            const AccountButton(),
+            const AccountBadge(),
           ],
         ),
       ),
@@ -250,7 +249,7 @@ class SharpTopNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    final acc = context.watch<AccountService>();
+    
     return Container(
       padding: EdgeInsets.fromLTRB(28, MediaQuery.paddingOf(context).top + 12, 20, 12),
       decoration: const BoxDecoration(
@@ -289,13 +288,7 @@ class SharpTopNav extends StatelessWidget {
               ),
             ),
           ),
-          if (acc.signedIn && acc.username != null) ...[
-            Text('@${acc.username!.toUpperCase()}',
-                style: const TextStyle(
-                    fontSize: 12, color: Color(0xFF8A8A8A), letterSpacing: 0.6)),
-            const SizedBox(width: 10),
-          ],
-          const AccountButton(),
+          const AccountBadge(),
         ],
       ),
     );
@@ -432,6 +425,119 @@ class PhoneNav extends StatelessWidget {
       padding: EdgeInsets.only(bottom: bottom),
       height: 64 + bottom,
       child: Row(children: [for (final i in items) item(i)]),
+    );
+  }
+}
+
+
+// ======================================================================
+// Аккаунт: где видно, под кем ты вошёл. Нажатие — экран аккаунта.
+// ======================================================================
+
+class AccountBadge extends StatelessWidget {
+  const AccountBadge({super.key, this.compact = false});
+  final bool compact;
+
+  static void open(BuildContext context) => Navigator.of(context, rootNavigator: true)
+      .push(MaterialPageRoute(builder: (_) => const AccountScreen()));
+
+  @override
+  Widget build(BuildContext context) {
+    final acc = context.watch<AccountService>();
+    if (!acc.enabled) return const SizedBox.shrink();
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    if (!acc.signedIn) {
+      return compact || st.glass ? const AccountButton() : const AccountButton(extended: true);
+    }
+    final name = acc.username != null ? '@${acc.username}' : (acc.email ?? '');
+    final status = acc.syncError != null
+        ? 'Ошибка синхронизации'
+        : acc.syncing
+            ? 'Синхронизация…'
+            : 'Синхронизировано';
+    final dotColor = acc.syncError != null
+        ? Theme.of(context).colorScheme.error
+        : acc.syncing
+            ? Colors.amber
+            : const Color(0xFF4ADE80);
+
+    Widget avatar(double r, Color ring) => Stack(clipBehavior: Clip.none, children: [
+          Container(
+            decoration: st.glass
+                ? BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.6), spreadRadius: 2)])
+                : null,
+            child: UserAvatar(radius: r),
+          ),
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: Container(
+              width: r * 0.62,
+              height: r * 0.62,
+              decoration: BoxDecoration(
+                shape: st.sharp ? BoxShape.rectangle : BoxShape.circle,
+                color: dotColor,
+                border: Border.all(color: ring, width: 2),
+              ),
+            ),
+          ),
+        ]);
+
+    final Widget child;
+    if (st.sharp) {
+      child = Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 7, height: 7, color: acc.syncError != null ? dotColor : accent),
+        const SizedBox(width: 8),
+        Text(acc.syncError != null ? 'ОШИБКА СИНХР.' : acc.syncing ? 'СИНХР…' : 'СИНХР.',
+            style: st.caption(color: HutredTheme.muted)),
+        const SizedBox(width: 14),
+        Container(
+          padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
+          decoration: BoxDecoration(border: Border.all(color: const Color(0xFF333333))),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const UserAvatar(radius: 13),
+            const SizedBox(width: 10),
+            Text(name.toUpperCase(), style: st.caption(color: HutredTheme.text)),
+          ]),
+        ),
+      ]);
+    } else if (st.glass || compact) {
+      child = avatar(st.glass ? 20 : 15, st.glass ? const Color(0xFF14121F) : const Color(0xFF0A0A0A));
+    } else {
+      child = Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141414),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(children: [
+          avatar(15, const Color(0xFF141414)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              Text(status,
+                  maxLines: 1,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFFA3A3A3))),
+            ]),
+          ),
+          const Icon(Icons.chevron_right, size: 16, color: Color(0xFFA3A3A3)),
+        ]),
+      );
+    }
+    return Tooltip(
+      message: acc.syncError ?? '$name · $status',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(st.sharp ? 0 : 12),
+        onTap: () => open(context),
+        child: child,
+      ),
     );
   }
 }
