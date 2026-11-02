@@ -15,6 +15,9 @@ dependencies:
   # Управление музыкой из шторки Android и «Исполняется» на iPhone.
   audio_service: ^0.18.15
   audio_session: ^0.1.21
+  # Связь с Discord на Windows (именованный канал через WinAPI).
+  win32: ^5.15.0
+  ffi: ^2.1.0
   media_kit_libs_linux: ^1.1.3
   media_kit_libs_windows_audio: ^1.0.9
   # Источники

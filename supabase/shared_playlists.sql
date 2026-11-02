@@ -13,3 +13,4 @@ create policy "shared playlists: read" on public.shared_playlists
   for select to authenticated using (true);
 create policy "shared playlists: owner writes" on public.shared_playlists
   for all to authenticated using (owner = auth.uid()) with check (owner = auth.uid());
+alter table public.shared_playlists add column if not exists owner_name text default '';

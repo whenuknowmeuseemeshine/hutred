@@ -48,6 +48,15 @@ class HutredTheme {
     final round12 = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
     final round8 = RoundedRectangleBorder(borderRadius: BorderRadius.circular(8));
     return base.copyWith(
+      // Страницы с прозрачным фоном: старая быстро гаснет, новая проявляется —
+      // без наложения двух страниц друг на друга.
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {
+        TargetPlatform.android: _FadeThrough(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: _FadeThrough(),
+        TargetPlatform.linux: _FadeThrough(),
+        TargetPlatform.macOS: _FadeThrough(),
+      }),
       appBarTheme: AppBarTheme(
         backgroundColor: bg.ink,
         surfaceTintColor: Colors.transparent,
@@ -191,4 +200,24 @@ String tracksWord(int n) {
   if (m10 == 1 && m100 != 11) return '$n трек';
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return '$n трека';
   return '$n треков';
+}
+
+
+/// Переход «через затухание»: уходящая страница гаснет в первой половине,
+/// новая проявляется во второй. Дёшево и без просвечивания.
+class _FadeThrough extends PageTransitionsBuilder {
+  const _FadeThrough();
+
+  @override
+  Widget buildTransitions<T>(PageRoute<T> route, BuildContext context,
+      Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
+    final inOpacity = CurvedAnimation(
+        parent: animation, curve: const Interval(0.35, 1, curve: Curves.easeOut));
+    final outOpacity = Tween<double>(begin: 1, end: 0).animate(CurvedAnimation(
+        parent: secondaryAnimation, curve: const Interval(0, 0.35, curve: Curves.easeIn)));
+    return FadeTransition(
+      opacity: outOpacity,
+      child: FadeTransition(opacity: inOpacity, child: child),
+    );
+  }
 }

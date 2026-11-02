@@ -1,10 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
+import 'package:win32/win32.dart'
+    show
+        CloseHandle,
+        CreateFile,
+        GENERIC_READ,
+        GENERIC_WRITE,
+        GetLastError,
+        INVALID_HANDLE_VALUE,
+        OPEN_EXISTING,
+        PeekNamedPipe,
+        ReadFile,
+        WriteFile;
 
 import '../config.dart';
 import '../models/track.dart';
@@ -173,8 +187,11 @@ abstract class _IpcConnection {
       _IpcConnection? c;
       try {
         if (Platform.isWindows) {
-          final f = await File('\\\\.\\pipe\\discord-ipc-$i').open(mode: FileMode.append);
-          c = _PipeConnection(f);
+          // Канал открываем через WinAPI: dart:io открывает файлы с «дописать
+          // в конец»/«создать», а именованный канал Discord такого не понимает.
+          final w = _WinPipe.open('\\\\.\\pipe\\discord-ipc-$i');
+          if (w == null) continue;
+          c = w;
         } else {
           final base = Platform.environment['XDG_RUNTIME_DIR'] ??
               Platform.environment['TMPDIR'] ??
@@ -192,7 +209,8 @@ abstract class _IpcConnection {
         lastProblem = 'Discord не принял Application ID: '
             '${(ready['data'] as Map?)?['message'] ?? ready}';
         await c.close();
-      } catch (_) {
+      } catch (e) {
+        lastProblem ??= 'Discord найден, но не ответил: $e';
         await c?.close();
       }
     }
@@ -283,5 +301,85 @@ class _SocketConnection extends _IpcConnection {
   Future<void> close() async {
     await _sub.cancel();
     _s.destroy();
+  }
+}
+
+
+/// Именованный канал Windows через WinAPI. Чтение без блокировки:
+/// ждём, пока в канале появятся данные (PeekNamedPipe), и только потом читаем.
+class _WinPipe extends _IpcConnection {
+  _WinPipe._(this._h);
+  final int _h;
+  bool _closed = false;
+
+  static _WinPipe? open(String path) {
+    final name = path.toNativeUtf16();
+    try {
+      final h = CreateFile(name, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, 0);
+      if (h == INVALID_HANDLE_VALUE) return null;
+      return _WinPipe._(h);
+    } finally {
+      calloc.free(name);
+    }
+  }
+
+  @override
+  Future<void> write(Uint8List bytes) async {
+    final buf = calloc<Uint8>(bytes.length);
+    final written = calloc<Uint32>();
+    try {
+      buf.asTypedList(bytes.length).setAll(0, bytes);
+      if (WriteFile(_h, buf, bytes.length, written, nullptr) == 0) {
+        throw SocketException('Discord: запись не удалась (${GetLastError()})');
+      }
+    } finally {
+      calloc.free(buf);
+      calloc.free(written);
+    }
+  }
+
+  @override
+  Future<Uint8List> readExactly(int n) async {
+    final out = BytesBuilder();
+    final avail = calloc<Uint32>();
+    final got = calloc<Uint32>();
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    try {
+      while (out.length < n) {
+        if (_closed) throw const SocketException('Discord закрыл соединение');
+        if (PeekNamedPipe(_h, nullptr, 0, nullptr, avail, nullptr) == 0) {
+          throw SocketException('Discord закрыл соединение (${GetLastError()})');
+        }
+        final ready = avail.value;
+        if (ready == 0) {
+          if (DateTime.now().isAfter(deadline)) {
+            throw TimeoutException('Discord не ответил');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 15));
+          continue;
+        }
+        final want = (n - out.length) < ready ? (n - out.length) : ready;
+        final buf = calloc<Uint8>(want);
+        try {
+          if (ReadFile(_h, buf, want, got, nullptr) == 0) {
+            throw SocketException('Discord: чтение не удалось (${GetLastError()})');
+          }
+          out.add(Uint8List.fromList(buf.asTypedList(got.value)));
+        } finally {
+          calloc.free(buf);
+        }
+      }
+      return out.takeBytes();
+    } finally {
+      calloc.free(avail);
+      calloc.free(got);
+    }
+  }
+
+  @override
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    CloseHandle(_h);
   }
 }

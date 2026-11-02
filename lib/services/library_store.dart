@@ -308,8 +308,65 @@ class LibraryStore extends ChangeNotifier {
     _replacePlaylist(p.copyWith(trackIds: ids));
   }
 
-  List<Track> tracksOf(Playlist p) =>
-      p.trackIds.map(byId).whereType<Track>().toList();
+  List<Track> tracksOf(Playlist p) => p.followedTracks != null
+      ? List.of(p.followedTracks!)
+      : p.trackIds.map(byId).whereType<Track>().toList();
+
+  /// Подписаться на чужой плейлист (уже подписан — вернуть его).
+  Playlist followPlaylist({
+    required String followId,
+    required String name,
+    required String description,
+    String? cover,
+    String? owner,
+    required List<Track> tracks,
+  }) {
+    for (final p in _playlists) {
+      if (p.followId == followId) return p;
+    }
+    final p = Playlist(
+      id: Track.newId(),
+      name: name,
+      trackIds: const [],
+      createdAt: DateTime.now(),
+      description: description,
+      cover: cover,
+      followId: followId,
+      owner: owner,
+      followedTracks: tracks,
+    );
+    _playlists.add(p);
+    _touch('playlist:${p.id}');
+    _changed();
+    return p;
+  }
+
+  /// Автор поменял плейлист — обновляем копию у подписчика.
+  void refreshFollowed(String followId,
+      {required String name,
+      required String description,
+      String? cover,
+      String? owner,
+      required List<Track> tracks}) {
+    final i = _playlists.indexWhere((p) => p.followId == followId);
+    if (i < 0) return;
+    final old = _playlists[i];
+    final updated = Playlist(
+      id: old.id,
+      name: name,
+      trackIds: const [],
+      createdAt: old.createdAt,
+      description: description,
+      cover: cover,
+      followId: followId,
+      owner: owner ?? old.owner,
+      followedTracks: tracks,
+    );
+    if (jsonEncode(updated.toJson()) == jsonEncode(old.toJson())) return;
+    _playlists[i] = updated;
+    _touch('playlist:${old.id}');
+    _changed();
+  }
 
   // ---------- Синхронизация ----------
 

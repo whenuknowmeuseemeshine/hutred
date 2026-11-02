@@ -208,18 +208,20 @@ class FriendLibraryScreen extends StatefulWidget {
 
 class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
   late Future<List<Track>> _tracks;
-  late Future<List<({Playlist playlist, List<Track> tracks})>> _playlists;
+  late Future<List<({String id, String name, String description, String? cover, String owner, List<Track> tracks})>> _playlists;
 
   @override
   void initState() {
     super.initState();
     final fs = context.read<FriendsService>();
     _tracks = fs.libraryOf(widget.friend.userId);
-    _playlists = fs.playlistsOf(widget.friend.userId).catchError((_) =>
-        <({Playlist playlist, List<Track> tracks})>[]);
+    _playlists = context
+        .read<AccountService>()
+        .playlistsOfUser(widget.friend.userId)
+        .catchError((_) => <({String id, String name, String description, String? cover, String owner, List<Track> tracks})>[]);
   }
 
-  Widget _playlistsRow() => FutureBuilder<List<({Playlist playlist, List<Track> tracks})>>(
+  Widget _playlistsRow() => FutureBuilder<List<({String id, String name, String description, String? cover, String owner, List<Track> tracks})>>(
         future: _playlists,
         builder: (context, snap) {
           final lists = snap.data ?? const [];
@@ -236,17 +238,27 @@ class _FriendLibraryScreenState extends State<FriendLibraryScreen> {
                 ListTile(
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(4),
-                    child: l.playlist.cover != null && l.playlist.cover!.startsWith('http')
-                        ? Image.network(l.playlist.cover!, width: 48, height: 48, fit: BoxFit.cover)
+                    child: l.cover != null && l.cover!.startsWith('http')
+                        ? Image.network(l.cover!, width: 48, height: 48, fit: BoxFit.cover)
                         : Artwork(track: l.tracks.first, size: 48, radius: 4),
                   ),
-                  title: Text(l.playlist.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  title: Text(l.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: Text(tracksWord(l.tracks.length)),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => FriendPlaylistScreen(
-                        playlist: l.playlist, tracks: l.tracks, owner: widget.friend.name),
+                      followId: l.id,
+                      playlist: Playlist(
+                        id: l.id,
+                        name: l.name,
+                        trackIds: const [],
+                        createdAt: DateTime.now(),
+                        description: l.description,
+                        cover: l.cover,
+                      ),
+                      tracks: l.tracks,
+                      owner: widget.friend.name,
+                    ),
                   )),
                 ),
               const Padding(
@@ -376,22 +388,27 @@ class _Section extends StatelessWidget {
 /// Плейлист друга: слушать или добавить себе целиком.
 class FriendPlaylistScreen extends StatelessWidget {
   const FriendPlaylistScreen(
-      {super.key, required this.playlist, required this.tracks, required this.owner});
+      {super.key,
+      required this.followId,
+      required this.playlist,
+      required this.tracks,
+      required this.owner});
+  final String followId;
   final Playlist playlist;
   final List<Track> tracks;
   final String owner;
 
   void _addToMine(BuildContext context) {
-    final store = context.read<LibraryStore>();
-    store.addTracks(tracks);
-    final p = store.createPlaylist(playlist.name);
-    store.addToPlaylist(p.id, [
-      for (final t in tracks) (store.findBySource(t.source, t.uri) ?? t).id,
-    ]);
-    store.updatePlaylist(p.id,
-        description: playlist.description,
-        cover: (playlist.cover ?? '').startsWith('http') ? playlist.cover : null);
-    AppActions.toast(context, '«${playlist.name}» добавлен в твои плейлисты');
+    context.read<LibraryStore>().followPlaylist(
+          followId: followId,
+          name: playlist.name,
+          description: playlist.description,
+          cover: playlist.cover,
+          owner: owner,
+          tracks: tracks,
+        );
+    AppActions.toast(context,
+        '«${playlist.name}» теперь в твоих плейлистах и будет обновляться вместе с оригиналом');
   }
 
   @override
@@ -407,7 +424,9 @@ class FriendPlaylistScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Плейлист $owner · ${tracksWord(tracks.length)}',
+                Text(
+                    'Плейлист · $owner · ${tracksWord(tracks.length)}'
+                    '${totalDuration(tracks).isEmpty ? '' : ', ${totalDuration(tracks)}'}',
                     style: const TextStyle(color: HutredTheme.muted)),
                 if (playlist.description.isNotEmpty) ...[
                   const SizedBox(height: 6),

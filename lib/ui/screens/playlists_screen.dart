@@ -77,9 +77,12 @@ class PlaylistsScreen extends StatelessWidget {
               leading: _Collage(tracks: store.tracksOf(p), cover: p.cover),
               title: Text(p.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(p.description.isEmpty
-                  ? tracksWord(p.trackIds.length)
-                  : '${tracksWord(p.trackIds.length)} · ${p.description}',
+              subtitle: Text(
+                  [
+                    if (p.owner != null) p.owner!,
+                    tracksWord(store.tracksOf(p).length),
+                    if (p.description.isNotEmpty) p.description,
+                  ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -166,6 +169,15 @@ class PlaylistDetailScreen extends StatefulWidget {
 class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   String _q = '';
   String? get playlistId => widget.playlistId;
+
+  @override
+  void initState() {
+    super.initState();
+    // Чужой плейлист: сразу подтягиваем свежую версию от автора.
+    final id = playlistId;
+    final p = id == null ? null : context.read<LibraryStore>().playlistById(id);
+    if (p != null && p.isFollowed) context.read<AccountService>().refreshFollowed();
+  }
 
   Future<void> _edit(BuildContext context, Playlist p) async {
     final store = context.read<LibraryStore>();
@@ -273,7 +285,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             child: Icon(Icons.favorite, size: coverSize * 0.4, color: scheme.onPrimary),
           )
         : GestureDetector(
-            onTap: () => _edit(context, playlist),
+            onTap: playlist.isFollowed ? null : () => _edit(context, playlist),
             child: _Collage(tracks: tracks, cover: playlist.cover, size: coverSize),
           );
 
@@ -288,7 +300,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(playlist == null ? 'Плейлист' : 'Плейлист',
+                Text(playlist?.isFollowed == true ? 'Плейлист (подписка)' : 'Плейлист',
                     style: const TextStyle(color: HutredTheme.muted, fontSize: 12)),
                 Text(name,
                     maxLines: 2,
@@ -303,8 +315,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       style: const TextStyle(color: HutredTheme.muted)),
                 ],
                 const SizedBox(height: 6),
-                Text(tracksWord(all.length),
-                    style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
+                // Как в Spotify: автор · число треков, общая длительность.
+                Text(
+                  [
+                    playlist?.owner ?? context.watch<AccountService>().username ?? 'Ты',
+                    [
+                      tracksWord(all.length),
+                      if (totalDuration(all).isNotEmpty) totalDuration(all),
+                    ].join(', '),
+                  ].join(' · '),
+                  style: const TextStyle(color: HutredTheme.muted, fontSize: 13),
+                ),
               ],
             ),
           ),
@@ -328,12 +349,29 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             ),
             const SizedBox(width: 4),
           ],
-          if (playlist != null) ...[
+          if (playlist != null && !playlist.isFollowed)
             IconButton(
               tooltip: 'Изменить: название, описание, обложка',
               onPressed: () => _edit(context, playlist),
               icon: const Icon(Icons.edit_outlined, color: Colors.white70),
             ),
+          if (playlist != null && playlist.isFollowed)
+            IconButton(
+              tooltip: 'Убрать из моих плейлистов',
+              onPressed: () async {
+                final ok = await AppActions.confirm(context,
+                    title: 'Убрать плейлист?',
+                    body: '«${playlist.name}» пропадёт из твоих плейлистов. '
+                        'Вернуть можно снова по ссылке или со страницы автора.',
+                    action: 'Убрать');
+                if (ok && context.mounted) {
+                  Navigator.of(context).pop();
+                  store.deletePlaylist(playlist.id);
+                }
+              },
+              icon: const Icon(Icons.remove_circle_outline, color: Colors.white70),
+            ),
+          if (playlist != null) ...[
             IconButton(
               tooltip: 'Поделиться ссылкой',
               onPressed: () => _share(context, playlist, all),
@@ -387,7 +425,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           // В «Любимых треках» «убрать» снимает ♥ — трек остаётся в медиатеке.
           onRemoveFromPlaylist: playlist == null
               ? () => store.toggleFavorite(tracks[i].id)
-              : () => store.removeFromPlaylist(playlist.id, tracks[i].id),
+              : playlist.isFollowed
+                  ? null
+                  : () => store.removeFromPlaylist(playlist.id, tracks[i].id),
         );
 
     final empty = Padding(
@@ -403,7 +443,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(),
-      body: playlist == null || tracks.isEmpty || _q.isNotEmpty
+      body: playlist == null || playlist.isFollowed || tracks.isEmpty || _q.isNotEmpty
           ? ListView(
               padding: const EdgeInsets.only(bottom: 96),
               children: [

@@ -16,6 +16,7 @@ import 'services/dpi_bypass.dart';
 import 'services/discord_presence.dart';
 import 'services/friends_service.dart';
 import 'services/genius_service.dart';
+import 'services/duration_probe.dart';
 import 'services/library_store.dart';
 import 'services/media_session.dart';
 import 'services/offline_service.dart';
@@ -130,6 +131,8 @@ Future<void> main(List<String> args) async {
   // Скрытые треки и исполнители из чёрного списка не играют.
   player.isBlocked = wave.isBlocked;
   player.blockedArtist = wave.blockedArtistOf;
+  // Длительность своих файлов, у которых её нет.
+  DurationProbe(store);
   // Ошибки плеера (не играет трек, исполнитель в чёрном списке) — внизу экрана.
   String? lastPlayerError;
   player.addListener(() {

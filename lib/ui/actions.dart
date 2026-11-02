@@ -132,23 +132,28 @@ class AppActions {
     );
   }
 
-  /// Добавляет к себе плейлист по ссылке hutred://playlist/…
+  /// Подписка на плейлист по ссылке hutred://playlist/… — он появится
+  /// в плейлистах и будет обновляться, когда автор его меняет.
   static Future<void> importSharedPlaylist(BuildContext context, String link) async {
     final store = context.read<LibraryStore>();
     final acc = context.read<AccountService>();
     toast(context, 'Загружаю плейлист…');
     try {
-      final shared = await acc.fetchSharedPlaylist(link);
+      final sp = await acc.fetchSharedPlaylist(link);
       if (!context.mounted) return;
-      store.addTracks(shared.tracks);
-      final p = store.createPlaylist(shared.name);
-      final ids = [
-        for (final t in shared.tracks)
-          (store.findBySource(t.source, t.uri) ?? t).id,
-      ];
-      store.addToPlaylist(p.id, ids);
-      store.updatePlaylist(p.id, description: shared.description, cover: shared.cover);
-      toast(context, '«${shared.name}» добавлен в плейлисты: ${tracksWord(ids.length)}');
+      if (sp.id.isNotEmpty && store.playlistById(sp.id) != null) {
+        toast(context, 'Это твой плейлист');
+        return;
+      }
+      store.followPlaylist(
+        followId: sp.id,
+        name: sp.name,
+        description: sp.description,
+        cover: sp.cover,
+        owner: sp.owner.isEmpty ? null : sp.owner,
+        tracks: sp.tracks,
+      );
+      toast(context, '«${sp.name}» теперь в твоих плейлистах');
     } catch (e) {
       if (context.mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
     }
@@ -363,7 +368,7 @@ class AppActions {
               Text('Новый плейлист'),
             ]),
           ),
-          for (final p in store.playlists)
+          for (final p in store.playlists.where((p) => !p.isFollowed))
             SimpleDialogOption(
               onPressed: () => Navigator.pop(d, p.id),
               child: Text(p.name),

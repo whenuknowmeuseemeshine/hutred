@@ -99,12 +99,20 @@ class AccountService extends ChangeNotifier {
         unawaited(refreshProfile());
       }
       notifyListeners();
-      if (uid != null) unawaited(syncNow());
+      if (uid != null) {
+        unawaited(syncNow());
+        unawaited(refreshFollowed());
+      }
     });
     store.addListener(_onLocalChange);
+    store.addListener(_schedulePublish);
     _pullTimer = Timer.periodic(const Duration(minutes: 3), (_) {
-      if (signedIn) syncNow();
+      if (signedIn) {
+        syncNow();
+        refreshFollowed();
+      }
     });
+    if (signedIn) unawaited(refreshFollowed());
     if (signedIn) {
       unawaited(syncNow());
       unawaited(refreshProfile());
@@ -236,46 +244,131 @@ class AccountService extends ChangeNotifier {
     return copy.path;
   }
 
-  // ---------- Плейлисты по ссылке ----------
+  // ---------- Плейлисты: ссылки, подписки ----------
 
   static const playlistLinkPrefix = 'hutred://playlist/';
 
-  /// Выкладывает снимок плейлиста в облако и возвращает ссылку на него.
-  /// Свои файлы без копии в облаке другим не сыграть — их не передаём.
+  Timer? _publishTimer;
+  String _lastPublished = '';
+
+  /// Свои плейлисты сами выкладываются в облако (через несколько секунд после
+  /// изменения): у друзей и у тех, кто подписан по ссылке, они обновляются сами.
+  void _schedulePublish() {
+    if (!signedIn) return;
+    _publishTimer?.cancel();
+    _publishTimer = Timer(const Duration(seconds: 6), () => unawaited(publishPlaylists()));
+  }
+
+  Map<String, dynamic> _row(Playlist p, String uid) => {
+        'id': p.id,
+        'owner': uid,
+        'owner_name': username ?? '',
+        'name': p.name,
+        'description': p.description,
+        'cover': (p.cover ?? '').startsWith('http') ? p.cover : null,
+        // Свои файлы без копии в облаке другим не сыграть — их не передаём.
+        'tracks': [
+          for (final t in store.tracksOf(p))
+            if (t.source != TrackSource.local || t.cloudPath != null) t.toJson(),
+        ],
+      };
+
+  Future<void> publishPlaylists() async {
+    final uid = user?.id;
+    if (uid == null) return;
+    final own = store.playlists.where((p) => !p.isFollowed).toList();
+    final rows = [for (final p in own) _row(p, uid)];
+    final key = jsonEncode(rows);
+    if (key == _lastPublished) return;
+    try {
+      if (rows.isNotEmpty) {
+        await _db.from('shared_playlists').upsert([
+          for (final r in rows) {...r, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+        ]);
+      }
+      // Удалённые плейлисты убираем и из облака.
+      final ids = own.map((p) => p.id).toList();
+      final existing = await _db.from('shared_playlists').select('id').eq('owner', uid);
+      final gone = [
+        for (final r in existing)
+          if (!ids.contains('${r['id']}')) '${r['id']}',
+      ];
+      if (gone.isNotEmpty) {
+        await _db.from('shared_playlists').delete().inFilter('id', gone);
+      }
+      _lastPublished = key;
+    } catch (e) {
+      debugPrint('[Плейлисты] выложить не удалось: $e');
+    }
+  }
+
+  /// Ссылка на плейлист. Ссылка постоянная: по ней всегда последняя версия.
   Future<String> sharePlaylist(Playlist p, List<Track> tracks) async {
     final uid = user?.id;
     if (uid == null) throw Exception('Чтобы делиться, войди в аккаунт');
-    final shareable = [
-      for (final t in tracks)
-        if (t.source != TrackSource.local || t.cloudPath != null) t.toJson(),
-    ];
-    await _db.from('shared_playlists').upsert({
-      'id': p.id,
-      'owner': uid,
-      'name': p.name,
-      'description': p.description,
-      'cover': (p.cover ?? '').startsWith('http') ? p.cover : null,
-      'tracks': shareable,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    if (p.isFollowed) return '$playlistLinkPrefix${p.followId}';
+    await _db.from('shared_playlists').upsert(
+        {..._row(p, uid), 'updated_at': DateTime.now().toUtc().toIso8601String()});
     return '$playlistLinkPrefix${p.id}';
   }
 
+  static ({String id, String name, String description, String? cover, String owner, List<Track> tracks})
+      _parseShared(Map row) => (
+            id: '${row['id']}',
+            name: '${row['name'] ?? 'Плейлист'}',
+            description: '${row['description'] ?? ''}',
+            cover: row['cover'] as String?,
+            owner: '${row['owner_name'] ?? ''}',
+            tracks: [
+              for (final t in (row['tracks'] as List? ?? const []))
+                if (t is Map) Track.fromJson(Map<String, dynamic>.from(t)),
+            ],
+          );
+
   /// Плейлист по ссылке hutred://playlist/<id>.
-  Future<({String name, String description, String? cover, List<Track> tracks})>
+  Future<({String id, String name, String description, String? cover, String owner, List<Track> tracks})>
       fetchSharedPlaylist(String link) async {
     final id = link.trim().substring(playlistLinkPrefix.length).split(RegExp(r'[/?#\s]')).first;
     final row = await _db.from('shared_playlists').select().eq('id', id).maybeSingle();
-    if (row == null) throw Exception('Плейлист не найден — возможно, ссылку уже убрали');
-    return (
-      name: '${row['name'] ?? 'Плейлист'}',
-      description: '${row['description'] ?? ''}',
-      cover: row['cover'] as String?,
-      tracks: [
-        for (final t in (row['tracks'] as List? ?? const []))
-          if (t is Map) Track.fromJson(Map<String, dynamic>.from(t)),
-      ],
-    );
+    if (row == null) throw Exception('Плейлист не найден — возможно, автор его удалил');
+    return _parseShared(row);
+  }
+
+  /// Плейлисты пользователя (для страницы друга).
+  Future<List<({String id, String name, String description, String? cover, String owner, List<Track> tracks})>>
+      playlistsOfUser(String userId) async {
+    final rows = await _db
+        .from('shared_playlists')
+        .select()
+        .eq('owner', userId)
+        .order('updated_at', ascending: false);
+    return [
+      for (final r in rows)
+        if ((r['tracks'] as List? ?? const []).isNotEmpty) _parseShared(r),
+    ];
+  }
+
+  /// Подписки обновляем из облака: что поменял автор — то и у тебя.
+  Future<void> refreshFollowed() async {
+    final ids = [
+      for (final p in store.playlists)
+        if (p.followId != null) p.followId!,
+    ];
+    if (ids.isEmpty || !signedIn) return;
+    try {
+      final rows = await _db.from('shared_playlists').select().inFilter('id', ids);
+      for (final r in rows) {
+        final sp = _parseShared(r);
+        store.refreshFollowed(sp.id,
+            name: sp.name,
+            description: sp.description,
+            cover: sp.cover,
+            owner: sp.owner.isEmpty ? null : sp.owner,
+            tracks: sp.tracks);
+      }
+    } catch (e) {
+      debugPrint('[Плейлисты] обновить подписки не удалось: $e');
+    }
   }
 
   /// Админ: свои ключи Spotify и ИИ (и Discord ID) сразу раздаются всем,
