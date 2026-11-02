@@ -28,6 +28,9 @@ class WaveService extends ChangeNotifier {
 
   final _rand = Random();
   final Set<String> _disliked = {};
+
+  /// Название и исполнитель скрытых треков — чтобы показать их списком.
+  final Map<String, ({String title, String artist})> _dislikedInfo = {};
   final Map<String, int> _dislikedArtists = {};
 
   /// Чёрный список: исполнители, которых не должно быть нигде, даже на фитах.
@@ -70,6 +73,11 @@ class WaveService extends ChangeNotifier {
       if (!await _file!.exists()) return;
       final j = jsonDecode(await _file!.readAsString()) as Map<String, dynamic>;
       _disliked.addAll(List<String>.from(j['disliked'] as List? ?? const []));
+      (j['dislikedInfo'] as Map? ?? const {}).forEach((k, v) {
+        if (v is Map) {
+          _dislikedInfo['$k'] = (title: '${v['title'] ?? ''}', artist: '${v['artist'] ?? ''}');
+        }
+      });
       (j['dislikedArtists'] as Map? ?? const {}).forEach((k, v) {
         _dislikedArtists['$k'] = (v as num).toInt();
       });
@@ -92,6 +100,10 @@ class WaveService extends ChangeNotifier {
     try {
       await _file?.writeAsString(jsonEncode({
         'disliked': _disliked.toList(),
+        'dislikedInfo': {
+          for (final e in _dislikedInfo.entries)
+            if (_disliked.contains(e.key)) e.key: {'title': e.value.title, 'artist': e.value.artist},
+        },
         'dislikedArtists': _dislikedArtists,
         'blockedArtists': _blockedNames.values.toList(),
         'favoriteArtists': {
@@ -184,6 +196,7 @@ class WaveService extends ChangeNotifier {
   Future<void> toggleDislike(Track t) async {
     final k = _key(t);
     if (_disliked.remove(k)) {
+      _dislikedInfo.remove(k);
       await _save();
       notifyListeners();
       return;
@@ -338,6 +351,7 @@ class WaveService extends ChangeNotifier {
   /// исполнитель тоже исчезнет из волны.
   Future<void> dislike(Track t) async {
     _disliked.add(_key(t));
+    _dislikedInfo[_key(t)] = (title: t.title, artist: t.artist);
     final a = t.artist.toLowerCase();
     _dislikedArtists[a] = (_dislikedArtists[a] ?? 0) + 1;
     await _save();
@@ -347,10 +361,33 @@ class WaveService extends ChangeNotifier {
 
   Future<void> resetDislikes() async {
     _disliked.clear();
+    _dislikedInfo.clear();
     _dislikedArtists.clear();
     await _save();
     notifyListeners();
   }
 
   int get dislikedCount => _disliked.length;
+
+  /// Скрытые треки списком (ключ, название, исполнитель). У старых записей
+  /// без сведений ищем трек в медиатеке.
+  List<({String key, String title, String artist})> get dislikedTracks => [
+        for (final k in _disliked)
+          () {
+            final info = _dislikedInfo[k];
+            if (info != null) return (key: k, title: info.title, artist: info.artist);
+            for (final t in store.tracks) {
+              if (_key(t) == k) return (key: k, title: t.title, artist: t.artist);
+            }
+            return (key: k, title: 'Трек ${k.split(':').first}', artist: '');
+          }(),
+      ];
+
+  /// Вернуть один скрытый трек.
+  Future<void> undislikeKey(String key) async {
+    if (!_disliked.remove(key)) return;
+    _dislikedInfo.remove(key);
+    await _save();
+    notifyListeners();
+  }
 }

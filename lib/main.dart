@@ -18,6 +18,7 @@ import 'services/friends_service.dart';
 import 'services/genius_service.dart';
 import 'services/library_store.dart';
 import 'services/media_session.dart';
+import 'services/windows_media.dart';
 import 'services/offline_service.dart';
 import 'services/lyrics_service.dart';
 import 'services/player_service.dart';
@@ -53,8 +54,12 @@ Future<void> main(List<String> args) async {
   final account = AccountService(store: store, settings: settings);
   // Аккаунт решает, чью медиатеку открыть (без входа — локальную).
   await settings.load();
+  DpiBypass.splitHello = !settings.dnsOnly;
   DpiBypass.watchZapret(() => settings.dpiBypass);
-  settings.addListener(() => DpiBypass.refresh(settings.dpiBypass));
+  settings.addListener(() {
+    DpiBypass.splitHello = !settings.dnsOnly;
+    DpiBypass.refresh(settings.dpiBypass);
+  });
   await account.init();
   // Админ поменял ключи Spotify/ИИ/Discord — они сразу уходят всем.
   Timer? keysDebounce;
@@ -105,6 +110,8 @@ Future<void> main(List<String> args) async {
   player.fadeOnPause = () => settings.fadePause;
   // Трек в шторке Android и в «Исполняется» на iPhone.
   await MediaSession.init(player);
+  // На Windows — в системную панель «Сейчас играет».
+  unawaited(WindowsMedia.init(player));
   // Последний трек и место в нём — с прошлого запуска (на паузе).
   unawaited(getApplicationSupportDirectory().then((d) => player
       .restoreState(File('${d.path}${Platform.pathSeparator}player_state.json'))));

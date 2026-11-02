@@ -44,7 +44,7 @@ const _sectionKeywords = {
   'Админ': 'админ всем ключи раздать',
   'Discord': 'дискорд статус активность rich presence слушает',
   'Обновления': 'обновление версия сборка автозапуск автозагрузка windows трей',
-  'Сеть': 'обход блокировок zapret vpn впн россия прокси проверить связь соединение',
+  'Сеть': 'обход блокировок zapret vpn впн россия прокси проверить связь соединение dns днс 1.1.1.1 google cloudflare',
   'YouTube': 'ютуб вход cookies браузер 18+',
   'Версия': 'обновление обновить проверить версия сборка',
   'Загрузки и кэш': 'скачать скачанные офлайн без интернета кэш память место удалить',
@@ -94,44 +94,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return out;
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// Все пункты настроек подряд (разделы — через _Section).
+  List<Widget> _items(BuildContext context) {
     final s = context.watch<SettingsStore>();
     final acc = context.watch<AccountService>();
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Настройки')),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 96),
-        children: [
-          // Поиск по настройкам.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
-              controller: _search,
-              onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Поиск по настройкам',
-                suffixIcon: _q.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() {
-                          _search.clear();
-                          _q = '';
-                        }),
-                      ),
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          ..._filter([
+    return [
           const _AccountTile(),
           const _Section('Акцентный цвет'),
           Padding(
@@ -166,7 +133,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: const Icon(Icons.close_rounded),
                 ),
               const Icon(Icons.chevron_right),
-            ]),
+    ];
+  }
+
+  /// Разделы настроек, собранные в несколько понятных групп.
+  static const _groups = <(String, IconData, String, List<String>)>[
+    ('Внешний вид', Icons.palette_outlined, 'Цвет, фон, вкладки',
+        ['Акцентный цвет', 'Фон', 'Вкладки']),
+    ('Воспроизведение', Icons.play_circle_outline, 'Плавный переход, пауза',
+        ['Воспроизведение']),
+    ('Медиатека и волна', Icons.library_music_outlined, 'Любимые исполнители, чёрный список',
+        ['Медиатека', 'Чёрный список']),
+    ('Тексты и обложки', Icons.lyrics_outlined, 'Караоке, Spotify, Genius',
+        ['Тексты песен', 'Обложки']),
+    ('Сеть и YouTube', Icons.public, 'Обход блокировок, проверка связи, вход в YouTube',
+        ['Сеть', 'YouTube']),
+    ('Discord', Icons.headset_mic_outlined, 'Трек в статусе Discord', ['Discord']),
+    ('Загрузки и кэш', Icons.download_outlined, 'Скачанное, место на диске',
+        ['Загрузки и кэш']),
+    ('Обновления', Icons.system_update_alt, 'Версия, автообновление, трей',
+        ['Обновления', 'Версия']),
+    ('Админ', Icons.admin_panel_settings_outlined, 'Общие ключи для всех', ['Админ']),
+  ];
+
+  /// Раздел → его пункты (с заголовком раздела).
+  Map<String, List<Widget>> _sections(List<Widget> all) {
+    final out = <String, List<Widget>>{};
+    String? title;
+    for (final w in all) {
+      if (w is _Section) {
+        title = w.text;
+        out[title] = [w];
+      } else if (title != null) {
+        out[title]!.add(w);
+      }
+    }
+    return out;
+  }
+
+  /// Без поиска — аккаунт и список групп; при поиске — найденные пункты.
+  List<Widget> _body(BuildContext context) {
+    final all = _items(context);
+    if (_q.trim().isNotEmpty) return _filter(all);
+    final sections = _sections(all);
+    return [
+      const _AccountTile(),
+      const SizedBox(height: 8),
+      for (final g in _groups)
+        if (g.$4.any(sections.containsKey))
+          ListTile(
+            leading: Icon(g.$2),
+            title: Text(g.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(g.$3),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => _GroupPage(
+                title: g.$1,
+                // Пункты строятся заново при каждой перерисовке страницы,
+                // чтобы переключатели сразу показывали новое значение.
+                items: (ctx) {
+                  final sec = _sections(_items(ctx));
+                  return [for (final name in g.$4) ...?sec[name]];
+                },
+              ),
+            )),
+          ),
+      const _Footer(),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    context.watch<SettingsStore>();
+    context.watch<AccountService>();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Настройки')),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 96),
+        children: [
+          // Поиск по настройкам.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _search,
+              onChanged: (v) => setState(() => _q = v),
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search),
+                hintText: 'Поиск по настройкам',
+                suffixIcon: _q.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() {
+                          _search.clear();
+                          _q = '';
+                        }),
+                      ),
+                filled: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          ..._body(context),
             onTap: () async {
               final res = await FilePicker.platform.pickFiles(
                 type: FileType.custom,
@@ -420,6 +493,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Если включён VPN — можно выключить'),
             value: s.dpiBypass,
             onChanged: (v) => s.dpiBypass = v,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.dns_outlined),
+            title: const Text('Только безопасный DNS'),
+            subtitle: const Text(
+                'Мягкий режим: адреса сайтов через Cloudflare 1.1.1.1 и Google 8.8.8.8, '
+                'без разрезания соединения. Попробуй, если с обычным обходом что-то не грузится'),
+            value: s.dnsOnly,
+            onChanged: s.dpiBypass ? (v) => s.dnsOnly = v : null,
           ),
           ValueListenableBuilder<bool>(
             valueListenable: DpiBypass.zapretRunning,
@@ -1404,7 +1486,7 @@ class _BlacklistTiles extends StatelessWidget {
       children: [
         if (names.isEmpty)
           const ListTile(
-            leading: Icon(Icons.block),
+            leading: Icon(Icons.person_off_outlined),
             title: Text('Исполнителей в чёрном списке нет'),
             subtitle: Text('Добавить — в меню трека «Не показывать исполнителя…» '
                 'или на странице исполнителя'),
@@ -1422,14 +1504,46 @@ class _BlacklistTiles extends StatelessWidget {
             ),
         ListTile(
           leading: const Icon(Icons.thumb_down_outlined),
-          title: Text('Скрытых треков: ${wave.dislikedCount}'),
+          title: Text('Скрытые треки: ${wave.dislikedCount}'),
           subtitle: const Text('Треки с 👎 не играют в очередях, плейлистах и волне'),
           trailing: TextButton(
             onPressed: wave.dislikedCount == 0 ? null : wave.resetDislikes,
             child: const Text('Вернуть все'),
           ),
         ),
+        for (final t in wave.dislikedTracks)
+          ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.only(left: 72, right: 16),
+            title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: t.artist.isEmpty
+                ? null
+                : Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: TextButton(
+              onPressed: () => wave.undislikeKey(t.key),
+              child: const Text('Вернуть'),
+            ),
+          ),
       ],
     );
   }
+}
+
+
+/// Страница одной группы настроек.
+class _GroupPage extends StatelessWidget {
+  const _GroupPage({required this.title, required this.items});
+  final String title;
+  final List<Widget> Function(BuildContext context) items;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: Builder(
+          builder: (ctx) => ListView(
+            padding: const EdgeInsets.only(bottom: 96),
+            children: items(ctx),
+          ),
+        ),
+      );
 }

@@ -70,7 +70,10 @@ class DpiBypass {
     final port = _port;
     if (!enabled || port == null || uri.scheme != 'https') return 'DIRECT';
     // Локальные адреса и сам DoH-резолвер идут напрямую.
-    if (uri.host == '127.0.0.1' || uri.host == 'localhost' || uri.host == _dohHost) {
+    if (uri.host == '127.0.0.1' ||
+        uri.host == 'localhost' ||
+        uri.host == _dohHost ||
+        uri.host == _dohHost2) {
       return 'DIRECT';
     }
     return 'PROXY 127.0.0.1:$port';
@@ -102,9 +105,15 @@ class DpiBypass {
       client.add(latin1.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
       await client.flush();
 
-      // Первое TLS-сообщение собираем целиком и отправляем порезанным.
+      // Первое TLS-сообщение собираем целиком и отправляем порезанным
+      // (в режиме «только DNS» — как есть).
       final hello = await reader.readTlsRecord();
-      await _sendSplit(remote, hello, host);
+      if (splitHello) {
+        await _sendSplit(remote, hello, host);
+      } else {
+        remote.add(hello);
+        await remote.flush();
+      }
 
       // Дальше — просто перекачиваем байты в обе стороны.
       final r = remote;
@@ -165,7 +174,12 @@ class DpiBypass {
 
   // ---------- DNS-over-HTTPS ----------
 
+  /// Резать ли ClientHello (обход DPI). false — режим «только безопасный DNS»:
+  /// адреса сайтов узнаём у Cloudflare/Google, а соединение не трогаем.
+  static bool splitHello = true;
+
   static const _dohHost = '1.1.1.1';
+  static const _dohHost2 = '8.8.8.8';
   static final Map<String, ({InternetAddress addr, DateTime until})> _dns = {};
 
   /// Адрес сайта через Cloudflare DoH (провайдер не подменит),
@@ -175,24 +189,30 @@ class DpiBypass {
     if (ip != null) return ip;
     final cached = _dns[host];
     if (cached != null && DateTime.now().isBefore(cached.until)) return cached.addr;
-    try {
-      final c = HttpClient()..connectionTimeout = const Duration(seconds: 5);
-      // Сам запрос к 1.1.1.1 идёт напрямую (см. _proxyFor).
-      final req = await c.getUrl(Uri.https(_dohHost, '/dns-query', {'name': host, 'type': 'A'}));
-      req.headers.set('accept', 'application/dns-json');
-      final res = await req.close().timeout(const Duration(seconds: 5));
-      final j = jsonDecode(await res.transform(utf8.decoder).join());
-      c.close();
-      for (final a in (j['Answer'] as List? ?? const [])) {
-        if (a is Map && a['type'] == 1) {
-          final addr = InternetAddress(a['data'] as String);
-          final ttl = ((a['TTL'] as num?)?.toInt() ?? 300).clamp(60, 3600);
-          _dns[host] = (addr: addr, until: DateTime.now().add(Duration(seconds: ttl)));
-          return addr;
+    // Сначала Cloudflare (1.1.1.1), не ответил — Google (8.8.8.8).
+    // Сами эти запросы идут напрямую (см. _proxyFor).
+    for (final doh in [
+      Uri.https(_dohHost, '/dns-query', {'name': host, 'type': 'A'}),
+      Uri.https(_dohHost2, '/resolve', {'name': host, 'type': 'A'}),
+    ]) {
+      try {
+        final c = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+        final req = await c.getUrl(doh);
+        req.headers.set('accept', 'application/dns-json');
+        final res = await req.close().timeout(const Duration(seconds: 5));
+        final j = jsonDecode(await res.transform(utf8.decoder).join());
+        c.close();
+        for (final a in (j['Answer'] as List? ?? const [])) {
+          if (a is Map && a['type'] == 1) {
+            final addr = InternetAddress(a['data'] as String);
+            final ttl = ((a['TTL'] as num?)?.toInt() ?? 300).clamp(60, 3600);
+            _dns[host] = (addr: addr, until: DateTime.now().add(Duration(seconds: ttl)));
+            return addr;
+          }
         }
+      } catch (e) {
+        debugPrint('[Обход] DoH ${doh.host} для $host: $e');
       }
-    } catch (e) {
-      debugPrint('[Обход] DoH для $host: $e');
     }
     final list = await InternetAddress.lookup(host, type: InternetAddressType.IPv4);
     return list.first;

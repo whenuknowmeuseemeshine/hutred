@@ -79,6 +79,7 @@ class SettingsStore extends ChangeNotifier {
   int _crossfadeSec = 6;
   bool _fadePause = true;
   bool _guest = false;
+  bool _dnsOnly = false;
   bool _pickArtists = false;
   String _discordAppId = '';
   File? _file;
@@ -151,6 +152,13 @@ class SettingsStore extends ChangeNotifier {
   int get crossfadeSec => _crossfadeSec;
   set crossfadeSec(int v) {
     _crossfadeSec = v.clamp(1, 12);
+    _save();
+  }
+
+  /// Обход в режиме «только безопасный DNS» (без разрезания соединения).
+  bool get dnsOnly => _dnsOnly;
+  set dnsOnly(bool v) {
+    _dnsOnly = v;
     _save();
   }
 
@@ -463,6 +471,7 @@ class SettingsStore extends ChangeNotifier {
       _crossfadeSec = ((j['crossfadeSec'] as num?)?.toInt() ?? 6).clamp(1, 12);
       _fadePause = j['fadePause'] as bool? ?? true;
       _guest = j['guest'] as bool? ?? false;
+      _dnsOnly = j['dnsOnly'] as bool? ?? false;
       _pickArtists = j['pickArtists'] as bool? ?? false;
       _discordAppId = j['discordAppId'] as String? ?? '';
     } catch (e) {
@@ -493,6 +502,7 @@ class SettingsStore extends ChangeNotifier {
         'crossfadeSec': _crossfadeSec,
         'fadePause': _fadePause,
         'guest': _guest,
+        'dnsOnly': _dnsOnly,
         'pickArtists': _pickArtists,
         'discordAppId': _discordAppId,
         'youtubeCookiesBrowser': _youtubeCookiesBrowser,
