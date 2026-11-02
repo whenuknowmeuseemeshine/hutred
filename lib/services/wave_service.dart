@@ -318,10 +318,54 @@ class WaveService extends ChangeNotifier {
   Future<List<Track>> recommendFrom(List<Track> tracks, {int size = 8}) =>
       _nextBatch(size: size, from: tracks);
 
+  // ---------- Джем по треку и микс джема ----------
+  // Волна, которая отталкивается не от всей медиатеки, а от заданных треков:
+  // одного (джем по треку) или общих любимых треков всех в джеме.
+
+  List<({Track track, int weight})>? _custom;
+  String? _customLabel;
+
+  /// Что сейчас играет вместо обычной волны: «Джем по треку «nuts»» и т. п.
+  String? get radioLabel => _active ? _customLabel : null;
+
+  /// Джем по треку: сначала сам трек, дальше — похожие на него.
+  Future<void> startFromTrack(Track seed) => startCustom(
+        [(track: seed, weight: 10)],
+        label: 'Джем по треку «${seed.title}»',
+        first: seed,
+      );
+
+  /// Волна по своему набору треков (вес — насколько сильно на него опираться).
+  Future<void> startCustom(List<({Track track, int weight})> seeds,
+      {required String label, Track? first}) async {
+    _custom = seeds;
+    _customLabel = label;
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final batch = await _nextBatch();
+      if (batch.isEmpty && first == null) {
+        throw Exception('Не получилось подобрать треки. Проверь интернет и попробуй ещё раз');
+      }
+      _active = true;
+      player.onQueueLow = _refill;
+      if (first != null) _suggested.add(_key(first));
+      await player.playTracks([if (first != null) first, ...batch]);
+    } catch (e) {
+      _error = e.toString().replaceFirst('Exception: ', '');
+      _custom = null;
+      _customLabel = null;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<List<Track>> _nextBatch({int size = 8, List<Track>? from}) async {
-    final seeds = from == null
-        ? _seeds()
-        : [for (final t in from) (track: t, weight: t.favorite ? 3 : 1)];
+    final seeds = from != null
+        ? [for (final t in from) (track: t, weight: t.favorite ? 3 : 1)]
+        : _custom ?? _seeds();
     if (seeds.isEmpty) {
       throw Exception(
           'Добавь в медиатеку несколько треков и поставь им ♥ — волна подстроится под них');
@@ -366,6 +410,8 @@ class WaveService extends ChangeNotifier {
   }
 
   Future<void> start() async {
+    _custom = null;
+    _customLabel = null;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -387,6 +433,8 @@ class WaveService extends ChangeNotifier {
 
   void stop() {
     _active = false;
+    _custom = null;
+    _customLabel = null;
     if (player.onQueueLow == _refill) player.onQueueLow = null;
     notifyListeners();
   }
@@ -398,7 +446,14 @@ class WaveService extends ChangeNotifier {
     if (!_active || _refilling || !isWaveTrack(player.current)) return;
     _refilling = true;
     try {
-      player.appendAll(await _nextBatch());
+      final batch = await _nextBatch();
+      // Джем по треку понемногу «плывёт»: сыгранные треки тоже становятся опорой.
+      final c = _custom;
+      if (c != null && c.length < 40) {
+        final cur = player.current;
+        if (cur != null) c.add((track: cur, weight: 2));
+      }
+      player.appendAll(batch);
     } catch (e) {
       debugPrint('Волна: $e');
     } finally {

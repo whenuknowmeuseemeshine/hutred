@@ -1,4 +1,5 @@
 
+import '../../services/jam_service.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -189,6 +190,8 @@ List<PopupMenuEntry<String>> trackMenuItems(BuildContext context, Track track,
         ),
       );
   return [
+    item('radio', Icons.graphic_eq_rounded, 'Джем по треку'),
+    if (context.read<JamService>().active) item('jamAdd', Icons.group_add_outlined, 'Добавить в джем'),
     item('next', Icons.playlist_play, 'Играть следующим'),
     item('queue', Icons.queue_music, 'Добавить в очередь'),
     if (hasArtist) item('artist', Icons.person_outline, 'К исполнителю'),
@@ -233,6 +236,16 @@ Future<void> runTrackAction(BuildContext context, Track track, String action,
   final saved = store.byId(track.id) ?? store.findBySource(track.source, track.uri);
   final t = saved ?? track;
   switch (action) {
+    case 'radio':
+      final wave = context.read<WaveService>();
+      AppActions.toast(context, 'Подбираю похожее на «${t.title}»…');
+      await wave.startFromTrack(t);
+      if (context.mounted) {
+        AppActions.toast(context, wave.error ?? 'Играет джем по треку «${t.title}»');
+      }
+    case 'jamAdd':
+      await context.read<JamService>().addTrack(t);
+      if (context.mounted) AppActions.toast(context, 'Добавлено в джем');
     case 'next':
       await player.playNext(t);
       if (context.mounted) AppActions.toast(context, 'Сыграет следующим');

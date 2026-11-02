@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,11 +7,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../services/account_service.dart';
+import '../services/jam_service.dart';
 import '../services/offline_service.dart';
 import '../services/update_service.dart';
 import '../services/player_service.dart';
 import '../services/settings_store.dart';
 import 'screens/friends_screen.dart';
+import 'screens/jam_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/now_playing_screen.dart';
 import 'screens/playlists_screen.dart';
@@ -50,6 +53,39 @@ class _HomeShellState extends State<HomeShell> {
   };
 
   static Widget _page(String id) => navPage(id);
+
+  StreamSubscription<JamInvite>? _inviteSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Приглашения в джем — всплывающим сообщением с кнопкой «Войти».
+    _inviteSub = context.read<JamService>().invites.listen((inv) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 20),
+        content: Text('${inv.fromName} зовёт тебя в джем'),
+        action: SnackBarAction(
+          label: 'Войти',
+          onPressed: () async {
+            try {
+              await context.read<JamService>().join(inv.host);
+              if (mounted) _openJam();
+            } catch (_) {}
+          },
+        ),
+      ));
+    });
+  }
+
+  @override
+  void dispose() {
+    _inviteSub?.cancel();
+    super.dispose();
+  }
+
+  void _openJam() =>
+      _navKeys[_current]!.currentState?.push(MaterialPageRoute(builder: (_) => const JamScreen()));
 
   List<String> get _order => context.read<SettingsStore>().visibleNav;
 
@@ -116,7 +152,9 @@ class _HomeShellState extends State<HomeShell> {
         // Полоски сверху не должны залезать под кнопки окна: если хоть одна
         // показана, отступ сверху берут они, а содержимое под ними — без отступа.
         final u = context.watch<UpdateService>();
-        final banner = !context.watch<OfflineService>().online ||
+        final inJam = context.watch<JamService>().active;
+        final banner = inJam ||
+            !context.watch<OfflineService>().online ||
             u.readyToInstall ||
             (u.available && !Platform.isWindows);
         final top = MediaQuery.paddingOf(context).top;
@@ -124,6 +162,7 @@ class _HomeShellState extends State<HomeShell> {
         return Column(
           children: [
             if (banner) SizedBox(height: top),
+            if (inJam) _JamBanner(onTap: _openJam),
             const _OfflineBanner(),
             const _UpdateBanner(),
             Expanded(
@@ -282,6 +321,42 @@ class _TabBackground extends StatelessWidget {
   }
 }
 
+
+/// Полоска «Джем»: с кем слушаешь, нажатие открывает экран джема.
+class _JamBanner extends StatelessWidget {
+  const _JamBanner({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final jam = context.watch<JamService>();
+    final others = jam.members.where((m) => m.uid != context.read<AccountService>().user?.id);
+    final who = others.isEmpty
+        ? 'пока никого — позови друзей'
+        : others.map((m) => m.name).take(3).join(', ');
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: Color.alphaBlend(scheme.primary.withValues(alpha: 0.18), scheme.surface),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(children: [
+            const Icon(Icons.graphic_eq_rounded, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('Джем: $who',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+            const Icon(Icons.chevron_right, size: 18),
+          ]),
+        ),
+      ),
+    );
+  }
+}
 
 /// Полоска «Нет интернета», пока связи нет.
 class _OfflineBanner extends StatelessWidget {

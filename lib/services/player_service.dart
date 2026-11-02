@@ -531,7 +531,12 @@ class PlayerService extends ChangeNotifier {
 
   // ---------- Управление ----------
 
+  /// В джеме у гостя: кнопки управления уходят хозяину джема.
+  /// Возвращает true, если команда отправлена и здесь ничего делать не нужно.
+  Future<bool> Function(String cmd, {int? ms, Track? track})? remoteControl;
+
   Future<void> togglePlay() async {
+    if (await remoteControl?.call('toggle') ?? false) return;
     if (current == null) return;
     // Трек ещё грузится: запоминаем паузу, после загрузки он не заиграет
     // и при ошибке не перескочит на следующий.
@@ -586,6 +591,7 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> next() async {
+    if (await remoteControl?.call('next') ?? false) return;
     _resumeAt = null;
     if (_queue.isEmpty) return;
     if (_index < _queue.length - 1) {
@@ -601,6 +607,7 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> previous() async {
+    if (await remoteControl?.call('prev') ?? false) return;
     _resumeAt = null;
     if (_queue.isEmpty) return;
     if (_player.position > const Duration(seconds: 3) || _index == 0) {
@@ -620,6 +627,8 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> _onCompleted() async {
+    // Гость в джеме: следующий трек выберет хозяин.
+    if (remoteControl != null) return;
     if (_repeat == RepeatSetting.one) {
       await _player.seek(Duration.zero);
       unawaited(_player.play());
@@ -629,6 +638,12 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> seek(Duration d) async {
+    if (await remoteControl?.call('seek', ms: d.inMilliseconds) ?? false) return;
+    await syncSeek(d);
+  }
+
+  /// Перемотка без отправки хозяину джема (сама подстройка под него).
+  Future<void> syncSeek(Duration d) async {
     // Трек после перезапуска ещё не загружен — просто запоминаем новое место.
     if (_resumeAt != null && _player.processingState == ProcessingState.idle) {
       _resumeAt = d;

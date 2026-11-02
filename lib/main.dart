@@ -8,6 +8,7 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
+import 'services/jam_service.dart';
 import 'services/account_service.dart';
 import 'services/ai_sync_service.dart';
 import 'services/cover_service.dart';
@@ -134,6 +135,8 @@ Future<void> main(List<String> args) async {
   // Скрытые треки и исполнители из чёрного списка не играют.
   player.isBlocked = wave.isBlocked;
   player.blockedArtist = wave.blockedArtistOf;
+  // Джем: слушать вместе с друзьями.
+  final jam = JamService(account: account, player: player, store: store, wave: wave);
   // Длительность своих файлов, у которых её нет.
   DurationProbe(store);
   // Ошибки плеера (не играет трек, исполнитель в чёрном списке) — внизу экрана.
@@ -219,6 +222,7 @@ Future<void> main(List<String> args) async {
       Provider.value(value: spotify),
       Provider.value(value: soundcloud),
       ChangeNotifierProvider.value(value: wave),
+      ChangeNotifierProvider.value(value: jam),
       Provider.value(value: covers),
       ChangeNotifierProvider.value(value: transfer),
       ChangeNotifierProvider.value(value: offline),

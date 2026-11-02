@@ -1,3 +1,4 @@
+import 'jam_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -70,6 +71,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
       appBar: AppBar(
         title: const Text('Друзья'),
         actions: [
+          TextButton.icon(
+            onPressed: () => JamScreen.open(context),
+            icon: const Icon(Icons.graphic_eq_rounded, size: 18),
+            label: const Text('Джем'),
+          ),
           IconButton(
             tooltip: 'Обновить',
             onPressed: f.loading ? null : f.refresh,

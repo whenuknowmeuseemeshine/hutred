@@ -96,7 +96,8 @@ class _TopBar extends StatelessWidget {
         ),
         Expanded(
           child: Text(
-            'ИСТОЧНИК: ${sourceLabel(track.source).toUpperCase()}',
+            context.watch<WaveService>().radioLabel?.toUpperCase() ??
+                'ИСТОЧНИК: ${sourceLabel(track.source).toUpperCase()}',
             textAlign: TextAlign.center,
             style: const TextStyle(
                 fontSize: 11, letterSpacing: 1.2, color: Colors.white70),
