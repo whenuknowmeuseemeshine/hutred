@@ -19,6 +19,15 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      ios:
+        description: Собрать iPhone (macOS-минуты дорогие, ×10)
+        type: boolean
+        default: false
+      windows:
+        description: Собрать Windows (минуты ×2)
+        type: boolean
+        default: true
 
 jobs:
   android:
@@ -53,7 +62,10 @@ jobs:
           name: Hutred-android
           path: Hutred.apk
 
+  # iPhone собираем только по просьбе: в push-сообщении есть [ios]
+  # или вручную с галочкой. Минута macOS считается GitHub как 10.
   ios:
+    if: (github.event_name == 'workflow_dispatch' && inputs.ios) || contains(github.event.head_commit.message, '[ios]') || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +87,7 @@ jobs:
           path: Hutred.ipa
 
   windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -110,7 +123,11 @@ jobs:
   # Готовые файлы выкладываются на страницу Releases → «Hutred — последняя сборка»:
   # оттуда их удобно скачивать (и оттуда же потом будет брать обновления приложение).
   release:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    # Выкладываем, даже если iPhone в этот раз не собирали.
+    if: >-
+      always() && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && needs.android.result == 'success' && needs.windows.result == 'success'
+      && (needs.ios.result == 'success' || needs.ios.result == 'skipped')
     needs: [android, ios, windows]
     runs-on: ubuntu-latest
     permissions:
@@ -196,7 +213,9 @@ jobs:
           fi
 
           # Старые сборки удаляем, оставляем две последние: место в облаке не бесконечное.
-          for dir in windows android ios; do
+          # Старые .ipa трогаем, только если в этот раз собран новый
+          # (иначе источник SideStore указывает на прошлую сборку).
+          for dir in windows android $([ -f Hutred.ipa ] && echo ios); do
             curl -sS -X POST "$SB_URL/storage/v1/object/list/releases" \
               -H "Authorization: Bearer $SB_KEY" -H "apikey: $SB_KEY" \
               -H "Content-Type: application/json" \
