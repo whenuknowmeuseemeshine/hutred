@@ -17,3 +17,6 @@ android/key.properties
 **/*.jks
 **/*.keystore
 **/*.jks.b64
+
+# Ключи облака для предрелиза (predrelease.bat)
+hutred.env.json
