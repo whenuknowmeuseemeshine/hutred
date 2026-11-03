@@ -157,8 +157,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                           ),
                         ),
                       ],
-                    ),
-    ;
+                    );
     if (widget.embedded) return body;
     return Scaffold(appBar: AppBar(title: const Text('Эквалайзер')), body: body);
   }
