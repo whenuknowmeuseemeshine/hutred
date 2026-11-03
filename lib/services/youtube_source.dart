@@ -361,8 +361,15 @@ class YoutubeSource {
     if (audio.isEmpty) throw Exception('У видео нет аудиопотока');
     // m4a воспроизводится на всех платформах, включая iOS и macOS.
     final mp4 = audio.where((s) => s.container == StreamContainer.mp4);
-    final info =
-        mp4.isNotEmpty ? mp4.withHighestBitrate() : audio.withHighestBitrate();
+    final pool = (mp4.isNotEmpty ? mp4 : audio).toList()
+      ..sort((a, b) => a.bitrate.bitsPerSecond.compareTo(b.bitrate.bitsPerSecond));
+    // Качество из настроек: лучшее, обычное (~128 кбит/с) или экономия.
+    final info = switch (quality) {
+      'saver' => pool.first,
+      'normal' => pool.lastWhere((s) => s.bitrate.bitsPerSecond <= 140000,
+          orElse: () => pool.first),
+      _ => pool.last,
+    };
     // iOS и macOS определяют формат по расширению файла.
     final file = File(
         pathFor(info.container == StreamContainer.mp4 ? 'm4a' : 'webm'));
@@ -487,6 +494,38 @@ class YoutubeSource {
         if (attempt >= 2) rethrow;
         await Future<void>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
       }
+    }
+  }
+
+  /// Качество звука: best, normal или saver (из настроек).
+  static String quality = 'best';
+
+  /// Лимит кэша прослушанного в байтах (0 — без лимита).
+  static int cacheLimitBytes = 0;
+
+  /// Удаляет самые старые файлы кэша, пока он больше лимита.
+  static Future<void> trimCaches(List<Directory> dirs) async {
+    if (cacheLimitBytes <= 0) return;
+    final files = <(File, int, DateTime)>[];
+    var total = 0;
+    for (final d in dirs) {
+      try {
+        await for (final e in d.list()) {
+          if (e is! File || e.path.endsWith('.part')) continue;
+          final st = await e.stat();
+          files.add((e, st.size, st.modified));
+          total += st.size;
+        }
+      } catch (_) {}
+    }
+    if (total <= cacheLimitBytes) return;
+    files.sort((a, b) => a.$3.compareTo(b.$3));
+    for (final (f, size, _) in files) {
+      if (total <= cacheLimitBytes) break;
+      try {
+        await f.delete();
+        total -= size;
+      } catch (_) {}
     }
   }
 

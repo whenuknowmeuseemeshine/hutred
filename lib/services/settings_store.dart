@@ -110,6 +110,14 @@ class SettingsStore extends ChangeNotifier {
   int _vpnIndex = 0;
   bool _vpnOn = false;
   bool _likesMigrated = false;
+  String _audioQuality = 'best';
+  bool _wifiOnly = false;
+  int _cacheLimitMb = 0;
+  bool _discordTime = true;
+  bool _discordButton = true;
+  bool _discordHideOnPause = false;
+  List<String> _lyricsOrder = const ['lrclib', 'youtube', 'genius'];
+  bool _lyricsOnCover = true;
   List<String> _pinnedPlaylists = const [];
   String _vpnHwid = '';
   double _uiScale = 0;
@@ -144,6 +152,63 @@ class SettingsStore extends ChangeNotifier {
       for (final p in _pinnedPlaylists) if (p != id) p,
       if (pinned) id,
     ];
+    _save();
+  }
+
+  /// Качество звука: best, normal или saver.
+  String get audioQuality => _audioQuality;
+  set audioQuality(String v) {
+    _audioQuality = v;
+    _save();
+  }
+
+  /// Качать загрузки только по Wi-Fi (телефон).
+  bool get wifiOnly => _wifiOnly;
+  set wifiOnly(bool v) {
+    _wifiOnly = v;
+    _save();
+  }
+
+  /// Лимит кэша прослушанного, МБ (0 — без лимита).
+  int get cacheLimitMb => _cacheLimitMb;
+  set cacheLimitMb(int v) {
+    _cacheLimitMb = v;
+    _save();
+  }
+
+  /// Discord: показывать время трека, кнопку «Слушать в Hutred», прятать на паузе.
+  bool get discordTime => _discordTime;
+  set discordTime(bool v) {
+    _discordTime = v;
+    _save();
+  }
+
+  bool get discordButton => _discordButton;
+  set discordButton(bool v) {
+    _discordButton = v;
+    _save();
+  }
+
+  bool get discordHideOnPause => _discordHideOnPause;
+  set discordHideOnPause(bool v) {
+    _discordHideOnPause = v;
+    _save();
+  }
+
+  /// Порядок источников текста: lrclib, youtube, genius.
+  List<String> get lyricsOrder => _lyricsOrder;
+  void moveLyricsSource(int from, int to) {
+    final l = List.of(_lyricsOrder);
+    if (to > from) to--;
+    l.insert(to, l.removeAt(from));
+    _lyricsOrder = l;
+    _save();
+  }
+
+  /// Строка текста песни поверх обложки на экране плеера (телефон).
+  bool get lyricsOnCover => _lyricsOnCover;
+  set lyricsOnCover(bool v) {
+    _lyricsOnCover = v;
     _save();
   }
 
@@ -643,6 +708,17 @@ class SettingsStore extends ChangeNotifier {
       _vpnIndex = (j['vpnIndex'] as num?)?.toInt() ?? 0;
       _vpnOn = j['vpnOn'] as bool? ?? false;
       _likesMigrated = j['likesMigrated'] as bool? ?? false;
+      _audioQuality = j['audioQuality'] as String? ?? 'best';
+      _wifiOnly = j['wifiOnly'] as bool? ?? false;
+      _cacheLimitMb = (j['cacheLimitMb'] as num?)?.toInt() ?? 0;
+      _discordTime = j['discordTime'] as bool? ?? true;
+      _discordButton = j['discordButton'] as bool? ?? true;
+      _discordHideOnPause = j['discordHideOnPause'] as bool? ?? false;
+      final lo = [for (final v in (j['lyricsOrder'] as List? ?? const [])) '$v'];
+      if (lo.length == 3 && lo.toSet().containsAll(const ['lrclib', 'youtube', 'genius'])) {
+        _lyricsOrder = lo;
+      }
+      _lyricsOnCover = j['lyricsOnCover'] as bool? ?? true;
       _pinnedPlaylists = [for (final v in (j['pinnedPlaylists'] as List? ?? const [])) '$v'];
       // Вкладка «Плейлисты» теперь скрыта по умолчанию: плейлисты — в Медиатеке,
       // нужные можно закрепить в меню. Один раз прячем её и у старых настроек.
@@ -695,6 +771,14 @@ class SettingsStore extends ChangeNotifier {
         'vpnIndex': _vpnIndex,
         'vpnOn': _vpnOn,
         'likesMigrated': _likesMigrated,
+        'audioQuality': _audioQuality,
+        'wifiOnly': _wifiOnly,
+        'cacheLimitMb': _cacheLimitMb,
+        'discordTime': _discordTime,
+        'discordButton': _discordButton,
+        'discordHideOnPause': _discordHideOnPause,
+        'lyricsOrder': _lyricsOrder,
+        'lyricsOnCover': _lyricsOnCover,
         'pinnedPlaylists': _pinnedPlaylists,
         'playlistsTabHidden': true,
         'vpnHwid': _vpnHwid,

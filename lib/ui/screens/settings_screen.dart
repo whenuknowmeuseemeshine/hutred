@@ -481,6 +481,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _StorageBar(),
           const _DownloadsTile(),
           const _CacheTile(),
+          const _AudioPrefs(),
           const _Section('Версия'),
           const _UpdateCheckTile(),
           const _Footer(),
@@ -868,6 +869,67 @@ class _CardGrid extends StatelessWidget {
         ...rest,
       ]);
     });
+  }
+}
+
+/// Качество звука, лимит кэша, «только по Wi-Fi», папка загрузок.
+class _AudioPrefs extends StatelessWidget {
+  const _AudioPrefs();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final off = context.watch<OfflineService>();
+    Widget row(String title, String sub, List<Widget> chips) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(sub, style: const TextStyle(fontSize: 12, color: HutredTheme.muted)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: chips),
+          ]),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      row('Качество звука', 'Для YouTube: лучшее ~6 МБ на трек, экономия ~1,5 МБ', [
+        for (final (v, l) in const [('best', 'Лучшее'), ('normal', 'Обычное'), ('saver', 'Экономия')])
+          StyleChip(label: l, selected: s.audioQuality == v, onTap: () => s.audioQuality = v),
+      ]),
+      row('Лимит кэша прослушанного', 'Старые файлы удаляются сами, загрузки не трогаются', [
+        for (final (v, l) in const [(500, '500 МБ'), (1024, '1 ГБ'), (3072, '3 ГБ'), (0, 'Без лимита')])
+          StyleChip(label: l, selected: s.cacheLimitMb == v, onTap: () => s.cacheLimitMb = v),
+      ]),
+      if (Platform.isAndroid || Platform.isIOS)
+        SwitchListTile(
+          title: const Text('Качать только по Wi-Fi'),
+          subtitle: Text(off.waitingForWifi
+              ? 'Сейчас мобильный интернет — загрузки ждут Wi-Fi'
+              : 'Загрузки не тратят мобильный трафик'),
+          value: s.wifiOnly,
+          onChanged: (v) => s.wifiOnly = v,
+        ),
+      if (HutredTheme.desktop && off.folder != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: StyleButton(
+              label: 'Открыть папку загрузок',
+              icon: Ic.folder_open_rounded,
+              primary: false,
+              onPressed: () {
+                final path = off.folder!.path;
+                if (Platform.isWindows) {
+                  Process.start('explorer', [path]);
+                } else if (Platform.isMacOS) {
+                  Process.start('open', [path]);
+                } else {
+                  Process.start('xdg-open', [path]);
+                }
+              },
+            ),
+          ),
+        ),
+    ]);
   }
 }
 

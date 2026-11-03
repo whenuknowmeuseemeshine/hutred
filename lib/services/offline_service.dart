@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -58,6 +59,9 @@ class OfflineService extends ChangeNotifier {
   static String keyOf(Track t) => '${t.source.name}:${t.uri}';
 
   bool get online => _online;
+  /// Папка с загрузками.
+  Directory? get folder => _dir;
+
   bool isDownloaded(Track t) => _files[keyOf(t)]?['audio'] != null;
   bool isDownloading(Track t) {
     final k = keyOf(t);
@@ -249,8 +253,41 @@ class OfflineService extends ChangeNotifier {
     download(t);
   }
 
+  /// Качать только по Wi-Fi (на телефоне).
+  bool Function() wifiOnly = () => false;
+
+  /// Загрузки ждут Wi-Fi (сейчас мобильный интернет).
+  bool waitingForWifi = false;
+  StreamSubscription<List<ConnectivityResult>>? _netSub;
+
+  Future<bool> _onCellular() async {
+    if (!(Platform.isAndroid || Platform.isIOS)) return false;
+    try {
+      final r = await Connectivity().checkConnectivity();
+      return r.contains(ConnectivityResult.mobile) &&
+          !r.contains(ConnectivityResult.wifi) &&
+          !r.contains(ConnectivityResult.ethernet);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _pump() async {
     if (_active != null || _queue.isEmpty || !_online || _dir == null) return;
+    if (wifiOnly() && await _onCellular()) {
+      if (!waitingForWifi) {
+        waitingForWifi = true;
+        notifyListeners();
+      }
+      // Появится Wi-Fi — продолжим сами.
+      _netSub ??= Connectivity().onConnectivityChanged.listen((_) => _pump());
+      return;
+    }
+    if (waitingForWifi) {
+      waitingForWifi = false;
+      notifyListeners();
+    }
+    if (_active != null || _queue.isEmpty) return;
     final k = _queue.first;
     _queue.remove(k);
     final t = _findByKey(k);

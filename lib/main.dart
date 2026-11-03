@@ -226,7 +226,26 @@ Future<void> main(List<String> args) async {
   final offline = OfflineService(store: store, youtube: youtube, soundcloud: soundcloud)
     ..resolveSpotify = transfer.resolveSpotify
     ..cloudFile = account.cloudFileFor;
+  offline.wifiOnly = () => settings.wifiOnly;
   await offline.load();
+  // Качество звука и лимит кэша — из настроек, меняются на лету.
+  void applyAudioPrefs() {
+    YoutubeSource.quality = settings.audioQuality;
+    YoutubeSource.cacheLimitBytes = settings.cacheLimitMb * 1024 * 1024;
+  }
+  applyAudioPrefs();
+  settings.addListener(applyAudioPrefs);
+  // После каждого нового трека подрезаем кэш до лимита.
+  String? lastTrimmed;
+  player.addListener(() {
+    final id = player.current?.id;
+    if (id == null || id == lastTrimmed || YoutubeSource.cacheLimitBytes <= 0) return;
+    lastTrimmed = id;
+    unawaited(() async {
+      await YoutubeSource.trimCaches(
+          [await YoutubeSource.cacheDir(), await SoundcloudSource.cacheDir()]);
+    }());
+  });
   player.offlineAudio = offline.audioFor;
   player.isOffline = () => !offline.online;
   // Новые треки с YouTube/SoundCloud сверяем со Spotify (с вопросом).
