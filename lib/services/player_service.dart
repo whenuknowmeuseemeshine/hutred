@@ -91,6 +91,13 @@ class PlayerService extends ChangeNotifier {
     try {
       if (await file.exists()) {
         final j = jsonDecode(await file.readAsString());
+        // Режимы перемешивания и повтора помним всегда, даже без очереди.
+        if (j is Map) {
+          _shuffle = j['shuffle'] == true;
+          _smart = _shuffle && j['smart'] == true;
+          final r = (j['repeat'] as num?)?.toInt() ?? 0;
+          if (r >= 0 && r < RepeatSetting.values.length) _repeat = RepeatSetting.values[r];
+        }
         if (j is Map && _queue.isEmpty) {
           final q = [
             for (final t in (j['queue'] as List? ?? const []))
@@ -119,7 +126,17 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> _saveState() async {
     final f = _stateFile;
-    if (f == null || current == null) return;
+    if (f == null) return;
+    if (current == null) {
+      try {
+        await f.writeAsString(jsonEncode({
+          'shuffle': _shuffle,
+          'smart': _smart,
+          'repeat': _repeat.index,
+        }));
+      } catch (_) {}
+      return;
+    }
     // Длинную очередь храним вокруг текущего трека, чтобы файл был маленьким.
     final from = max(0, _index - 50);
     final to = min(_queue.length, _index + 150);
@@ -129,6 +146,8 @@ class PlayerService extends ChangeNotifier {
         'index': _index - from,
         'positionMs': (_resumeAt ?? _player.position).inMilliseconds,
         'shuffle': _shuffle,
+        'smart': _smart,
+        'repeat': _repeat.index,
       }));
     } catch (_) {}
   }
@@ -179,17 +198,16 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> _applyEq() async {
     if (_mpvEq) {
+      // В сборке libmpv для Windows из фильтров есть только equalizer,
+      // поэтому запас громкости делаем им же: все полосы чуть ниже.
+      final on = _eqOn && _eqGains.length == _mpvBands.length && _eqGains.any((g) => g.abs() >= 0.1);
+      final boost = on ? _eqGains.reduce((a, b) => a > b ? a : b).clamp(0, 12) * 0.5 : 0.0;
       final parts = <String>[
-        if (_eqOn && _eqGains.length == _mpvBands.length)
+        if (on)
           for (var i = 0; i < _mpvBands.length; i++)
-            if (_eqGains[i].abs() >= 0.1)
-              'equalizer=f=${_mpvBands[i].round()}:t=o:w=1:g=${_eqGains[i].clamp(-12, 12).toStringAsFixed(1)}',
+            if ((_eqGains[i] - boost).abs() >= 0.1)
+              'equalizer=f=${_mpvBands[i].round()}:t=o:w=1:g=${(_eqGains[i] - boost).clamp(-24, 12).toStringAsFixed(1)}',
       ];
-      // Запас по громкости, чтобы поднятые полосы не хрипели.
-      final boost = _eqOn && _eqGains.isNotEmpty
-          ? _eqGains.reduce((a, b) => a > b ? a : b).clamp(0, 12)
-          : 0;
-      if (parts.isNotEmpty && boost > 0) parts.insert(0, 'volume=-${(boost * 0.6).toStringAsFixed(1)}dB');
       await JustAudioMediaKit.setAudioFilter(parts.isEmpty ? '' : 'lavfi=[${parts.join(',')}]');
       return;
     }
@@ -725,6 +743,7 @@ class PlayerService extends ChangeNotifier {
       }
     }
     notifyListeners();
+    unawaited(_saveState());
   }
 
   bool _smart = false;
@@ -885,6 +904,7 @@ class PlayerService extends ChangeNotifier {
   void cycleRepeat() {
     _repeat = RepeatSetting.values[(_repeat.index + 1) % RepeatSetting.values.length];
     notifyListeners();
+    unawaited(_saveState());
   }
 
   // ---------- Очередь ----------

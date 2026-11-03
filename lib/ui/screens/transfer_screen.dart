@@ -316,15 +316,15 @@ class _TransferScreenState extends State<TransferScreen> {
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
             ),
-            if (!busy)
-              TextButton.icon(
-                onPressed: () {
-                  t.reset();
-                  _input.clear();
-                },
-                icon: Icon(Ic.restart_alt, size: 18),
-                label: const Text('Заново'),
-              ),
+            TextButton.icon(
+              onPressed: () {
+                t.reset();
+                _input.clear();
+                if (busy) AppActions.toast(context, 'Перенос отменён');
+              },
+              icon: Icon(busy ? Ic.close : Ic.restart_alt, size: 18),
+              label: Text(busy ? 'Отменить' : 'Заново'),
+            ),
           ]),
           const SizedBox(height: 8),
           ClipRRect(
@@ -370,6 +370,15 @@ class _TransferScreenState extends State<TransferScreen> {
             label: '${t.relinking ? 'Заменить' : 'Добавить'} ${t.selectedCount}',
             icon: Ic.add,
             onPressed: t.stage == TransferStage.ready && t.selectedCount > 0 ? _save : null,
+          ),
+          const SizedBox(height: 10),
+          StyleButton(
+            label: busy ? 'Отменить перенос' : 'Не переносить',
+            primary: false,
+            onPressed: () {
+              t.reset();
+              _input.clear();
+            },
           ),
           if (notFound.isNotEmpty && !busy) ...[
             const SizedBox(height: 10),

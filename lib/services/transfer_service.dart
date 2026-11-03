@@ -526,6 +526,13 @@ class TransferService extends ChangeNotifier {
     }
   }
 
+  /// Играемая онлайн-копия трека (для джема: трек из файла у друга).
+  Future<Track?> findPlayable(Track t) => _match(
+        TransferItem(t.artist == Track.unknownArtist ? '' : t.artist, t.title,
+            durationMs: t.durationMs),
+        playable: true,
+      );
+
   /// Повторить поиск для одной строки (например, на другой площадке).
   Future<void> retry(TransferItem item, {required String where}) async {
     item.done = false;

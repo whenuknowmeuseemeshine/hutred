@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -455,6 +456,27 @@ class JamService extends ChangeNotifier {
 
   bool _applying = false;
 
+  /// Ищет трек онлайн (SoundCloud / YouTube) — для треков из файлов хозяина.
+  Future<Track?> Function(Track t)? findOnline;
+
+  /// Трек-файл хозяина → найденная онлайн-копия (чтобы не искать заново).
+  final Map<String, Track?> _onlineCopy = {};
+
+  Future<Track?> _playableFor(Track t) async {
+    if (t.source != TrackSource.local) return store.findBySource(t.source, t.uri) ?? t;
+    final mine = store.findBySource(t.source, t.uri);
+    if (mine != null && File(mine.uri).existsSync()) return mine;
+    if (_onlineCopy.containsKey(t.uri)) return _onlineCopy[t.uri];
+    final f = findOnline;
+    Track? found;
+    if (f != null) {
+      try {
+        found = await f(t).timeout(const Duration(seconds: 30));
+      } catch (_) {}
+    }
+    return _onlineCopy[t.uri] = found;
+  }
+
   Future<void> _onState(Map<String, dynamic> p) async {
     if (isHost || _host == null) return;
     final j = p['track'];
@@ -474,10 +496,25 @@ class JamService extends ChangeNotifier {
       // Пока сообщение шло, у хозяина трек проиграл ещё немного.
       final target = playing ? pos + const Duration(milliseconds: 300) : pos;
       final cur = player.current;
-      final same = cur != null && cur.source == track.source && cur.uri == track.uri;
+      final copy = _onlineCopy[track.uri];
+      final same = cur != null &&
+          ((cur.source == track.source && cur.uri == track.uri) ||
+              (copy != null && cur.source == copy.source && cur.uri == copy.uri));
       if (!same) {
         // Если трек есть у меня в медиатеке — берём свою копию (вдруг скачан).
-        final mine = store.findBySource(track.source, track.uri) ?? track;
+        // Трек из файла хозяина у гостей ищем онлайн.
+        if (track.source == TrackSource.local) {
+          _problem = 'Ищу «${track.title}» онлайн — у хозяина он из файла…';
+          notifyListeners();
+        }
+        final mine = await _playableFor(track);
+        if (mine == null) {
+          _problem = '«${track.title}» есть только в файле у хозяина — онлайн не нашёлся';
+          if (player.playing) await player.pause();
+          notifyListeners();
+          return;
+        }
+        if (_hostTrack?.uri != track.uri) return; // хозяин уже переключил
         await player.playTracks([mine]);
         if (player.error != null) {
           _problem = 'Не получилось включить «${track.title}»: ${player.error}';
