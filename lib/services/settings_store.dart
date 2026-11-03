@@ -104,6 +104,10 @@ class SettingsStore extends ChangeNotifier {
   bool _dnsOnly = false;
   bool _shareOnline = true;
   String _relayMode = 'auto';
+  String _vpnLink = '';
+  List<String> _vpnServers = const [];
+  int _vpnIndex = 0;
+  bool _vpnOn = false;
   bool _eqOn = false;
   List<double> _eqGains = const [];
   bool _pickArtists = false;
@@ -117,6 +121,20 @@ class SettingsStore extends ChangeNotifier {
   String get relayMode => _relayMode;
   set relayMode(String v) {
     _relayMode = v;
+    _save();
+  }
+
+  /// Свой VPN-ключ (vless://, vmess://, trojan://, ss:// или ссылка-подписка).
+  /// Работает только для трафика Hutred. Хранится только на этом устройстве.
+  String get vpnLink => _vpnLink;
+  List<String> get vpnServers => _vpnServers;
+  int get vpnIndex => _vpnIndex;
+  bool get vpnOn => _vpnOn;
+  void setVpn({String? link, List<String>? servers, int? index, bool? on}) {
+    if (link != null) _vpnLink = link;
+    if (servers != null) _vpnServers = servers;
+    if (index != null) _vpnIndex = index;
+    if (on != null) _vpnOn = on;
     _save();
   }
 
@@ -579,6 +597,10 @@ class SettingsStore extends ChangeNotifier {
       _dnsOnly = j['dnsOnly'] as bool? ?? false;
       _shareOnline = j['shareOnline'] as bool? ?? true;
       _relayMode = j['relayMode'] as String? ?? 'auto';
+      _vpnLink = j['vpnLink'] as String? ?? '';
+      _vpnServers = [for (final v in (j['vpnServers'] as List? ?? const [])) '$v'];
+      _vpnIndex = (j['vpnIndex'] as num?)?.toInt() ?? 0;
+      _vpnOn = j['vpnOn'] as bool? ?? false;
       _eqOn = j['eqOn'] as bool? ?? false;
       _eqGains = [for (final g in (j['eqGains'] as List? ?? const [])) (g as num).toDouble()];
       _pickArtists = j['pickArtists'] as bool? ?? false;
@@ -618,6 +640,10 @@ class SettingsStore extends ChangeNotifier {
         'dnsOnly': _dnsOnly,
         'shareOnline': _shareOnline,
         'relayMode': _relayMode,
+        'vpnLink': _vpnLink,
+        'vpnServers': _vpnServers,
+        'vpnIndex': _vpnIndex,
+        'vpnOn': _vpnOn,
         'eqOn': _eqOn,
         'eqGains': _eqGains,
         'pickArtists': _pickArtists,

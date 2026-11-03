@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import 'xray_vpn.dart';
+
 /// Обход блокировок по DPI (как zapret / GoodbyeDPI / ByeDPI), но только
 /// для трафика самого Hutred и без прав администратора.
 ///
@@ -67,6 +69,15 @@ class DpiBypass {
   }
 
   static String _proxyFor(Uri uri) {
+    // Свой VPN-ключ важнее обхода: весь трафик Hutred идёт через ядро Xray.
+    final vpn = XrayVpn.port;
+    if (vpn != null &&
+        XrayVpn.active &&
+        uri.host != '127.0.0.1' &&
+        uri.host != 'localhost' &&
+        uri.host != '::1') {
+      return 'PROXY 127.0.0.1:$vpn';
+    }
     final port = _port;
     if (!enabled || port == null || uri.scheme != 'https') return 'DIRECT';
     // Локальные адреса и сам DoH-резолвер идут напрямую.

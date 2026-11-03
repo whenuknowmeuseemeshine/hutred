@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/account_service.dart';
@@ -27,6 +29,7 @@ import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
 import '../icons.dart';
 import '../../services/relay.dart';
+import '../../services/xray_vpn.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -400,6 +403,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const _UpdatesTiles(),
           ],
           const _Section('Сеть'),
+          if (XrayVpn.supported) const _VpnTile(),
           const _RelayTile(),
           SwitchListTile(
             secondary: Icon(Ic.vpn_lock_outlined),
@@ -1877,6 +1881,195 @@ class _DpiTuneTileState extends State<_DpiTuneTile> {
             ]),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+/// Свой VPN-ключ только для Hutred (ядро Xray рядом с приложением).
+class _VpnTile extends StatefulWidget {
+  const _VpnTile();
+
+  @override
+  State<_VpnTile> createState() => _VpnTileState();
+}
+
+class _VpnTileState extends State<_VpnTile> {
+  bool _busy = false;
+  List<int?>? _pings;
+  String? _error;
+
+  List<VpnServer> _servers(SettingsStore s) =>
+      [for (final l in s.vpnServers) XrayVpn.parse(l)].whereType<VpnServer>().toList();
+
+  Future<void> _applyKey(String text) async {
+    final s = context.read<SettingsStore>();
+    text = text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _pings = null;
+    });
+    try {
+      final body = XrayVpn.isSubscription(text) ? await XrayVpn.fetchSubscription(text) : text;
+      final list = XrayVpn.parseMany(body);
+      if (list.isEmpty) {
+        throw text.startsWith('happ://')
+            ? 'Это зашифрованная ссылка Happ — в Happ открой сервер и скопируй обычный ключ (vless://…) или ссылку-подписку https://'
+            : 'Не нашёл в ключе ни одного сервера. Подходят vless://, vmess://, trojan://, ss:// и ссылки-подписки';
+      }
+      s.setVpn(link: text, servers: [for (final x in list) x.link], index: 0, on: true);
+      await XrayVpn.start(list.first);
+      if (list.length > 1) unawaited(_pingAll());
+    } catch (e) {
+      _error = '$e';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _paste() async {
+    final clip = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+    if (!mounted) return;
+    final v = clip.contains('://')
+        ? clip
+        : await AppActions.askText(context,
+            title: 'VPN-ключ',
+            hint: 'vless://… или https://ссылка-подписки',
+            action: 'Подключить');
+    if (v != null) await _applyKey(v);
+  }
+
+  Future<void> _pingAll() async {
+    final list = _servers(context.read<SettingsStore>());
+    setState(() => _pings = null);
+    final r = await XrayVpn.pingAll(list);
+    if (mounted) setState(() => _pings = r);
+  }
+
+  Future<void> _toggle(bool on) async {
+    final s = context.read<SettingsStore>();
+    s.setVpn(on: on);
+    if (!on) {
+      await XrayVpn.stop();
+      return;
+    }
+    final list = _servers(s);
+    if (list.isEmpty) {
+      await _paste();
+      return;
+    }
+    await XrayVpn.start(list[s.vpnIndex.clamp(0, list.length - 1)]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final list = _servers(s);
+    return ValueListenableBuilder<String>(
+      valueListenable: XrayVpn.status,
+      builder: (_, st, __) => ValueListenableBuilder<String?>(
+        valueListenable: XrayVpn.message,
+        builder: (_, msg, __) {
+          final dot = switch (st) {
+            'on' => Colors.greenAccent,
+            'starting' => Colors.amberAccent,
+            'error' => Colors.redAccent,
+            _ => HutredTheme.muted,
+          };
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile(
+                secondary: Icon(Ic.vpn_lock_outlined),
+                title: const Text('Свой VPN-ключ (только для Hutred)'),
+                subtitle: Text(list.isEmpty
+                    ? 'Вставь ключ из Happ, v2rayN или Hiddify — vless://, vmess://, trojan://, ss:// '
+                        'или ссылку-подписку. Через VPN пойдёт только музыка, остальное — как обычно'
+                    : (msg ?? 'Выключен · ${list.length == 1 ? list.first.name : '${list.length} серверов'}')),
+                value: s.vpnOn,
+                onChanged: _busy ? null : _toggle,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(72, 0, 16, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (s.vpnOn && st != 'off')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              switch (st) {
+                                'on' => 'Музыка идёт через VPN',
+                                'starting' => 'Подключаюсь…',
+                                _ => 'VPN не работает — музыка идёт напрямую',
+                              },
+                              style: const TextStyle(color: HutredTheme.muted, fontSize: 13),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(_error!,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                      ),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      StyleButton(
+                        label: _busy
+                            ? 'Подключаю…'
+                            : (list.isEmpty ? 'Вставить ключ' : 'Другой ключ'),
+                        primary: list.isEmpty,
+                        onPressed: _busy ? null : _paste,
+                      ),
+                      if (XrayVpn.isSubscription(s.vpnLink))
+                        StyleButton(
+                          label: 'Обновить подписку',
+                          primary: false,
+                          onPressed: _busy ? null : () => _applyKey(s.vpnLink),
+                        ),
+                      if (list.length > 1)
+                        StyleButton(
+                          label: 'Проверить скорость',
+                          primary: false,
+                          onPressed: _busy ? null : _pingAll,
+                        ),
+                    ]),
+                    if (list.length > 1) ...[
+                      const SizedBox(height: 10),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        for (final (i, x) in list.indexed)
+                          StyleChip(
+                            label: _pings == null || i >= _pings!.length
+                                ? x.name
+                                : '${x.name} · ${_pings![i] == null ? 'нет связи' : '${_pings![i]} мс'}',
+                            selected: s.vpnIndex == i,
+                            onTap: _busy
+                                ? null
+                                : () {
+                                    s.setVpn(index: i, on: true);
+                                    XrayVpn.start(x);
+                                  },
+                          ),
+                      ]),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

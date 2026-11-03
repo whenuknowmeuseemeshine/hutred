@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'xray_vpn.dart';
+
 /// Запуск внешней программы yt-dlp (только ПК). Она умеет скачивать звук
 /// с YouTube, SoundCloud и сотен других сайтов и быстро чинится,
 /// когда сайты что-то меняют.
@@ -64,6 +66,7 @@ class YtDlp {
       try {
         final r = await Process.run(exe, [
           if (cookiesBrowser.isNotEmpty) ...['--cookies-from-browser', cookiesBrowser],
+          if (XrayVpn.active && XrayVpn.port != null) ...['--proxy', 'http://127.0.0.1:${XrayVpn.port}'],
           '--no-playlist',
           '--no-progress',
           '-f', 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',

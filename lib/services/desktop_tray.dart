@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'player_service.dart';
 import 'settings_store.dart';
+import 'xray_vpn.dart';
 
 /// Значок в трее (у часов) на компьютере: крестик прячет окно туда,
 /// музыка продолжает играть. В меню значка — открыть, пауза, следующий, выход.
@@ -94,6 +95,7 @@ class DesktopTray with TrayListener, WindowListener {
   }
 
   Future<void> _quit() async {
+    await XrayVpn.stop();
     await trayManager.destroy();
     await windowManager.setPreventClose(false);
     await windowManager.destroy();

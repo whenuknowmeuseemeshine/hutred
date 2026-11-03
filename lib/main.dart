@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'services/xray_vpn.dart';
 import 'services/jam_service.dart';
 import 'services/relay.dart';
 import 'services/account_service.dart';
@@ -70,7 +71,14 @@ Future<void> main(List<String> args) async {
   // Способ обхода подбирается сам: при первом включении и раз в неделю
   // (провайдеры меняют настройки блокировок).
   final tuned = settings.dpiTunedAt;
+  // Свой VPN-ключ: поднимаем ядро Xray в фоне, музыка пока идёт напрямую.
+  if (settings.vpnOn && settings.vpnServers.isNotEmpty && XrayVpn.supported) {
+    final i = settings.vpnIndex.clamp(0, settings.vpnServers.length - 1);
+    final s = XrayVpn.parse(settings.vpnServers[i]);
+    if (s != null) unawaited(XrayVpn.start(s));
+  }
   if (settings.dpiBypass &&
+      !settings.vpnOn &&
       !settings.dnsOnly &&
       (tuned == null || DateTime.now().difference(tuned) > const Duration(days: 7))) {
     unawaited(Future<void>.delayed(const Duration(seconds: 8), () async {
