@@ -496,6 +496,9 @@ class XrayVpn {
     return p;
   }
 
+  /// Готовый конфиг Xray для одного сервера (для проверок).
+  static Map<String, dynamic> configFor(VpnServer s, int port) => _config([(port, s.outbound)]);
+
   static Map<String, dynamic> _config(List<(int, Map<String, dynamic>)> pairs) => {
         'log': {'loglevel': 'warning'},
         'inbounds': [
