@@ -340,8 +340,13 @@ class WaveService extends ChangeNotifier {
   /// seeds == null — опора как у обычной волны (вся медиатека).
   /// unfamiliar — только исполнители, которых в медиатеке ещё нет.
   Future<void> startCustom(List<({Track track, int weight})>? seeds,
-      {required String label, Track? first, bool unfamiliar = false}) async {
+      {required String label,
+      Track? first,
+      bool unfamiliar = false,
+      List<List<({Track track, int weight})>>? groups}) async {
     _custom = seeds;
+    _groups = groups;
+    _recentArtists.clear();
     _customLabel = label;
     _unfamiliar = unfamiliar;
     _loading = true;
@@ -359,6 +364,7 @@ class WaveService extends ChangeNotifier {
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
       _custom = null;
+      _groups = null;
       _customLabel = null;
     } finally {
       _loading = false;
@@ -366,19 +372,70 @@ class WaveService extends ChangeNotifier {
     }
   }
 
+  /// Исполнитель без «feat.», «x», «Official», «- Topic» и т. п. — чтобы
+  /// «Artist», «Artist feat. Y» и канал «ArtistOfficial» считались одним.
+  static String artistKey(String artist) {
+    var a = artist.toLowerCase();
+    a = a.split(RegExp(r'\s*(?:,|&|\+|\bfeat\.?|\bft\.?|\bx\b|\bи\b|\bwith\b|/)\s*')).first;
+    a = a.replaceAll(RegExp(r'\b(official|music|vevo|records|- topic|topic)\b'), '');
+    a = a.replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '');
+    return a.isEmpty ? artist.toLowerCase() : a;
+  }
+
+  /// Исполнители последних треков волны: подряд одного и того же не даём.
+  final List<String> _recentArtists = [];
+  static const _recentWindow = 14;
+
+  /// Группы опор для джема: у каждого участника своя, треки чередуются.
+  List<List<({Track track, int weight})>>? _groups;
+
   Future<List<Track>> _nextBatch({int size = 8, List<Track>? from}) async {
+    final groups = from == null ? _groups : null;
+    if (groups != null && groups.length > 1) {
+      // Джем 50/50: рекомендации по вкусу каждого, по очереди.
+      final per = (size / groups.length).ceil() + 1;
+      final lists = <List<Track>>[];
+      for (final g in groups) {
+        try {
+          lists.add(await _recsFor(g, per));
+        } catch (e) {
+          debugPrint('Волна (участник): $e');
+          lists.add(const []);
+        }
+      }
+      final out = <Track>[];
+      for (var i = 0; out.length < size; i++) {
+        var any = false;
+        for (final l in lists) {
+          if (i < l.length) {
+            out.add(l[i]);
+            any = true;
+          }
+        }
+        if (!any) break;
+      }
+      return out;
+    }
     final seeds = from != null
         ? [for (final t in from) (track: t, weight: t.favorite ? 3 : 1)]
         : _custom ?? _seeds();
+    return _recsFor(seeds, size);
+  }
+
+  Future<List<Track>> _recsFor(List<({Track track, int weight})> seeds, int size) async {
     if (seeds.isEmpty) {
       throw Exception(
           'Добавь в медиатеку несколько треков и поставь им ♥ — волна подстроится под них');
     }
     final candidates = <Track>[];
     final picked = <String>{};
-    for (var attempt = 0; attempt < (_unfamiliar ? 10 : 6) && candidates.length < size * 3; attempt++) {
+    final seedArtists = <String>{};
+    for (var attempt = 0; attempt < (_unfamiliar ? 12 : 9) && candidates.length < size * 5; attempt++) {
       final seed = _pickWeighted(seeds);
       if (!picked.add(seed.id) && picked.length < seeds.length) continue;
+      // Опоры — от разных исполнителей, иначе всё похожее будет на одного.
+      final sa = artistKey(seed.artist);
+      if (!seedArtists.add(sa) && seedArtists.length < 4 && attempt < 6) continue;
       try {
         final id = await _scIdFor(seed);
         if (id == null) continue;
@@ -388,38 +445,57 @@ class WaveService extends ChangeNotifier {
       }
     }
 
-    final perArtist = <String, int>{};
     // Для режима «Незнакомое»: исполнители, которые уже есть в медиатеке.
     final known = _unfamiliar
-        ? {for (final t in store.tracks) t.artist.toLowerCase()}
+        ? {for (final t in store.tracks) artistKey(t.artist)}
         : const <String>{};
-    final out = <Track>[];
     candidates.shuffle(_rand);
-    for (final t in candidates) {
+    final out = <Track>[];
+    final used = <String>{};
+
+    bool ok(Track t, {required bool strict}) {
       final k = _key(t);
-      final artist = t.artist.toLowerCase();
-      if (_suggested.contains(k) || isBlocked(t)) continue;
-      if ((_dislikedArtists[artist] ?? 0) >= 2) continue;
+      final raw = t.artist.toLowerCase();
+      final artist = artistKey(t.artist);
+      if (_suggested.contains(k) || isBlocked(t)) return false;
+      if ((_dislikedArtists[raw] ?? 0) >= 2) return false;
       // Быстро пропущенное — не предлагаем; часто пропускаемых — реже.
-      if (_skippedTracks.contains(k)) continue;
-      final skips = _skippedArtists[artist] ?? 0;
-      if (skips > 0 && _rand.nextDouble() < min(0.85, skips * 0.25)) continue;
-      if (isOwnedLike(t)) continue;
-      if (_unfamiliar && known.contains(artist)) continue;
-      if ((perArtist[artist] ?? 0) >= 2) continue;
-      if (t.durationMs != null && t.durationMs! < 60000) continue; // не сниппеты
-      perArtist[artist] = (perArtist[artist] ?? 0) + 1;
-      out.add(t);
-      if (out.length >= size) break;
+      if (_skippedTracks.contains(k)) return false;
+      final skips = _skippedArtists[raw] ?? 0;
+      if (strict && skips > 0 && _rand.nextDouble() < min(0.85, skips * 0.25)) return false;
+      if (isOwnedLike(t)) return false;
+      if (_unfamiliar && known.contains(artist)) return false;
+      if (t.durationMs != null && t.durationMs! < 60000) return false; // не сниппеты
+      // Один исполнитель — не больше одного трека в пачке
+      // и не чаще, чем раз в ~14 треков волны.
+      if (used.contains(artist)) return false;
+      if (strict && _recentArtists.contains(artist)) return false;
+      return true;
+    }
+
+    for (final strict in const [true, false]) {
+      for (final t in candidates) {
+        if (out.length >= size) break;
+        if (!ok(t, strict: strict) || out.contains(t)) continue;
+        used.add(artistKey(t.artist));
+        out.add(t);
+      }
+      if (out.length >= size ~/ 2 + 1) break;
     }
     for (final t in out) {
       _suggested.add(_key(t));
+      _recentArtists.add(artistKey(t.artist));
+    }
+    if (_recentArtists.length > _recentWindow) {
+      _recentArtists.removeRange(0, _recentArtists.length - _recentWindow);
     }
     return out;
   }
 
   Future<void> start() async {
     _custom = null;
+    _groups = null;
+    _recentArtists.clear();
     _customLabel = null;
     _unfamiliar = false;
     _loading = true;
@@ -444,6 +520,7 @@ class WaveService extends ChangeNotifier {
   void stop() {
     _active = false;
     _custom = null;
+    _groups = null;
     _customLabel = null;
     if (player.onQueueLow == _refill) player.onQueueLow = null;
     notifyListeners();
