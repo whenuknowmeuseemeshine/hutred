@@ -183,6 +183,21 @@ Future<void> main(List<String> args) async {
   jam.friendRequests.listen((_) => friends.refresh(quiet: true));
   // Длительность своих файлов, у которых её нет.
   DurationProbe(store);
+  // Любимые = вся медиатека (как в Spotify): один раз ставим ♥ всем трекам.
+  if (!settings.likesMigrated) {
+    store.likeEverything();
+    settings.likesMigrated = true;
+  }
+  // Сняли ♥ — трек уходит из медиатеки, но его можно вернуть.
+  store.onUnliked = (t, undo) {
+    hutredMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('«${t.title}» убран из медиатеки'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(label: 'Вернуть', onPressed: undo),
+      ));
+  };
   // Ошибки плеера (не играет трек, исполнитель в чёрном списке) — внизу экрана.
   String? lastPlayerError;
   player.addListener(() {

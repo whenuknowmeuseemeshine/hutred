@@ -79,7 +79,7 @@ class SettingsStore extends ChangeNotifier {
   /// видны только Волна, Медиатека, Плейлисты и Настройки.
   Set<String>? _hiddenTabs;
   static bool get _phone => Platform.isAndroid || Platform.isIOS;
-  static const _phoneHidden = {'search', 'friends', 'transfer'};
+  static const _phoneHidden = {'search', 'friends', 'transfer', 'playlists'};
   String? _waveBackground;
   Set<String> _searchSources = {'library', 'spotify', 'soundcloud', 'youtube'};
   final List<String> _searchHistory = [];
@@ -109,6 +109,8 @@ class SettingsStore extends ChangeNotifier {
   List<String> _vpnServers = const [];
   int _vpnIndex = 0;
   bool _vpnOn = false;
+  bool _likesMigrated = false;
+  List<String> _pinnedPlaylists = const [];
   String _vpnHwid = '';
   double _uiScale = 0;
   bool _eqOn = false;
@@ -133,6 +135,24 @@ class SettingsStore extends ChangeNotifier {
   List<String> get vpnServers => _vpnServers;
   int get vpnIndex => _vpnIndex;
   bool get vpnOn => _vpnOn;
+
+  /// Плейлисты, закреплённые в меню рядом с вкладками.
+  List<String> get pinnedPlaylists => _pinnedPlaylists;
+  bool isPlaylistPinned(String id) => _pinnedPlaylists.contains(id);
+  void setPlaylistPinned(String id, bool pinned) {
+    _pinnedPlaylists = [
+      for (final p in _pinnedPlaylists) if (p != id) p,
+      if (pinned) id,
+    ];
+    _save();
+  }
+
+  /// Уже перешли на «любимые = вся медиатека».
+  bool get likesMigrated => _likesMigrated;
+  set likesMigrated(bool v) {
+    _likesMigrated = v;
+    _save();
+  }
 
   /// Масштаб интерфейса на компьютере: 0 — сам по размеру окна.
   double get uiScale => _uiScale;
@@ -398,7 +418,8 @@ class SettingsStore extends ChangeNotifier {
   /// Порядок вкладок в боковой/нижней панели.
   List<String> get navOrder => List.unmodifiable(_navOrder);
 
-  Set<String> get hiddenTabs => _hiddenTabs ?? (_phone ? _phoneHidden : const {});
+  Set<String> get hiddenTabs =>
+      _hiddenTabs ?? (_phone ? _phoneHidden : const {'playlists'});
 
   /// Вкладки, которые видны на панели (Настройки скрыть нельзя).
   List<String> get visibleNav =>
@@ -621,6 +642,13 @@ class SettingsStore extends ChangeNotifier {
       _vpnServers = [for (final v in (j['vpnServers'] as List? ?? const [])) '$v'];
       _vpnIndex = (j['vpnIndex'] as num?)?.toInt() ?? 0;
       _vpnOn = j['vpnOn'] as bool? ?? false;
+      _likesMigrated = j['likesMigrated'] as bool? ?? false;
+      _pinnedPlaylists = [for (final v in (j['pinnedPlaylists'] as List? ?? const [])) '$v'];
+      // Вкладка «Плейлисты» теперь скрыта по умолчанию: плейлисты — в Медиатеке,
+      // нужные можно закрепить в меню. Один раз прячем её и у старых настроек.
+      if (j['playlistsTabHidden'] != true && _hiddenTabs != null) {
+        _hiddenTabs = {..._hiddenTabs!, 'playlists'};
+      }
       _vpnHwid = j['vpnHwid'] as String? ?? '';
       _uiScale = (j['uiScale'] as num?)?.toDouble() ?? 0;
       _eqOn = j['eqOn'] as bool? ?? false;
@@ -666,6 +694,9 @@ class SettingsStore extends ChangeNotifier {
         'vpnServers': _vpnServers,
         'vpnIndex': _vpnIndex,
         'vpnOn': _vpnOn,
+        'likesMigrated': _likesMigrated,
+        'pinnedPlaylists': _pinnedPlaylists,
+        'playlistsTabHidden': true,
         'vpnHwid': _vpnHwid,
         'uiScale': _uiScale,
         'eqOn': _eqOn,

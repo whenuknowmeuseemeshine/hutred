@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -19,7 +19,7 @@ import 'xray_vpn.dart';
 ///   (сразу, если музыка не играет, иначе по кнопке или при следующем запуске);
 /// - на Android предлагает скачать новый APK;
 /// - на iPhone обновления идут через SideStore.
-class UpdateService extends ChangeNotifier {
+class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
   UpdateService({required this.settings, required this.player});
 
   final SettingsStore settings;
@@ -69,6 +69,19 @@ class UpdateService extends ChangeNotifier {
     }
     unawaited(check());
     _timer = Timer.periodic(const Duration(hours: 3), (_) => check());
+    // Открыли приложение снова (из трея, со свёрнутого, на телефоне —
+    // вернулись в него) — проверяем, не вышло ли что-то новое.
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  DateTime _lastCheck = DateTime.fromMillisecondsSinceEpoch(0);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        DateTime.now().difference(_lastCheck) > const Duration(minutes: 10)) {
+      unawaited(check());
+    }
   }
 
   Future<Directory> _dir() async {
@@ -104,6 +117,7 @@ class UpdateService extends ChangeNotifier {
 
   Future<void> check({bool manual = false}) async {
     if (!supported || checking) return;
+    _lastCheck = DateTime.now();
     checking = true;
     error = null;
     notifyListeners();
@@ -125,6 +139,12 @@ class UpdateService extends ChangeNotifier {
     } catch (e) {
       if (manual) error = 'Не удалось проверить: $e';
       debugPrint('[Обновление] $e');
+      // При запуске сеть (или свой VPN) могла ещё не подняться — ещё раз через минуту.
+      if (!manual) {
+        Timer(const Duration(minutes: 1), () {
+          if (latestBuild == null) unawaited(check());
+        });
+      }
     } finally {
       checking = false;
       notifyListeners();

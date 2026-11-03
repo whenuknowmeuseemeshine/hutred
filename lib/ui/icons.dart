@@ -419,6 +419,18 @@ class Ic {
         _ => LucideIcons.clipboard,
       };
 
+  static IconData get push_pin => switch (style) {
+        'glass' => Icons.push_pin_rounded,
+        'sharp' => Icons.push_pin_sharp,
+        _ => LucideIcons.pin,
+      };
+
+  static IconData get push_pin_outlined => switch (style) {
+        'glass' => Icons.push_pin_outlined,
+        'sharp' => Icons.push_pin_outlined,
+        _ => LucideIcons.pin,
+      };
+
   static IconData get link_rounded => switch (style) {
         'glass' => Icons.link_rounded,
         'sharp' => Icons.link_sharp,

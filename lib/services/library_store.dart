@@ -201,9 +201,48 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  /// Как в Spotify: любимые — это и есть медиатека. Снятое сердечко
+  /// убирает трек из медиатеки (если он в плейлисте — остаётся только там).
+  /// Показать «Вернуть» — [onUnliked].
   void toggleFavorite(String id) {
     final t = byId(id);
-    if (t != null) updateTrack(t.copyWith(favorite: !t.favorite));
+    if (t == null) return;
+    if (!t.favorite) {
+      updateTrack(t.copyWith(favorite: true));
+      return;
+    }
+    unlike(t);
+  }
+
+  /// Вызывается после снятия сердечка: можно предложить «Вернуть».
+  void Function(Track track, VoidCallback undo)? onUnliked;
+
+  void unlike(Track t) {
+    final inPlaylist = _playlists.any((p) => p.trackIds.contains(t.id));
+    if (inPlaylist) {
+      updateTrack(t.copyWith(favorite: false));
+      onUnliked?.call(t, () {
+        final now = byId(t.id);
+        if (now != null) updateTrack(now.copyWith(favorite: true));
+      });
+    } else {
+      removeTrack(t.id);
+      onUnliked?.call(t, () => restore(t));
+    }
+  }
+
+  /// Вернуть удалённый трек как был (тот же id, прослушивания, текст).
+  void restore(Track t) {
+    if (byId(t.id) != null || findBySource(t.source, t.uri) != null) return;
+    _tracks.add(t.copyWith(favorite: true));
+    _touch('track:${t.id}');
+    _changed();
+  }
+
+  /// Один раз при переходе на «любимые = медиатека»: сердечко всем трекам,
+  /// кроме тех, что только в плейлистах.
+  void likeEverything() {
+    setFavorite([for (final t in _tracks) if (!t.favorite) t.id], true);
   }
 
   /// Поиск по названию, исполнителю и альбому; все слова запроса должны совпасть.
