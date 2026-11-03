@@ -292,7 +292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Text('12 с', style: TextStyle(color: HutredTheme.muted)),
               ]),
             ),
-          ListTile(
+          if (!HutredTheme.desktop || Platform.isMacOS) ListTile(
             leading: Icon(Ic.equalizer_rounded),
             title: const Text('Эквалайзер'),
             subtitle: Text(Platform.isIOS || Platform.isMacOS
@@ -309,6 +309,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.fadePause,
             onChanged: (v) => s.fadePause = v,
           ),
+          if (HutredTheme.desktop && !Platform.isMacOS) ...[
+            const _Section('Эквалайзер'),
+            const EqualizerScreen(embedded: true),
+          ],
           const _Section('Чёрный список'),
           const _BlacklistTiles(),
           const _Section('Вкладки'),
@@ -488,7 +492,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ('Внешний вид', Ic.palette_outlined, 'Стиль, цвет, фон, вкладки',
         ['Стиль', 'Акцентный цвет', 'Фон', 'Вкладки']),
     ('Воспроизведение', Ic.play_circle_outline, 'Плавный переход, пауза, эквалайзер',
-        ['Воспроизведение']),
+        ['Воспроизведение', 'Эквалайзер']),
     ('Медиатека и волна', Ic.library_music_outlined, 'Любимые исполнители, чёрный список',
         ['Медиатека', 'Чёрный список']),
     ('Тексты и обложки', Ic.lyrics_outlined, 'Караоке, Spotify, Genius',
@@ -734,7 +738,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Text(g.$3,
                           style: const TextStyle(color: HutredTheme.muted, fontSize: 14)),
                     ),
-                  ..._asCards(right),
+                  _CardGrid(cards: _asCards(right)),
                   if (!searching && sel == groups.length - 1) const _Footer(),
                 ],
               ),
@@ -835,6 +839,36 @@ List<Widget> _asCards(List<Widget> items) {
   }
   flush();
   return out;
+}
+
+/// Карточки разделов на широком экране — в две колонки, как в макете:
+/// первая во всю ширину, остальные попеременно слева и справа.
+class _CardGrid extends StatelessWidget {
+  const _CardGrid({required this.cards});
+  final List<Widget> cards;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final panels = [for (final c in cards) if (c is! _Footer) c];
+      final rest = [for (final c in cards) if (c is _Footer) c];
+      if (box.maxWidth < 1000 || panels.length < 3) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: cards);
+      }
+      final left = <Widget>[], right = <Widget>[];
+      for (var i = 1; i < panels.length; i++) {
+        (i.isOdd ? left : right).add(panels[i]);
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        panels.first,
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: left)),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: right)),
+        ]),
+        ...rest,
+      ]);
+    });
+  }
 }
 
 /// Сводка медиатеки: сколько любимых, скрытых и в чёрном списке.
