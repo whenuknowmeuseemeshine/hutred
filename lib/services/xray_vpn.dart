@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
+import 'dpi_bypass.dart';
 
 /// Один сервер из VPN-ключа.
 class VpnServer {
@@ -501,7 +502,7 @@ class XrayVpn {
   static Map<String, dynamic> configFor(VpnServer s, int port) => _config([(port, s.outbound)]);
 
   static Map<String, dynamic> _config(List<(int, Map<String, dynamic>)> pairs) => {
-        'log': {'loglevel': 'warning'},
+        'log': {'loglevel': 'info'},
         'inbounds': [
           for (final (i, (p, _)) in pairs.indexed)
             {
@@ -595,6 +596,56 @@ class XrayVpn {
     return null;
   }
 
+  static String? _address(Map<String, dynamic> ob) {
+    final st = ob['settings'];
+    if (st is! Map) return null;
+    for (final k in ['vnext', 'servers']) {
+      final l = st[k];
+      if (l is List && l.isNotEmpty && l.first is Map) return '${(l.first as Map)['address']}';
+    }
+    return null;
+  }
+
+  static Map<String, dynamic> _withAddress(Map<String, dynamic> ob, String ip) {
+    final copy = jsonDecode(jsonEncode(ob)) as Map<String, dynamic>;
+    final st = copy['settings'] as Map<String, dynamic>;
+    for (final k in ['vnext', 'servers']) {
+      final l = st[k];
+      if (l is List && l.isNotEmpty) (l.first as Map)['address'] = ip;
+    }
+    // Для TLS имя сервера остаётся прежним (иначе сертификат не сойдётся).
+    final ss = copy['streamSettings'];
+    if (ss is Map && ss['tlsSettings'] is Map) {
+      final t = ss['tlsSettings'] as Map;
+      if ('${t['serverName'] ?? ''}'.isEmpty) t['serverName'] = _address(ob);
+    }
+    return copy;
+  }
+
+  /// Адреса сервера: сначала через DoH, потом от системного DNS.
+  /// Заодно пишем в журнал, открывается ли до них соединение.
+  static Future<List<String>> _candidates(String host) async {
+    if (host.isEmpty || InternetAddress.tryParse(host) != null) return const [];
+    final out = <String>[];
+    try {
+      final a = await DpiBypass.resolve(host).timeout(const Duration(seconds: 8));
+      out.add(a.address);
+      _log('DNS (DoH) $host → ${a.address}');
+    } catch (e) {
+      _log('DNS (DoH) $host: $e');
+    }
+    try {
+      final l = await InternetAddress.lookup(host).timeout(const Duration(seconds: 8));
+      _log('DNS (система) $host → ${l.map((e) => e.address).join(', ')}');
+      for (final a in l) {
+        if (a.type == InternetAddressType.IPv4 && !out.contains(a.address)) out.add(a.address);
+      }
+    } catch (e) {
+      _log('DNS (система) $host: $e');
+    }
+    return out.take(3).toList();
+  }
+
   /// Включает VPN через сервер [s].
   static Future<void> start(VpnServer s) async {
     final gen = ++_gen;
@@ -604,24 +655,38 @@ class XrayVpn {
     _log('— Подключение к «${s.name}» (${s.protocol}), ${Platform.operatingSystem}');
     try {
       await _killStale();
-      final p = await _freePort();
-      final proc = await _launch(_config([(p, s.outbound)]), 'vpn');
+      // Адрес сервера сами узнаём через DoH: бывает, что DNS провайдера или
+      // роутера не знает адрес VPN-сервера (а Happ спрашивает свой DNS).
+      final host = _address(s.outbound) ?? '';
+      final ips = await _candidates(host);
+      Process? proc;
+      int? p;
+      int? ms;
+      for (final ip in ips.isEmpty ? <String?>[null] : ips.map<String?>((e) => e)) {
+        if (gen != _gen) return;
+        proc?.kill();
+        p = await _freePort();
+        final ob = ip == null ? s.outbound : _withAddress(s.outbound, ip);
+        if (ip != null) _log('Пробую адрес $host → $ip');
+        proc = await _launch(_config([(p, ob)]), 'vpn');
+        ms = await _ping(p);
+        if (ms != null) break;
+      }
       if (gen != _gen) {
-        proc.kill();
+        proc?.kill();
         return;
       }
       _proc = proc;
       _lastPort = p;
-      unawaited(proc.exitCode.then((code) {
-        if (_proc == proc) {
+      final mine = proc!;
+      unawaited(mine.exitCode.then((code) {
+        if (_proc == mine) {
           _proc = null;
           port = null;
           status.value = 'error';
           message.value = 'Ядро VPN остановилось (код $code)';
         }
       }));
-      var ms = await _ping(p);
-      ms ??= await _ping(p);
       if (gen != _gen) return;
       if (ms == null) {
         // Сервер не отвечает — трафик пускаем напрямую, чтобы музыка не встала.
