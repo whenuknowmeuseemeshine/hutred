@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/track.dart';
 import 'genius_service.dart';
+import 'import_service.dart';
 import 'library_store.dart';
 import 'settings_store.dart';
 import 'soundcloud_source.dart';
@@ -17,11 +18,15 @@ import 'youtube_source.dart';
 
 /// Одна строка переноса: что искали и что нашли.
 class TransferItem {
-  TransferItem(this.artist, this.title, {this.durationMs, this.found});
+  TransferItem(this.artist, this.title, {this.durationMs, this.found, this.replaceId});
 
   final String artist;
   final String title;
   final int? durationMs;
+
+  /// Трек медиатеки из папки, который заменится найденным онлайн
+  /// (id, плейлисты, «любимое» и прослушивания сохраняются).
+  final String? replaceId;
 
   /// Найденный трек (null — ещё ищем или не нашли).
   Track? found;
@@ -124,6 +129,60 @@ class TransferService extends ChangeNotifier {
       error = e.toString().replaceFirst('Exception: ', '');
       stage = items.isEmpty ? TransferStage.idle : TransferStage.ready;
     }
+    notifyListeners();
+  }
+
+  /// Перенос из папки на компьютере: названия берутся из имён файлов.
+  Future<void> startFolder(String dirPath) async {
+    final list = <TransferItem>[];
+    final dir = Directory(dirPath);
+    await for (final e in dir.list(recursive: true, followLinks: false)) {
+      if (e is! File) continue;
+      final name = e.path.split(RegExp(r'[\\/]')).last;
+      final dot = name.lastIndexOf('.');
+      if (dot <= 0 || !ImportService.audioExtensions.contains(name.substring(dot + 1).toLowerCase())) {
+        continue;
+      }
+      final t = ImportService().trackFromPath(e.path);
+      list.add(TransferItem(t.artist == Track.unknownArtist ? '' : t.artist, t.title));
+    }
+    list.sort((a, b) => a.label.compareTo(b.label));
+    suggestedName = dir.path.split(RegExp(r'[\\/]')).where((p) => p.isNotEmpty).last;
+    await _run(list);
+  }
+
+  /// Треки медиатеки, привязанные к файлам: ищем их на Spotify / SoundCloud /
+  /// YouTube и при сохранении заменяем, чтобы не зависеть от папки.
+  List<Track> get localTracks =>
+      [for (final t in store.tracks) if (t.source == TrackSource.local) t];
+
+  Future<void> startRelink() async {
+    suggestedName = '';
+    await _run([
+      for (final t in localTracks)
+        TransferItem(t.artist == Track.unknownArtist ? '' : t.artist, t.title,
+            durationMs: t.durationMs, replaceId: t.id),
+    ]);
+  }
+
+  bool get relinking => items.isNotEmpty && items.first.replaceId != null;
+
+  Future<void> _run(List<TransferItem> list) async {
+    final token = ++_token;
+    items.clear();
+    error = null;
+    if (list.isEmpty) {
+      error = 'Не нашёл ни одного трека';
+      stage = TransferStage.idle;
+      notifyListeners();
+      return;
+    }
+    items.addAll(list);
+    stage = TransferStage.matching;
+    notifyListeners();
+    await _matchAll(token);
+    if (token != _token) return;
+    stage = TransferStage.ready;
     notifyListeners();
   }
 
@@ -486,6 +545,25 @@ class TransferService extends ChangeNotifier {
 
   /// Добавляет найденное в медиатеку и (по желанию) в новый плейлист.
   ({int added, String? playlist}) save({String? playlistName}) {
+    if (relinking) {
+      var n = 0;
+      for (final i in items) {
+        final f = i.found;
+        final old = i.replaceId == null ? null : store.byId(i.replaceId!);
+        if (f == null || !i.selected || old == null) continue;
+        store.updateTrack(old.copyWith(
+          source: f.source,
+          uri: f.uri,
+          title: old.artist == Track.unknownArtist ? f.title : old.title,
+          artist: old.artist == Track.unknownArtist ? f.artist : old.artist,
+          album: f.album.isNotEmpty ? f.album : old.album,
+          durationMs: f.durationMs ?? old.durationMs,
+          artworkUrl: f.artworkUrl ?? old.artworkUrl,
+        ));
+        n++;
+      }
+      return (added: n, playlist: null);
+    }
     final picked = [
       for (final i in items)
         if (i.found != null && i.selected) i.found!

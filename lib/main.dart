@@ -72,6 +72,7 @@ Future<void> main(List<String> args) async {
   // (провайдеры меняют настройки блокировок).
   final tuned = settings.dpiTunedAt;
   // Свой VPN-ключ: поднимаем ядро Xray в фоне, музыка пока идёт напрямую.
+  XrayVpn.hwid = settings.vpnHwid;
   if (settings.vpnOn && settings.vpnServers.isNotEmpty && XrayVpn.supported) {
     final i = settings.vpnIndex.clamp(0, settings.vpnServers.length - 1);
     final s = XrayVpn.parse(settings.vpnServers[i]);

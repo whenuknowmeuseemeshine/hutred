@@ -268,9 +268,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: Icon(Ic.equalizer_rounded),
             title: const Text('Эквалайзер'),
-            subtitle: Text(Platform.isAndroid
-                ? (s.eqOn ? 'Включён' : 'Выключен')
-                : 'Пока только на Android'),
+            subtitle: Text(Platform.isIOS || Platform.isMacOS
+                ? 'Недоступен на устройствах Apple'
+                : (s.eqOn ? 'Включён' : 'Выключен')),
             trailing: Icon(Ic.chevron_right),
             onTap: () => Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const EqualizerScreen())),
@@ -1896,9 +1896,18 @@ class _VpnTile extends StatefulWidget {
 }
 
 class _VpnTileState extends State<_VpnTile> {
+  final _field = TextEditingController();
   bool _busy = false;
+  bool _editing = false;
   List<int?>? _pings;
   String? _error;
+  String? _step;
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
 
   List<VpnServer> _servers(SettingsStore s) =>
       [for (final l in s.vpnServers) XrayVpn.parse(l)].whereType<VpnServer>().toList();
@@ -1907,39 +1916,56 @@ class _VpnTileState extends State<_VpnTile> {
     final s = context.read<SettingsStore>();
     text = text.trim();
     if (text.isEmpty) return;
+    XrayVpn.hwid = s.vpnHwid;
     setState(() {
       _busy = true;
       _error = null;
       _pings = null;
+      _step = XrayVpn.isSubscription(text) ? 'Загружаю подписку…' : 'Читаю ключ…';
     });
     try {
-      final body = XrayVpn.isSubscription(text) ? await XrayVpn.fetchSubscription(text) : text;
-      final list = XrayVpn.parseMany(body);
-      if (list.isEmpty) {
-        throw text.startsWith('happ://')
-            ? 'Это зашифрованная ссылка Happ — в Happ открой сервер и скопируй обычный ключ (vless://…) или ссылку-подписку https://'
-            : 'Не нашёл в ключе ни одного сервера. Подходят vless://, vmess://, trojan://, ss:// и ссылки-подписки';
+      if (text.startsWith('happ://')) {
+        throw 'Это зашифрованная ссылка Happ, её может прочитать только Happ. '
+            'Вставь ссылку-подписку https://… или ключ сервера vless://…';
       }
-      s.setVpn(link: text, servers: [for (final x in list) x.link], index: 0, on: true);
-      await XrayVpn.start(list.first);
-      if (list.length > 1) unawaited(_pingAll());
+      final list = XrayVpn.isSubscription(text)
+          ? await XrayVpn.loadSubscription(text)
+          : XrayVpn.parseAny(text);
+      if (list.isEmpty) {
+        throw 'Не нашёл в ключе ни одного сервера. Подходят vless://, vmess://, '
+            'trojan://, ss:// и ссылки-подписки https://';
+      }
+      var best = 0;
+      if (list.length > 1) {
+        if (mounted) setState(() => _step = 'Ищу самый быстрый из ${list.length} серверов…');
+        final p = await XrayVpn.pingAll(list);
+        _pings = p;
+        for (var i = 0; i < p.length; i++) {
+          if (p[i] != null && (p[best] == null || p[i]! < p[best]!)) best = i;
+        }
+      }
+      s.setVpn(link: text, servers: [for (final x in list) x.link], index: best, on: true);
+      _field.clear();
+      _editing = false;
+      if (mounted) setState(() => _step = null);
+      await XrayVpn.start(list[best]);
     } catch (e) {
       _error = '$e';
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _step = null;
+        });
+      }
     }
   }
 
-  Future<void> _paste() async {
+  Future<void> _pasteFromClipboard() async {
     final clip = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
-    if (!mounted) return;
-    final v = clip.contains('://')
-        ? clip
-        : await AppActions.askText(context,
-            title: 'VPN-ключ',
-            hint: 'vless://… или https://ссылка-подписки',
-            action: 'Подключить');
-    if (v != null) await _applyKey(v);
+    if (clip.trim().isEmpty) return;
+    _field.text = clip.trim();
+    await _applyKey(clip);
   }
 
   Future<void> _pingAll() async {
@@ -1958,16 +1984,57 @@ class _VpnTileState extends State<_VpnTile> {
     }
     final list = _servers(s);
     if (list.isEmpty) {
-      await _paste();
+      setState(() => _editing = true);
       return;
     }
     await XrayVpn.start(list[s.vpnIndex.clamp(0, list.length - 1)]);
   }
 
+  Widget _keyField() => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _field,
+              enabled: !_busy,
+              minLines: 1,
+              maxLines: 3,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Вставь ключ сюда: https://… (подписка) или vless://…',
+                isDense: true,
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  tooltip: 'Вставить из буфера',
+                  icon: Icon(Ic.content_paste_rounded),
+                  onPressed: _busy ? null : _pasteFromClipboard,
+                ),
+              ),
+              onSubmitted: _busy ? null : _applyKey,
+            ),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              StyleButton(
+                label: _busy ? 'Подключаю…' : 'Подключить',
+                onPressed: _busy ? null : () => _applyKey(_field.text),
+              ),
+              if (context.read<SettingsStore>().vpnServers.isNotEmpty)
+                StyleButton(
+                  label: 'Отмена',
+                  primary: false,
+                  onPressed: _busy ? null : () => setState(() => _editing = false),
+                ),
+            ]),
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<SettingsStore>();
     final list = _servers(s);
+    final showField = list.isEmpty || _editing;
     return ValueListenableBuilder<String>(
       valueListenable: XrayVpn.status,
       builder: (_, st, __) => ValueListenableBuilder<String?>(
@@ -1986,9 +2053,11 @@ class _VpnTileState extends State<_VpnTile> {
                 secondary: Icon(Ic.vpn_lock_outlined),
                 title: const Text('Свой VPN-ключ (только для Hutred)'),
                 subtitle: Text(list.isEmpty
-                    ? 'Вставь ключ из Happ, v2rayN или Hiddify — vless://, vmess://, trojan://, ss:// '
-                        'или ссылку-подписку. Через VPN пойдёт только музыка, остальное — как обычно'
-                    : (msg ?? 'Выключен · ${list.length == 1 ? list.first.name : '${list.length} серверов'}')),
+                    ? 'Ключ из Happ, v2rayN или Hiddify. Через VPN пойдёт только музыка, '
+                        'остальной интернет — как обычно'
+                    : (s.vpnOn
+                        ? (msg ?? 'Подключаюсь…')
+                        : 'Выключен · ${list.length == 1 ? list.first.name : '${list.length} серверов'}')),
                 value: s.vpnOn,
                 onChanged: _busy ? null : _toggle,
               ),
@@ -1997,7 +2066,14 @@ class _VpnTileState extends State<_VpnTile> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (s.vpnOn && st != 'off')
+                    if (showField) _keyField(),
+                    if (_step != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(_step!,
+                            style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
+                      ),
+                    if (s.vpnOn && st != 'off' && list.isNotEmpty && _step == null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(children: [
@@ -2025,28 +2101,27 @@ class _VpnTileState extends State<_VpnTile> {
                         child: Text(_error!,
                             style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
                       ),
-                    Wrap(spacing: 8, runSpacing: 8, children: [
-                      StyleButton(
-                        label: _busy
-                            ? 'Подключаю…'
-                            : (list.isEmpty ? 'Вставить ключ' : 'Другой ключ'),
-                        primary: list.isEmpty,
-                        onPressed: _busy ? null : _paste,
-                      ),
-                      if (XrayVpn.isSubscription(s.vpnLink))
+                    if (!showField)
+                      Wrap(spacing: 8, runSpacing: 8, children: [
                         StyleButton(
-                          label: 'Обновить подписку',
+                          label: 'Другой ключ',
                           primary: false,
-                          onPressed: _busy ? null : () => _applyKey(s.vpnLink),
+                          onPressed: _busy ? null : () => setState(() => _editing = true),
                         ),
-                      if (list.length > 1)
-                        StyleButton(
-                          label: 'Проверить скорость',
-                          primary: false,
-                          onPressed: _busy ? null : _pingAll,
-                        ),
-                    ]),
-                    if (list.length > 1) ...[
+                        if (XrayVpn.isSubscription(s.vpnLink))
+                          StyleButton(
+                            label: _busy ? 'Обновляю…' : 'Обновить подписку',
+                            primary: false,
+                            onPressed: _busy ? null : () => _applyKey(s.vpnLink),
+                          ),
+                        if (list.length > 1)
+                          StyleButton(
+                            label: 'Проверить скорость',
+                            primary: false,
+                            onPressed: _busy ? null : _pingAll,
+                          ),
+                      ]),
+                    if (list.length > 1 && !showField) ...[
                       const SizedBox(height: 10),
                       Wrap(spacing: 8, runSpacing: 8, children: [
                         for (final (i, x) in list.indexed)

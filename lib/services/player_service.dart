@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import '../models/track.dart';
 import 'soundcloud_source.dart';
@@ -140,7 +141,7 @@ class PlayerService extends ChangeNotifier {
   /// Пауза и продолжение плавно (затихание ~0,5 с).
   bool Function() fadeOnPause = () => true;
 
-  // Эквалайзер (пока только Android): у каждого из двух плееров свой.
+  // Эквалайзер: на Android — системный, на компьютере — фильтр libmpv.
   final AndroidEqualizer? _eqA = Platform.isAndroid ? AndroidEqualizer() : null;
   final AndroidEqualizer? _eqB = Platform.isAndroid ? AndroidEqualizer() : null;
   late final AudioPlayer _a = AudioPlayer(
@@ -151,14 +152,20 @@ class PlayerService extends ChangeNotifier {
   bool _eqOn = false;
   List<double> _eqGains = const [];
 
-  bool get eqSupported => _eqA != null;
+  static final bool _mpvEq = !kIsWeb && (Platform.isWindows || Platform.isLinux);
+  static const _mpvBands = <double>[31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
-  /// Полосы эквалайзера (частоты и пределы) — появляются, когда что-то заиграло.
-  Future<AndroidEqualizerParameters?> eqParameters() async {
+  bool get eqSupported => _eqA != null || _mpvEq;
+
+  /// Полосы эквалайзера (частоты и пределы). На Android появляются,
+  /// когда что-то заиграло.
+  Future<EqInfo?> eqParameters() async {
+    if (_mpvEq) return const EqInfo(_mpvBands, -12, 12);
     final eq = _eqA;
     if (eq == null) return null;
     try {
-      return await eq.parameters.timeout(const Duration(seconds: 3));
+      final p = await eq.parameters.timeout(const Duration(seconds: 3));
+      return EqInfo([for (final b in p.bands) b.centerFrequency], p.minDecibels, p.maxDecibels);
     } catch (_) {
       return null;
     }
@@ -171,6 +178,21 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> _applyEq() async {
+    if (_mpvEq) {
+      final parts = <String>[
+        if (_eqOn && _eqGains.length == _mpvBands.length)
+          for (var i = 0; i < _mpvBands.length; i++)
+            if (_eqGains[i].abs() >= 0.1)
+              'equalizer=f=${_mpvBands[i].round()}:t=o:w=1:g=${_eqGains[i].clamp(-12, 12).toStringAsFixed(1)}',
+      ];
+      // Запас по громкости, чтобы поднятые полосы не хрипели.
+      final boost = _eqOn && _eqGains.isNotEmpty
+          ? _eqGains.reduce((a, b) => a > b ? a : b).clamp(0, 12)
+          : 0;
+      if (parts.isNotEmpty && boost > 0) parts.insert(0, 'volume=-${(boost * 0.6).toStringAsFixed(1)}dB');
+      await JustAudioMediaKit.setAudioFilter(parts.isEmpty ? '' : 'lavfi=[${parts.join(',')}]');
+      return;
+    }
     for (final eq in [_eqA, _eqB]) {
       if (eq == null) continue;
       try {
@@ -935,4 +957,13 @@ class PlayerService extends ChangeNotifier {
     _smoothPos.close();
     super.dispose();
   }
+}
+
+
+/// Полосы эквалайзера: частоты (Гц) и пределы усиления (дБ).
+class EqInfo {
+  const EqInfo(this.bands, this.min, this.max);
+  final List<double> bands;
+  final double min;
+  final double max;
 }

@@ -86,6 +86,7 @@ class Track {
       _rand.nextInt(1 << 30).toRadixString(36);
 
   Track copyWith({
+    TrackSource? source,
     String? uri,
     String? title,
     String? artist,
@@ -106,7 +107,7 @@ class Track {
       title: title ?? this.title,
       artist: artist ?? this.artist,
       album: album ?? this.album,
-      source: source,
+      source: source ?? this.source,
       uri: uri ?? this.uri,
       durationMs: durationMs ?? this.durationMs,
       artworkUrl:
