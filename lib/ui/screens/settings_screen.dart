@@ -577,6 +577,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   )),
                 ),
               ),
+            // На телефоне «Перенос» не в нижнем меню — открываем отсюда.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(
+                    top: BorderSide(
+                        color: st.glass
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : const Color(0xFF1F1F1F))),
+              ),
+              child: ListTile(
+                leading: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: st.sharp
+                        ? Colors.transparent
+                        : st.glass
+                            ? accent.withValues(alpha: 0.22)
+                            : const Color(0xFF262626),
+                    borderRadius: BorderRadius.circular(st.sharp ? 0 : st.glass ? 17 : 8),
+                  ),
+                  child: Icon(Ic.swap_horiz_rounded, size: 18, color: st.mono ? HutredTheme.text : accent),
+                ),
+                title: const Text('Перенос музыки', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Spotify, Яндекс, YouTube, папка', maxLines: 1),
+                trailing: Icon(Ic.chevron_right),
+                onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => navPage('transfer'))),
+              ),
+            ),
           ]),
         ),
       ),

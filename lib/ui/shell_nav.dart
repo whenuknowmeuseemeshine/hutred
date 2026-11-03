@@ -360,23 +360,49 @@ class PhoneNav extends StatelessWidget {
 
     Widget item(NavItem i) {
       final sel = i.id == selected;
+      final label = i.badge > 0 ? '${i.label} ${i.badge}' : i.label;
       if (style.sharp) {
+        // Резкий: слова капсом моноширинным, выбранная ячейка залита акцентом.
         return Expanded(
-          child: InkWell(
-            onTap: () => onSelect(i.id),
-            child: Center(
-              child: Container(
-                color: sel ? accent : Colors.transparent,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Material(
+            color: sel ? accent : Colors.transparent,
+            child: InkWell(
+              onTap: () => onSelect(i.id),
+              child: Center(
                 child: Text(
-                  i.badge > 0 ? '${i.label} ${i.badge}' : i.label,
+                  label.toUpperCase(),
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: small ? 11 : 13,
-                    fontWeight: FontWeight.w600,
-                    color: sel ? HutredTheme.onAccent(accent) : const Color(0xFF8A8A8A),
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: style.caption(
+                    size: small ? 9 : 10,
+                    color: sel ? HutredTheme.onAccent(accent) : const Color(0xFF9E9E9E),
                   ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+      if (style.glass) {
+        // Стекло: капсула-меню, выбранное — светлая «таблетка».
+        return Expanded(
+          child: Material(
+            color: sel ? Colors.white.withValues(alpha: 0.18) : Colors.transparent,
+            shape: const StadiumBorder(),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: () => onSelect(i.id),
+              child: Center(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: TextStyle(
+                      fontSize: small ? 10 : 11,
+                      fontWeight: FontWeight.w600,
+                      color: sel ? Colors.white : const Color(0xFFCFE3E0)),
                 ),
               ),
             ),
@@ -424,6 +450,21 @@ class PhoneNav extends StatelessWidget {
       );
     }
 
+    if (style.glass) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(10, 0, 10, bottom + 10),
+        child: Container(
+          height: 60,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0C3B3D).withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Row(children: [for (final i in items) item(i)]),
+        ),
+      );
+    }
     final decoration = switch (style.id) {
       'sharp' => BoxDecoration(
           color: ink,
@@ -445,7 +486,7 @@ class PhoneNav extends StatelessWidget {
     return Container(
       decoration: decoration,
       padding: EdgeInsets.only(bottom: bottom),
-      height: 64 + bottom,
+      height: (style.sharp ? 56 : 64) + bottom,
       child: Row(children: [for (final i in items) item(i)]),
     );
   }

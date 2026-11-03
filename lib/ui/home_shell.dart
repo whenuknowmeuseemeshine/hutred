@@ -277,7 +277,13 @@ class _HomeShellState extends State<HomeShell> {
           const MiniPlayer(),
         ],
       ),
-      bottomNavigationBar: PhoneNav(items: items, selected: _current, onSelect: onSelect),
+      // На телефоне плейлисты живут в Медиатеке, а перенос — в Настройках:
+      // так меню помещается в одну строку.
+      bottomNavigationBar: PhoneNav(
+        items: [for (final i in items) if (i.id != 'playlists' && i.id != 'transfer') i],
+        selected: _current,
+        onSelect: onSelect,
+      ),
     );
   }
 }
