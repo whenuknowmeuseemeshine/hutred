@@ -179,30 +179,8 @@ class GlassRail extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Column(
           children: [
-            // Логотип «Стекла»: буква на градиенте из акцента.
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    accent,
-                    HSLColor.fromColor(accent)
-                        .withHue((HSLColor.fromColor(accent).hue + 60) % 360)
-                        .toColor(),
-                  ],
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Text('H',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
-                      color: HutredTheme.onAccent(accent))),
-            ),
+            // Логотип Hutred в скруглённой «стеклянной» рамке.
+            const HutredLogo(size: 42, radius: 14),
             const SizedBox(height: 18),
             for (final i in items)
               Padding(
@@ -290,6 +268,8 @@ class SharpTopNav extends StatelessWidget {
       ),
       child: Row(
         children: [
+          const HutredLogo(size: 30, radius: 0),
+          const SizedBox(width: 10),
           SharpWordmark(size: 20, accent: accent),
           const SizedBox(width: 28),
           Expanded(

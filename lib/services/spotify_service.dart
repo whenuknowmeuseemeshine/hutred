@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/remote.dart';
@@ -140,6 +142,161 @@ extension SpotifyImport on SpotifyService {
   /// там самые точные — по ним лучше находятся тексты.
   Future<Paged<Track>> searchTracks(
       {required String id, required String secret, required String query, int offset = 0}) async {
+    // Ключи Spotify общие на всех, и у них лимит запросов. Поэтому:
+    // 1) одинаковые запросы помним на две недели;
+    // 2) когда Spotify просит подождать (или недоступен) — ищем в каталоге
+    //    Deezer: там те же названия, альбомы и обложки, а лимит — на каждого
+    //    пользователя свой.
+    final key = '${query.trim().toLowerCase()}|$offset';
+    final cached = await _cacheGet(key);
+    if (cached != null) return _paged(cached.$1, cached.$2, id, secret, query, offset);
+    // Сначала каталог Deezer: те же названия, альбомы и обложки, ключи не
+    // нужны, а лимит запросов у каждого пользователя свой. Общие ключи
+    // Spotify (лимит один на всех) — только если Deezer не ответил.
+    try {
+      final page = await _deezerPage(query, offset);
+      if (page.$1.isNotEmpty || offset > 0) {
+        unawaited(_cachePut(key, page.$1, page.$2));
+        return _paged(page.$1, page.$2, id, secret, query, offset);
+      }
+    } catch (e) {
+      debugPrint('[Deezer] $e');
+    }
+    if (id.isEmpty || DateTime.now().isBefore(_PacedClient._blockedUntil)) {
+      return Paged(const [], null);
+    }
+    final page = await _spotifySearch(id: id, secret: secret, query: query, offset: offset);
+    unawaited(_cachePut(key, page.$1, page.$2));
+    return _paged(page.$1, page.$2, id, secret, query, offset);
+  }
+
+  Paged<Track> _paged(List<Track> items, int total, String id, String secret, String query, int offset) {
+    final next = offset + items.length;
+    return Paged(
+      items,
+      items.isEmpty || next >= total || next >= 200
+          ? null
+          : () async => searchTracks(id: id, secret: secret, query: query, offset: next),
+    );
+  }
+
+  // ---------- Кэш поиска ----------
+
+  static Map<String, dynamic>? _cache;
+  static File? _cacheFile;
+  static Timer? _cacheSave;
+  static const _cacheTtl = Duration(days: 14);
+
+  Future<Map<String, dynamic>> _loadCache() async {
+    if (_cache != null) return _cache!;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      _cacheFile = File('${dir.path}${Platform.pathSeparator}spotify_search_cache.json');
+      if (await _cacheFile!.exists()) {
+        final j = jsonDecode(await _cacheFile!.readAsString());
+        if (j is Map<String, dynamic>) _cache = j;
+      }
+    } catch (_) {}
+    return _cache ??= {};
+  }
+
+  Future<(List<Track>, int)?> _cacheGet(String key) async {
+    final c = await _loadCache();
+    final e = c[key];
+    if (e is! Map) return null;
+    final at = DateTime.tryParse('${e['at']}');
+    if (at == null || DateTime.now().difference(at) > _cacheTtl) return null;
+    try {
+      return (
+        [
+          for (final t in (e['items'] as List))
+            Track.fromJson(Map<String, dynamic>.from(t as Map)),
+        ].map((t) => _fresh(t)).toList(),
+        (e['total'] as num?)?.toInt() ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Новый id на каждую выдачу, как при настоящем поиске.
+  static Track _fresh(Track t) => Track(
+        id: Track.newId(),
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        source: t.source,
+        uri: t.uri,
+        durationMs: t.durationMs,
+        artworkUrl: t.artworkUrl,
+        coverChecked: true,
+        addedAt: DateTime.now(),
+      );
+
+  Future<void> _cachePut(String key, List<Track> items, int total) async {
+    final c = await _loadCache();
+    c[key] = {
+      'at': DateTime.now().toIso8601String(),
+      'total': total,
+      'items': [for (final t in items) t.toJson()],
+    };
+    // Не даём файлу расти бесконечно.
+    if (c.length > 3000) {
+      final keys = c.keys.toList()
+        ..sort((a, b) => '${(c[a] as Map)['at']}'.compareTo('${(c[b] as Map)['at']}'));
+      for (final k in keys.take(c.length - 2500)) {
+        c.remove(k);
+      }
+    }
+    _cacheSave?.cancel();
+    _cacheSave = Timer(const Duration(seconds: 3), () async {
+      try {
+        await _cacheFile?.writeAsString(jsonEncode(c));
+      } catch (_) {}
+    });
+  }
+
+  // ---------- Deezer: запасной каталог ----------
+
+  static final http.Client _dz = http.Client();
+
+  Future<(List<Track>, int)> _deezerPage(String query, int offset) async {
+    final res = await _dz
+        .get(Uri.https('api.deezer.com', '/search', {
+          'q': query,
+          'limit': '10',
+          'index': '$offset',
+        }))
+        .timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) throw Exception('Deezer ответил ${res.statusCode}');
+    final j = jsonDecode(utf8.decode(res.bodyBytes));
+    if (j is! Map || j['error'] != null) throw Exception('Deezer: ${j is Map ? j['error'] : ''}');
+    final out = <Track>[];
+    for (final it in (j['data'] as List? ?? const []).whereType<Map>()) {
+      final album = it['album'] is Map ? it['album'] as Map : const {};
+      final artist = it['artist'] is Map ? it['artist'] as Map : const {};
+      final title = '${it['title'] ?? ''}';
+      if (title.isEmpty) continue;
+      out.add(Track(
+        id: Track.newId(),
+        title: title,
+        artist: '${artist['name'] ?? ''}',
+        album: '${album['title'] ?? ''}',
+        // Играет так же, как треки из каталога Spotify: звук с SoundCloud/YouTube.
+        source: TrackSource.spotify,
+        uri: 'deezer:${it['id']}',
+        durationMs: (it['duration'] as num?) == null ? null : ((it['duration'] as num) * 1000).toInt(),
+        artworkUrl: (album['cover_xl'] ?? album['cover_big']) as String?,
+        coverChecked: true,
+        addedAt: DateTime.now(),
+      ));
+    }
+    final total = (j['total'] as num?)?.toInt() ?? out.length;
+    return (out, total);
+  }
+
+  Future<(List<Track>, int)> _spotifySearch(
+      {required String id, required String secret, required String query, int offset = 0}) async {
     final token = await _getToken(id, secret);
     final res = await _client.get(
       Uri.https('api.spotify.com', '/v1/search', {
@@ -192,13 +349,7 @@ extension SpotifyImport on SpotifyService {
       ));
     }
     final total = (tracks is Map ? tracks['total'] as num? : null)?.toInt() ?? 0;
-    final next = offset + items.length;
-    return Paged(
-      out,
-      items.isEmpty || next >= total || next >= 200
-          ? null
-          : () async => searchTracks(id: id, secret: secret, query: query, offset: next),
-    );
+    return (out, total);
   }
 
   /// Без ключей: читаем открытую страницу-виджет Spotify (embed) —

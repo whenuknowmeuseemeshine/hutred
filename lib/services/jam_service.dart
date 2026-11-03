@@ -406,7 +406,8 @@ class JamService extends ChangeNotifier {
     _sendState();
   }
 
-  /// Микс джема: волна по любимым трекам всех участников.
+  /// Микс джема: у каждого участника свои рекомендации по его вкусу,
+  /// и треки идут по очереди — поровну от каждого (50/50 вдвоём).
   /// Исполнители, которые нравятся сразу нескольким, попадаются чаще.
   Future<void> startMix() async {
     if (!isHost) return;
@@ -414,20 +415,23 @@ class JamService extends ChangeNotifier {
     final fans = <String, Set<String>>{};
     _seeds.forEach((uid, list) {
       for (final t in list) {
-        fans.putIfAbsent(t.artist.toLowerCase(), () => {}).add(uid);
+        fans.putIfAbsent(WaveService.artistKey(t.artist), () => {}).add(uid);
       }
     });
-    final seeds = <({Track track, int weight})>[];
+    final groups = <List<({Track track, int weight})>>[];
     _seeds.forEach((uid, list) {
-      for (final t in list) {
-        final shared = (fans[t.artist.toLowerCase()]?.length ?? 1) > 1;
-        seeds.add((track: t, weight: shared ? 6 : 2));
-      }
+      final g = [
+        for (final t in list)
+          (track: t, weight: (fans[WaveService.artistKey(t.artist)]?.length ?? 1) > 1 ? 6 : 2),
+      ];
+      if (g.isNotEmpty) groups.add(g);
     });
-    if (seeds.isEmpty) {
+    if (groups.isEmpty) {
       throw Exception('Пока не из чего собрать микс — поставьте ♥ любимым трекам');
     }
-    await wave.startCustom(seeds, label: 'Микс джема');
+    await wave.startCustom([for (final g in groups) ...g],
+        label: groups.length > 1 ? 'Микс джема · поровну от каждого' : 'Микс джема',
+        groups: groups);
     if (wave.error != null) throw Exception(wave.error);
   }
 

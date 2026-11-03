@@ -96,8 +96,8 @@ class CoverService {
 
       // Ключи Spotify общие на всех, и у них лимит запросов. Сам по себе
       // (при включении трека) спрашиваем Spotify один раз, а не по каждому варианту.
-      final spotifyOk = settings.hasSpotifyKeys &&
-          DateTime.now().isAfter(SpotifyService.coolingUntil);
+      // Когда Spotify просит подождать, поиск сам уходит в каталог Deezer.
+      final spotifyOk = settings.hasSpotifyKeys;
       var vi = 0;
       for (final v in variants) {
         if (art != null) break;
