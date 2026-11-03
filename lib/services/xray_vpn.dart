@@ -480,6 +480,7 @@ class XrayVpn {
       return _exe = f.path;
     } catch (e) {
       debugPrint('[VPN] не скачал ядро: $e');
+      _log('Не скачал ядро: $e');
       try {
         if (tmp.existsSync()) tmp.deleteSync();
       } catch (_) {}
@@ -541,10 +542,12 @@ class XrayVpn {
     final err = StringBuffer();
     p.stdout.transform(utf8.decoder).listen((l) {
       debugPrint('[VPN] $l'.trim());
+      _log(l);
       if (l.contains('Failed') || l.contains('failed to')) err.write(l);
     });
     p.stderr.transform(utf8.decoder).listen((l) {
       debugPrint('[VPN] $l'.trim());
+      _log(l);
       err.write(l);
     });
     // Даём ядру подняться; если оно сразу упало — показываем почему.
@@ -556,23 +559,40 @@ class XrayVpn {
     return p;
   }
 
+  /// Журнал ядра и проверок — чтобы было видно, почему не подключилось.
+  static final journal = <String>[];
+  static void _log(String text) {
+    for (final l in text.split('\n')) {
+      final t = l.trim();
+      if (t.isEmpty) continue;
+      journal.add(t);
+    }
+    if (journal.length > 80) journal.removeRange(0, journal.length - 80);
+  }
+
   /// Задержка через локальный прокси на [p], мс (null — сервер не отвечает).
   static Future<int?> _ping(int p) async {
-    final c = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 8)
-      ..findProxy = ((_) => 'PROXY 127.0.0.1:$p');
-    try {
-      final sw = Stopwatch()..start();
-      final req = await c.getUrl(Uri.parse('https://www.gstatic.com/generate_204'));
-      final res = await req.close().timeout(const Duration(seconds: 10));
-      await res.drain<void>();
-      if (res.statusCode >= 400) return null;
-      return sw.elapsedMilliseconds;
-    } catch (_) {
-      return null;
-    } finally {
-      c.close(force: true);
+    for (final url in const [
+      'https://www.gstatic.com/generate_204',
+      'https://cp.cloudflare.com/generate_204',
+    ]) {
+      final c = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 12)
+        ..findProxy = ((_) => 'PROXY 127.0.0.1:$p');
+      try {
+        final sw = Stopwatch()..start();
+        final req = await c.getUrl(Uri.parse(url));
+        final res = await req.close().timeout(const Duration(seconds: 15));
+        await res.drain<void>();
+        if (res.statusCode < 400) return sw.elapsedMilliseconds;
+        _log('Проверка $url: код ${res.statusCode}');
+      } catch (e) {
+        _log('Проверка $url: $e');
+      } finally {
+        c.close(force: true);
+      }
     }
+    return null;
   }
 
   /// Включает VPN через сервер [s].
@@ -581,6 +601,7 @@ class XrayVpn {
     await stop(keepStatus: true);
     status.value = 'starting';
     message.value = 'Подключаюсь к «${s.name}»…';
+    _log('— Подключение к «${s.name}» (${s.protocol}), ${Platform.operatingSystem}');
     try {
       await _killStale();
       final p = await _freePort();
@@ -604,6 +625,7 @@ class XrayVpn {
       if (gen != _gen) return;
       if (ms == null) {
         // Сервер не отвечает — трафик пускаем напрямую, чтобы музыка не встала.
+        _log('Сервер не ответил через ядро ($_exe)');
         port = null;
         status.value = 'error';
         message.value = '«${s.name}» не отвечает. Музыка пока идёт без VPN';
@@ -618,6 +640,7 @@ class XrayVpn {
       port = null;
       status.value = 'error';
       message.value = '$e';
+      _log('Ошибка: $e');
     }
   }
 
