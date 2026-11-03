@@ -82,6 +82,87 @@ class WaveService extends ChangeNotifier {
   }
   final Set<String> _disliked = {};
 
+  /// Синхронизация скрытого и чёрного списка между устройствами:
+  /// 'd:<ключ трека>' / 'b:<исполнитель>' → когда менялось и удалено ли.
+  final Map<String, ({DateTime at, bool del})> _syncStamps = {};
+
+  /// Вызывается, когда скрытое или чёрный список поменялись (для облака).
+  VoidCallback? onSyncChange;
+
+  void _mark(String id, {bool del = false}) {
+    _syncStamps[id] = (at: DateTime.now().toUtc(), del: del);
+    onSyncChange?.call();
+  }
+
+  /// Что отправить в облако: все записи с отметками времени.
+  Map<String, dynamic> syncData() {
+    final d = <String, dynamic>{};
+    final b = <String, dynamic>{};
+    _syncStamps.forEach((id, st) {
+      final key = id.substring(2);
+      if (id.startsWith('d:')) {
+        final info = _dislikedInfo[key];
+        d[key] = {
+          't': info?.title ?? '',
+          'a': info?.artist ?? '',
+          'at': st.at.toIso8601String(),
+          if (st.del) 'x': true,
+        };
+      } else if (id.startsWith('b:')) {
+        b[key] = {
+          'n': _blockedNames[key] ?? key,
+          'at': st.at.toIso8601String(),
+          if (st.del) 'x': true,
+        };
+      }
+    });
+    return {'d': d, 'b': b};
+  }
+
+  /// Изменения с другого устройства: по каждой записи побеждает более новая.
+  Future<void> mergeRemote(Map<String, dynamic> data) async {
+    var changed = false;
+    void each(String prefix, Object? m, void Function(String key, Map v, bool del) apply) {
+      if (m is! Map) return;
+      m.forEach((k, v) {
+        if (v is! Map) return;
+        final at = DateTime.tryParse('${v['at']}')?.toUtc();
+        if (at == null) return;
+        final id = '$prefix:$k';
+        final local = _syncStamps[id];
+        if (local != null && !at.isAfter(local.at)) return;
+        final del = v['x'] == true;
+        _syncStamps[id] = (at: at, del: del);
+        apply('$k', v, del);
+        changed = true;
+      });
+    }
+
+    each('d', data['d'], (key, v, del) {
+      if (del) {
+        _disliked.remove(key);
+        _dislikedInfo.remove(key);
+      } else {
+        _disliked.add(key);
+        final t = '${v['t'] ?? ''}';
+        if (t.isNotEmpty) _dislikedInfo[key] = (title: t, artist: '${v['a'] ?? ''}');
+      }
+    });
+    each('b', data['b'], (key, v, del) {
+      if (del) {
+        _blocked.remove(key);
+        _blockedNames.remove(key);
+      } else {
+        _blocked.add(key);
+        _blockedNames[key] = '${v['n'] ?? key}';
+      }
+    });
+    if (changed) {
+      await _save();
+      notifyListeners();
+    }
+  }
+
   /// Название и исполнитель скрытых треков — чтобы показать их списком.
   final Map<String, ({String title, String artist})> _dislikedInfo = {};
   final Map<String, int> _dislikedArtists = {};
@@ -148,6 +229,19 @@ class WaveService extends ChangeNotifier {
         _blocked.add(_norm(name));
         _blockedNames[_norm(name)] = name;
       }
+      (j['syncStamps'] as Map? ?? const {}).forEach((k, v) {
+        if (v is! Map) return;
+        final at = DateTime.tryParse('${v['at']}')?.toUtc();
+        if (at != null) _syncStamps['$k'] = (at: at, del: v['x'] == true);
+      });
+      // Старые записи без отметки — «давние», любое новое изменение их перебьёт.
+      final old = DateTime.utc(2020);
+      for (final k in _disliked) {
+        _syncStamps.putIfAbsent('d:$k', () => (at: old, del: false));
+      }
+      for (final k in _blocked) {
+        _syncStamps.putIfAbsent('b:$k', () => (at: old, del: false));
+      }
     } catch (e) {
       debugPrint('Волна: не удалось прочитать настройки: $e');
     }
@@ -163,6 +257,10 @@ class WaveService extends ChangeNotifier {
         },
         'dislikedArtists': _dislikedArtists,
         'blockedArtists': _blockedNames.values.toList(),
+        'syncStamps': {
+          for (final e in _syncStamps.entries)
+            e.key: {'at': e.value.at.toIso8601String(), if (e.value.del) 'x': true},
+        },
         'skippedArtists': _skippedArtists,
         'skippedTracks': _skippedTracks.toList(),
         'favoriteArtists': {
@@ -245,6 +343,7 @@ class WaveService extends ChangeNotifier {
     if (n.isEmpty) return;
     _blocked.add(n);
     _blockedNames[n] = name.trim();
+    _mark('b:$n');
     await _save();
     notifyListeners();
     final cur = player.current;
@@ -255,6 +354,7 @@ class WaveService extends ChangeNotifier {
     final n = _norm(name);
     _blocked.remove(n);
     _blockedNames.remove(n);
+    _mark('b:$n', del: true);
     await _save();
     notifyListeners();
   }
@@ -264,6 +364,7 @@ class WaveService extends ChangeNotifier {
     final k = _key(t);
     if (_disliked.remove(k)) {
       _dislikedInfo.remove(k);
+      _mark('d:$k', del: true);
       await _save();
       notifyListeners();
       return;
@@ -573,6 +674,7 @@ class WaveService extends ChangeNotifier {
   Future<void> dislike(Track t) async {
     _disliked.add(_key(t));
     _dislikedInfo[_key(t)] = (title: t.title, artist: t.artist);
+    _mark('d:${_key(t)}');
     final a = t.artist.toLowerCase();
     _dislikedArtists[a] = (_dislikedArtists[a] ?? 0) + 1;
     await _save();
@@ -581,6 +683,9 @@ class WaveService extends ChangeNotifier {
   }
 
   Future<void> resetDislikes() async {
+    for (final k in _disliked) {
+      _mark('d:$k', del: true);
+    }
     _disliked.clear();
     _dislikedInfo.clear();
     _dislikedArtists.clear();
@@ -644,6 +749,7 @@ class WaveService extends ChangeNotifier {
   Future<void> undislikeKey(String key) async {
     if (!_disliked.remove(key)) return;
     _dislikedInfo.remove(key);
+    _mark('d:$key', del: true);
     await _save();
     notifyListeners();
   }

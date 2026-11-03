@@ -159,6 +159,8 @@ Future<void> main(List<String> args) async {
 
   final wave = WaveService(store: store, player: player, soundcloud: soundcloud);
   await wave.load();
+  // Скрытые треки и чёрный список — через облако на все устройства.
+  account.wave = wave;
   // Умное перемешивание берёт похожие треки из «Моей волны».
   player.recommend = (seeds, count) => wave.recommendFrom(seeds, size: count);
   // Скрытые треки и исполнители из чёрного списка не играют.

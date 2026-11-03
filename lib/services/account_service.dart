@@ -11,6 +11,7 @@ import 'relay.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import 'library_store.dart';
+import 'wave_service.dart';
 import 'settings_store.dart';
 
 /// Аккаунты (Supabase) и синхронизация медиатеки между устройствами.
@@ -467,6 +468,22 @@ class AccountService extends ChangeNotifier {
 
   // ---------- Синхронизация ----------
 
+  /// Скрытые треки и чёрный список волны — тоже синхронизируются.
+  WaveService? _wave;
+  bool _waveDirty = false;
+  static const _waveItem = '__wave__';
+
+  set wave(WaveService w) {
+    _wave = w;
+    // При запуске отправляем своё (старые скрытые ещё не были в облаке).
+    _waveDirty = true;
+    if (signedIn) _onLocalChange();
+    w.onSyncChange = () {
+      _waveDirty = true;
+      _onLocalChange();
+    };
+  }
+
   void _onLocalChange() {
     if (!signedIn) return;
     _pushTimer?.cancel();
@@ -521,6 +538,10 @@ class AccountService extends ChangeNotifier {
       final remote = <SyncRecord>[];
       for (final r in rows) {
         final at = DateTime.parse('${r['updated_at']}').toUtc();
+        if (r['item_id'] == _waveItem) {
+          if (pulled == null || at.isAfter(pulled)) pulled = at;
+          continue;
+        }
         remote.add(SyncRecord(
           '${r['kind']}',
           '${r['item_id']}',
@@ -531,6 +552,19 @@ class AccountService extends ChangeNotifier {
         if (pulled == null || at.isAfter(pulled)) pulled = at;
       }
       store.applyRemote(remote);
+
+      // Скрытые треки и чёрный список — одна маленькая запись, читаем всегда.
+      if (_wave != null) {
+        final w = await _db
+            .from('library_items')
+            .select('data')
+            .eq('user_id', uid)
+            .eq('item_id', _waveItem)
+            .maybeSingle();
+        if (w != null && w['data'] is Map) {
+          await _wave!.mergeRemote(Map<String, dynamic>.from(w['data'] as Map));
+        }
+      }
 
       // 2. Отправляем свои изменения.
       final local = store.changesSince(state.pushed);
@@ -547,6 +581,17 @@ class AccountService extends ChangeNotifier {
               'updated_at': r.updatedAt.toIso8601String(),
             }
         ]);
+      }
+      if (_wave != null && (_waveDirty || state.pushed == null)) {
+        _waveDirty = false;
+        await _db.from('library_items').upsert({
+          'user_id': uid,
+          'kind': 'playlist',
+          'item_id': _waveItem,
+          'data': _wave!.syncData(),
+          'deleted': false,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        });
       }
       await _writeState(uid, started, pulled);
       _lastSync = DateTime.now();

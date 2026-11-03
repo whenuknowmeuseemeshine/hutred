@@ -231,6 +231,7 @@ class FriendsService extends ChangeNotifier {
       try {
         final j = Map<String, dynamic>.from(d);
         if (r['kind'] == 'playlist') {
+          if (r['item_id'] == '__wave__') continue;
           lists.add(Playlist.fromJson(j));
         } else if (r['kind'] == 'track') {
           final orig = '${j['id']}';
