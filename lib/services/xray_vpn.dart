@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../config.dart';
+
 /// Один сервер из VPN-ключа.
 class VpnServer {
   VpnServer({required this.link, required this.name, required this.outbound});
@@ -354,7 +356,40 @@ class XrayVpn {
     for (final c in candidates) {
       if (File(c).existsSync()) return _exe = c;
     }
+    if (Platform.isWindows) return _download();
     return null;
+  }
+
+  static const _coreVersion = 'v26.9.30';
+
+  /// На Windows ядро не входит в установщик — скачиваем его один раз
+  /// из нашего хранилища (там же лежат обновления Hutred).
+  static Future<String?> _download() async {
+    final dir = await getApplicationSupportDirectory();
+    final f = File('${dir.path}\\hutred-xray-$_coreVersion.exe');
+    if (f.existsSync() && f.lengthSync() > 1000000) return _exe = f.path;
+    if (HutredConfig.supabaseUrl.isEmpty) return null;
+    message.value = 'Скачиваю ядро VPN (≈30 МБ, один раз)…';
+    final tmp = File('${f.path}.part');
+    final c = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final req = await c.getUrl(Uri.parse('${HutredConfig.supabaseUrl}'
+          '/storage/v1/object/public/releases/tools/hutred-xray-$_coreVersion.exe'));
+      final res = await req.close();
+      if (res.statusCode != 200) throw 'код ${res.statusCode}';
+      await res.pipe(tmp.openWrite());
+      if (tmp.lengthSync() < 1000000) throw 'файл повреждён';
+      await tmp.rename(f.path);
+      return _exe = f.path;
+    } catch (e) {
+      debugPrint('[VPN] не скачал ядро: $e');
+      try {
+        if (tmp.existsSync()) tmp.deleteSync();
+      } catch (_) {}
+      return null;
+    } finally {
+      c.close(force: true);
+    }
   }
 
   static Future<int> _freePort() async {
@@ -393,7 +428,7 @@ class XrayVpn {
 
   static Future<Process> _launch(Map<String, dynamic> config, String name) async {
     final exe = await _findCore();
-    if (exe == null) throw 'ядро VPN не найдено рядом с Hutred — обнови приложение';
+    if (exe == null) throw Platform.isWindows ? 'не удалось скачать ядро VPN — проверь интернет и попробуй ещё раз' : 'ядро VPN не найдено — обнови Hutred';
     final dir = await getApplicationSupportDirectory();
     final f = File('${dir.path}${Platform.pathSeparator}$name.json');
     await f.writeAsString(jsonEncode(config));
@@ -524,7 +559,9 @@ class XrayVpn {
     if (_staleKilled || !Platform.isWindows) return;
     _staleKilled = true;
     try {
-      await Process.run('taskkill', ['/IM', 'hutred-xray.exe', '/F']).timeout(const Duration(seconds: 5));
+      for (final n in ['hutred-xray.exe', 'hutred-xray-$_coreVersion.exe']) {
+        await Process.run('taskkill', ['/IM', n, '/F']).timeout(const Duration(seconds: 5));
+      }
     } catch (_) {}
   }
 
