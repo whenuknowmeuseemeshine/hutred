@@ -49,6 +49,14 @@ android {
         }
     }
 
+    // Ядро VPN (libxray.so) запускается как программа — для этого
+    // нативные библиотеки должны лежать распакованными.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     buildTypes {
         release {
             signingConfig = if (keyProps.isNotEmpty())

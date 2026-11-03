@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import 'player_service.dart';
 import 'settings_store.dart';
+import 'xray_vpn.dart';
 
 /// Автообновление. Облачная сборка кладёт новые версии в Supabase Storage
 /// (корзина releases) вместе с файлом latest.json. Приложение сверяет номер
@@ -174,6 +175,8 @@ class UpdateService extends ChangeNotifier {
       // yt-dlp мог как раз качать трек или обновляться — закрываем его,
       // иначе установщик спросит, можно ли его закрыть.
       try {
+        await XrayVpn.stop();
+        await XrayVpn.stop();
         await Process.run('taskkill', ['/IM', 'yt-dlp.exe', '/F'])
             .timeout(const Duration(seconds: 5));
       } catch (_) {}

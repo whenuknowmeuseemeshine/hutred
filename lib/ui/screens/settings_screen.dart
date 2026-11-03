@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/account_service.dart';
@@ -26,6 +28,8 @@ import '../widgets/style_bits.dart';
 import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
 import '../icons.dart';
+import '../../services/relay.dart';
+import '../../services/xray_vpn.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -49,7 +53,7 @@ const _sectionKeywords = {
   'Админ': 'админ всем ключи раздать',
   'Discord': 'дискорд статус активность rich presence слушает',
   'Обновления': 'обновление версия сборка автозапуск автозагрузка windows трей',
-  'Сеть': 'обход блокировок zapret vpn впн россия прокси проверить связь соединение dns днс 1.1.1.1 google cloudflare',
+  'Сеть': 'сервер посредник oracle прокси впн обход блокировок zapret vpn впн россия прокси проверить связь соединение dns днс 1.1.1.1 google cloudflare',
   'YouTube': 'ютуб вход cookies браузер 18+',
   'Версия': 'обновление обновить проверить версия сборка',
   'Загрузки и кэш': 'скачать скачанные офлайн без интернета кэш память место удалить',
@@ -353,6 +357,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (acc.isAdmin && acc.enabled && acc.signedIn) ...[
             const _Section('Админ'),
             const _AdminTiles(),
+            const _RelayAdminTile(),
           ],
           if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
             const _Section('Discord'),
@@ -398,6 +403,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const _UpdatesTiles(),
           ],
           const _Section('Сеть'),
+          if (XrayVpn.supported) const _VpnTile(),
+          const _RelayTile(),
           SwitchListTile(
             secondary: Icon(Ic.vpn_lock_outlined),
             title: const Text('Обход блокировок (для России)'),
@@ -417,6 +424,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.dnsOnly,
             onChanged: s.dpiBypass ? (v) => s.dnsOnly = v : null,
           ),
+          if (s.dpiBypass && !s.dnsOnly) const _DpiTuneTile(),
           ValueListenableBuilder<bool>(
             valueListenable: DpiBypass.zapretRunning,
             builder: (_, z, __) => !z
@@ -1689,4 +1697,380 @@ class _GroupPage extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+/// Сервер-посредник: как через него ходить и работает ли он.
+class _RelayTile extends StatefulWidget {
+  const _RelayTile();
+
+  @override
+  State<_RelayTile> createState() => _RelayTileState();
+}
+
+class _RelayTileState extends State<_RelayTile> {
+  String? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    if (HutredRelay.url == null) return;
+    final h = await HutredRelay.health();
+    if (mounted) setState(() => _status = h == null ? 'не отвечает' : 'работает');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final acc = context.watch<AccountService>();
+    final url = HutredRelay.url;
+    final host = url == null ? null : Uri.tryParse(url)?.host;
+    final String sub;
+    if (url == null) {
+      sub = 'Сервер ещё не настроен админом';
+    } else if (!acc.signedIn) {
+      sub = 'Работает только после входа в аккаунт';
+    } else {
+      sub = 'Сервер $host · ${_status ?? 'проверяю…'}'
+          '${HutredRelay.used > 0 ? ' · через него прошло запросов: ${HutredRelay.used}' : ''}';
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Ic.public, size: 22, color: HutredTheme.muted),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Text('Сервер Hutred для заблокированного',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(left: 38, top: 4),
+            child: Text(
+              'Если YouTube, SoundCloud или Spotify не открываются (например, в России), '
+              'Hutred скачает трек через свой сервер. Остальной интернет не трогает. $sub',
+              style: const TextStyle(color: HutredTheme.muted, fontSize: 13, height: 1.4),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 38, top: 10),
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final (v, label) in const [
+                ('auto', 'Когда не открывается'),
+                ('always', 'Всегда'),
+                ('off', 'Никогда'),
+              ])
+                StyleChip(
+                  label: label,
+                  selected: s.relayMode == v,
+                  onTap: () => s.relayMode = v,
+                ),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Админ: адрес сервера-посредника для всех.
+class _RelayAdminTile extends StatelessWidget {
+  const _RelayAdminTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final acc = context.watch<AccountService>();
+    return ListTile(
+      leading: Icon(Ic.dns_outlined),
+      title: const Text('Сервер-посредник для всех'),
+      subtitle: Text(HutredRelay.url ?? 'Не задан — вставь адрес из установки сервера'),
+      trailing: Icon(Ic.edit_outlined),
+      onTap: () async {
+        final ctrl = TextEditingController(text: HutredRelay.url ?? '');
+        final v = await showDialog<String>(
+          context: context,
+          builder: (d) => AlertDialog(
+            title: const Text('Адрес сервера'),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: 'https://1-2-3-4.sslip.io'),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(d), child: const Text('Отмена')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(d, ctrl.text.trim()),
+                  child: const Text('Сохранить')),
+            ],
+          ),
+        );
+        if (v == null) return;
+        var url = v;
+        if (url.isNotEmpty && !url.startsWith('http')) url = 'https://$url';
+        final err = await acc.pushConfig('relay', {'url': url});
+        if (context.mounted) {
+          AppActions.toast(context, err ?? (url.isEmpty ? 'Сервер убран' : 'Сервер сохранён для всех'));
+        }
+      },
+    );
+  }
+}
+
+
+/// Способ обхода блокировок: что подобрано и кнопка «подобрать заново».
+class _DpiTuneTile extends StatefulWidget {
+  const _DpiTuneTile();
+
+  @override
+  State<_DpiTuneTile> createState() => _DpiTuneTileState();
+}
+
+class _DpiTuneTileState extends State<_DpiTuneTile> {
+  String? _progress;
+
+  Future<void> _tune() async {
+    final s = context.read<SettingsStore>();
+    setState(() => _progress = 'Проверяю…');
+    final best = await DpiBypass.autotune(
+        onProgress: (p) => mounted ? setState(() => _progress = p) : null);
+    s.setDpiStrategy(best);
+    if (mounted) setState(() => _progress = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    return ValueListenableBuilder<String>(
+      valueListenable: DpiBypass.status,
+      builder: (_, st, __) => Padding(
+        padding: const EdgeInsets.fromLTRB(72, 0, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _progress ??
+                  (st.isEmpty
+                      ? 'Способ обхода ещё не подбирался — Hutred проверит сам через пару секунд'
+                      : st),
+              style: const TextStyle(color: HutredTheme.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              StyleButton(
+                label: _progress == null ? 'Подобрать способ заново' : 'Подбираю…',
+                primary: false,
+                onPressed: _progress == null ? _tune : null,
+              ),
+              for (final k in DpiBypass.strategies)
+                StyleChip(
+                  label: DpiBypass.strategyLabel(k),
+                  selected: (s.dpiStrategy ?? 'split') == k,
+                  onTap: () {
+                    DpiBypass.strategy = k;
+                    s.setDpiStrategy(k);
+                    DpiBypass.status.value = 'Способ: ${DpiBypass.strategyLabel(k)} (выбран вручную)';
+                  },
+                ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Свой VPN-ключ только для Hutred (ядро Xray рядом с приложением).
+class _VpnTile extends StatefulWidget {
+  const _VpnTile();
+
+  @override
+  State<_VpnTile> createState() => _VpnTileState();
+}
+
+class _VpnTileState extends State<_VpnTile> {
+  bool _busy = false;
+  List<int?>? _pings;
+  String? _error;
+
+  List<VpnServer> _servers(SettingsStore s) =>
+      [for (final l in s.vpnServers) XrayVpn.parse(l)].whereType<VpnServer>().toList();
+
+  Future<void> _applyKey(String text) async {
+    final s = context.read<SettingsStore>();
+    text = text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _pings = null;
+    });
+    try {
+      final body = XrayVpn.isSubscription(text) ? await XrayVpn.fetchSubscription(text) : text;
+      final list = XrayVpn.parseMany(body);
+      if (list.isEmpty) {
+        throw text.startsWith('happ://')
+            ? 'Это зашифрованная ссылка Happ — в Happ открой сервер и скопируй обычный ключ (vless://…) или ссылку-подписку https://'
+            : 'Не нашёл в ключе ни одного сервера. Подходят vless://, vmess://, trojan://, ss:// и ссылки-подписки';
+      }
+      s.setVpn(link: text, servers: [for (final x in list) x.link], index: 0, on: true);
+      await XrayVpn.start(list.first);
+      if (list.length > 1) unawaited(_pingAll());
+    } catch (e) {
+      _error = '$e';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _paste() async {
+    final clip = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+    if (!mounted) return;
+    final v = clip.contains('://')
+        ? clip
+        : await AppActions.askText(context,
+            title: 'VPN-ключ',
+            hint: 'vless://… или https://ссылка-подписки',
+            action: 'Подключить');
+    if (v != null) await _applyKey(v);
+  }
+
+  Future<void> _pingAll() async {
+    final list = _servers(context.read<SettingsStore>());
+    setState(() => _pings = null);
+    final r = await XrayVpn.pingAll(list);
+    if (mounted) setState(() => _pings = r);
+  }
+
+  Future<void> _toggle(bool on) async {
+    final s = context.read<SettingsStore>();
+    s.setVpn(on: on);
+    if (!on) {
+      await XrayVpn.stop();
+      return;
+    }
+    final list = _servers(s);
+    if (list.isEmpty) {
+      await _paste();
+      return;
+    }
+    await XrayVpn.start(list[s.vpnIndex.clamp(0, list.length - 1)]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final list = _servers(s);
+    return ValueListenableBuilder<String>(
+      valueListenable: XrayVpn.status,
+      builder: (_, st, __) => ValueListenableBuilder<String?>(
+        valueListenable: XrayVpn.message,
+        builder: (_, msg, __) {
+          final dot = switch (st) {
+            'on' => Colors.greenAccent,
+            'starting' => Colors.amberAccent,
+            'error' => Colors.redAccent,
+            _ => HutredTheme.muted,
+          };
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile(
+                secondary: Icon(Ic.vpn_lock_outlined),
+                title: const Text('Свой VPN-ключ (только для Hutred)'),
+                subtitle: Text(list.isEmpty
+                    ? 'Вставь ключ из Happ, v2rayN или Hiddify — vless://, vmess://, trojan://, ss:// '
+                        'или ссылку-подписку. Через VPN пойдёт только музыка, остальное — как обычно'
+                    : (msg ?? 'Выключен · ${list.length == 1 ? list.first.name : '${list.length} серверов'}')),
+                value: s.vpnOn,
+                onChanged: _busy ? null : _toggle,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(72, 0, 16, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (s.vpnOn && st != 'off')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              switch (st) {
+                                'on' => 'Музыка идёт через VPN',
+                                'starting' => 'Подключаюсь…',
+                                _ => 'VPN не работает — музыка идёт напрямую',
+                              },
+                              style: const TextStyle(color: HutredTheme.muted, fontSize: 13),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(_error!,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                      ),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      StyleButton(
+                        label: _busy
+                            ? 'Подключаю…'
+                            : (list.isEmpty ? 'Вставить ключ' : 'Другой ключ'),
+                        primary: list.isEmpty,
+                        onPressed: _busy ? null : _paste,
+                      ),
+                      if (XrayVpn.isSubscription(s.vpnLink))
+                        StyleButton(
+                          label: 'Обновить подписку',
+                          primary: false,
+                          onPressed: _busy ? null : () => _applyKey(s.vpnLink),
+                        ),
+                      if (list.length > 1)
+                        StyleButton(
+                          label: 'Проверить скорость',
+                          primary: false,
+                          onPressed: _busy ? null : _pingAll,
+                        ),
+                    ]),
+                    if (list.length > 1) ...[
+                      const SizedBox(height: 10),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        for (final (i, x) in list.indexed)
+                          StyleChip(
+                            label: _pings == null || i >= _pings!.length
+                                ? x.name
+                                : '${x.name} · ${_pings![i] == null ? 'нет связи' : '${_pings![i]} мс'}',
+                            selected: s.vpnIndex == i,
+                            onTap: _busy
+                                ? null
+                                : () {
+                                    s.setVpn(index: i, on: true);
+                                    XrayVpn.start(x);
+                                  },
+                          ),
+                      ]),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }

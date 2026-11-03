@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/settings_store.dart';
+import '../../services/xray_vpn.dart';
 import '../theme.dart';
 import '../icons.dart';
 
@@ -55,6 +56,7 @@ class StylePicker extends StatelessWidget {
                 TextButton(
                   onPressed: () async {
                     // Настройки уже сохранены; запускаем себя заново и выходим.
+                    await XrayVpn.stop();
                     await Future.delayed(const Duration(milliseconds: 400));
                     await Process.start(Platform.resolvedExecutable, const [],
                         mode: ProcessStartMode.detached);

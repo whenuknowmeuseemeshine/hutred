@@ -93,6 +93,8 @@ class SettingsStore extends ChangeNotifier {
   bool _autoFavorite = true;
   bool _discordPresence = true;
   bool? _dpiBypass;
+  String? _dpiStrategy;
+  DateTime? _dpiTunedAt;
   bool _autoUpdate = true;
   bool _closeToTray = true;
   bool _crossfade = false;
@@ -101,6 +103,11 @@ class SettingsStore extends ChangeNotifier {
   bool _guest = false;
   bool _dnsOnly = false;
   bool _shareOnline = true;
+  String _relayMode = 'auto';
+  String _vpnLink = '';
+  List<String> _vpnServers = const [];
+  int _vpnIndex = 0;
+  bool _vpnOn = false;
   bool _eqOn = false;
   List<double> _eqGains = const [];
   bool _pickArtists = false;
@@ -109,6 +116,27 @@ class SettingsStore extends ChangeNotifier {
   File? _file;
 
   Color get accent => _accent;
+
+  /// Сервер-посредник: auto, always или off.
+  String get relayMode => _relayMode;
+  set relayMode(String v) {
+    _relayMode = v;
+    _save();
+  }
+
+  /// Свой VPN-ключ (vless://, vmess://, trojan://, ss:// или ссылка-подписка).
+  /// Работает только для трафика Hutred. Хранится только на этом устройстве.
+  String get vpnLink => _vpnLink;
+  List<String> get vpnServers => _vpnServers;
+  int get vpnIndex => _vpnIndex;
+  bool get vpnOn => _vpnOn;
+  void setVpn({String? link, List<String>? servers, int? index, bool? on}) {
+    if (link != null) _vpnLink = link;
+    if (servers != null) _vpnServers = servers;
+    if (index != null) _vpnIndex = index;
+    if (on != null) _vpnOn = on;
+    _save();
+  }
 
   /// Показывать друзьям, что я в сети и что слушаю.
   bool get shareOnline => _shareOnline;
@@ -197,6 +225,15 @@ class SettingsStore extends ChangeNotifier {
           DateTime.now().timeZoneOffset == const Duration(hours: 3));
   set dpiBypass(bool v) {
     _dpiBypass = v;
+    _save();
+  }
+
+  /// Подобранный способ обхода и когда его подбирали.
+  String? get dpiStrategy => _dpiStrategy;
+  DateTime? get dpiTunedAt => _dpiTunedAt;
+  void setDpiStrategy(String s) {
+    _dpiStrategy = s;
+    _dpiTunedAt = DateTime.now();
     _save();
   }
 
@@ -549,6 +586,8 @@ class SettingsStore extends ChangeNotifier {
       _autoFavorite = j['autoFavorite'] as bool? ?? true;
       _discordPresence = j['discordPresence'] as bool? ?? true;
       _dpiBypass = j['dpiBypass'] as bool?;
+      _dpiStrategy = j['dpiStrategy'] as String?;
+      _dpiTunedAt = DateTime.tryParse(j['dpiTunedAt'] as String? ?? '');
       _autoUpdate = j['autoUpdate'] as bool? ?? true;
       _closeToTray = j['closeToTray'] as bool? ?? true;
       _crossfade = j['crossfade'] as bool? ?? false;
@@ -557,6 +596,11 @@ class SettingsStore extends ChangeNotifier {
       _guest = j['guest'] as bool? ?? false;
       _dnsOnly = j['dnsOnly'] as bool? ?? false;
       _shareOnline = j['shareOnline'] as bool? ?? true;
+      _relayMode = j['relayMode'] as String? ?? 'auto';
+      _vpnLink = j['vpnLink'] as String? ?? '';
+      _vpnServers = [for (final v in (j['vpnServers'] as List? ?? const [])) '$v'];
+      _vpnIndex = (j['vpnIndex'] as num?)?.toInt() ?? 0;
+      _vpnOn = j['vpnOn'] as bool? ?? false;
       _eqOn = j['eqOn'] as bool? ?? false;
       _eqGains = [for (final g in (j['eqGains'] as List? ?? const [])) (g as num).toDouble()];
       _pickArtists = j['pickArtists'] as bool? ?? false;
@@ -585,6 +629,8 @@ class SettingsStore extends ChangeNotifier {
         'autoFavorite': _autoFavorite,
         'discordPresence': _discordPresence,
         if (_dpiBypass != null) 'dpiBypass': _dpiBypass,
+        if (_dpiStrategy != null) 'dpiStrategy': _dpiStrategy,
+        if (_dpiTunedAt != null) 'dpiTunedAt': _dpiTunedAt!.toIso8601String(),
         'autoUpdate': _autoUpdate,
         'closeToTray': _closeToTray,
         'crossfade': _crossfade,
@@ -593,6 +639,11 @@ class SettingsStore extends ChangeNotifier {
         'guest': _guest,
         'dnsOnly': _dnsOnly,
         'shareOnline': _shareOnline,
+        'relayMode': _relayMode,
+        'vpnLink': _vpnLink,
+        'vpnServers': _vpnServers,
+        'vpnIndex': _vpnIndex,
+        'vpnOn': _vpnOn,
         'eqOn': _eqOn,
         'eqGains': _eqGains,
         'pickArtists': _pickArtists,

@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import 'relay.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/solvers.dart';
@@ -17,7 +21,9 @@ import 'yt_dlp.dart';
 class YoutubeSource {
   YoutubeSource({this.cookiesBrowser});
 
-  final YoutubeExplode _yt = YoutubeExplode();
+  // Через посредника Hutred, если YouTube напрямую не открывается.
+  final YoutubeHttpClient _ytHttp = YoutubeHttpClient(RelayClient());
+  late final YoutubeExplode _yt = YoutubeExplode(httpClient: _ytHttp);
 
   /// Браузер, из которого yt-dlp берёт вход в YouTube (для видео 18+).
   /// Пустая строка — без входа.
@@ -48,7 +54,7 @@ class YoutubeSource {
     return _wrap(await _yt.search.search(query));
   }
 
-  final _http = http.Client();
+  final http.Client _http = RelayClient();
 
   /// Поиск видео через внутренний API YouTube (тот же, что у сайта).
   Future<Paged<Track>> _innertubeSearch(String query, {String? continuation}) async {
@@ -342,7 +348,7 @@ class YoutubeSource {
     return _solverFuture ??= () async {
       try {
         final solver = await DenoEJSSolver.init();
-        return YoutubeExplode(jsSolver: solver);
+        return YoutubeExplode(httpClient: YoutubeHttpClient(RelayClient()), jsSolver: solver);
       } catch (_) {
         return null; // Deno не установлен.
       }
@@ -370,11 +376,34 @@ class YoutubeSource {
     _live[videoId] = live;
     final sink = part.openWrite();
     try {
-      // Пишем кусками и сразу сбрасываем на диск, чтобы плеер мог
-      // начать играть, пока остальное докачивается.
-      await for (final chunk in yt.videos.streams.get(info)) {
-        sink.add(chunk);
-        await sink.flush();
+      // Быстрый путь: качаем файл в 4 потока кусками по 512 КБ (замедление
+      // YouTube у провайдера действует на каждое соединение отдельно),
+      // а пишем по порядку — плеер начинает играть с первого куска.
+      var done = false;
+      final url = info.url.toString();
+      if (info.fragments.isEmpty &&
+          info.size.totalBytes > 0 &&
+          !url.contains('hls_playlist') &&
+          !url.contains('.m3u8')) {
+        try {
+          await _parallelGet(info.url, info.size.totalBytes, sink);
+          done = true;
+        } catch (e) {
+          debugPrint('[YouTube] параллельная загрузка не вышла: $e');
+        }
+      }
+      if (!done) {
+        // Запасной путь: как раньше, одним потоком через библиотеку.
+        await sink.close();
+        final again = part.openWrite();
+        try {
+          await for (final chunk in yt.videos.streams.get(info)) {
+            again.add(chunk);
+            await again.flush();
+          }
+        } finally {
+          await again.close();
+        }
       }
     } catch (e) {
       live.fail(e);
@@ -398,6 +427,67 @@ class YoutubeSource {
       // Удалим при следующей очистке кэша.
     }
     return file;
+  }
+
+  /// Загрузка файла в несколько потоков; куски пишутся строго по порядку.
+  Future<void> _parallelGet(Uri url, int total, IOSink sink) async {
+    const chunk = 512 * 1024;
+    const workers = 4;
+    final n = (total + chunk - 1) ~/ chunk;
+    final results = List.generate(n, (_) => Completer<Uint8List>());
+    for (final c in results) {
+      c.future.ignore();
+    }
+    var next = 0;
+    var failed = false;
+    Future<void> worker() async {
+      while (!failed) {
+        final i = next++;
+        if (i >= n) return;
+        final from = i * chunk;
+        final to = min(total, from + chunk) - 1;
+        try {
+          results[i].complete(await _range(url, from, to));
+        } catch (e) {
+          failed = true;
+          results[i].completeError(e);
+          return;
+        }
+      }
+    }
+
+    final running = [for (var w = 0; w < workers; w++) worker()];
+    for (final c in results) {
+      sink.add(await c.future);
+      await sink.flush();
+    }
+    await Future.wait(running);
+  }
+
+  Future<Uint8List> _range(Uri url, int from, int to) async {
+    for (var attempt = 0;; attempt++) {
+      try {
+        final http.Request req;
+        if (url.queryParameters['c'] == 'ANDROID') {
+          req = http.Request('GET', url)..headers['Range'] = 'bytes=$from-$to';
+        } else {
+          req = http.Request(
+              'GET', url.replace(queryParameters: {...url.queryParameters, 'range': '$from-$to'}));
+        }
+        final res = await _ytHttp.send(req).timeout(const Duration(seconds: 30));
+        if (res.statusCode >= 400) {
+          throw HttpException('YouTube ответил ${res.statusCode}');
+        }
+        final bytes = await res.stream.toBytes().timeout(const Duration(seconds: 90));
+        if (bytes.length != to - from + 1) {
+          throw HttpException('YouTube отдал ${bytes.length} байт вместо ${to - from + 1}');
+        }
+        return bytes;
+      } catch (e) {
+        if (attempt >= 2) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+      }
+    }
   }
 
   /// Размер кэша в байтах.
