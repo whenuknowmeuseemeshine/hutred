@@ -106,10 +106,12 @@ class FavoritesCard extends StatelessWidget {
       shape: st.sharp ? const RoundedRectangleBorder() : const CircleBorder(),
       child: InkWell(
         customBorder: st.sharp ? const RoundedRectangleBorder() : const CircleBorder(),
-        onTap: () => _play(context, favorites, 'Пока нет любимых треков'),
+        onTap: () => live || (cur != null && favorites.any((t) => t.id == cur.id))
+            ? player.togglePlay()
+            : _play(context, favorites, 'Пока нет любимых треков'),
         child: SizedBox.square(
           dimension: compact ? 48 : 60,
-          child: Icon(Ic.play_arrow_rounded,
+          child: Icon(live ? Ic.pause_rounded : Ic.play_arrow_rounded,
               size: compact ? 26 : 30, color: st.glass ? onAccent : Colors.black),
         ),
       ),

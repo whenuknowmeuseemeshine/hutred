@@ -391,7 +391,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
             icon: ShuffleIcon(on: player.shuffle, smart: player.smartShuffle, size: 24),
           ),
           const SizedBox(width: 6),
-          _PlayButton(onPressed: tracks.isEmpty ? null : () => player.playAll(tracks)),
+          _PlayButton(
+            playing: player.playing && player.isFrom(tracks),
+            onPressed: tracks.isEmpty ? null : () => player.playOrToggle(tracks, all: true),
+          ),
         ],
       ),
     );
@@ -449,8 +452,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
 /// Кнопка «Слушать всё» в стиле: белый круг / круг акцента / салатовый прямоугольник.
 class _PlayButton extends StatelessWidget {
-  const _PlayButton({required this.onPressed});
+  const _PlayButton({required this.onPressed, this.playing = false});
   final VoidCallback? onPressed;
+  final bool playing;
 
   @override
   Widget build(BuildContext context) {
@@ -468,7 +472,7 @@ class _PlayButton extends StatelessWidget {
           backgroundColor: bg,
           foregroundColor: st.mono ? Colors.black : HutredTheme.onAccent(accent),
         ),
-        child: Icon(Ic.play_arrow_rounded, size: 28),
+        child: Icon(playing ? Ic.pause_rounded : Ic.play_arrow_rounded, size: 28),
       ),
     );
   }

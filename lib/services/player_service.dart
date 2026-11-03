@@ -392,6 +392,19 @@ class PlayerService extends ChangeNotifier {
     await load;
   }
 
+  /// Сейчас играет трек из этого списка (кнопка «Слушать» становится паузой).
+  bool isFrom(List<Track> list) {
+    final c = current;
+    return c != null && list.any((t) => t.id == c.id);
+  }
+
+  /// Большая кнопка списка: если играет этот список — пауза/продолжить,
+  /// иначе — включить список.
+  Future<void> playOrToggle(List<Track> list, {bool all = false}) async {
+    if (isFrom(list)) return togglePlay();
+    return all ? playAll(list) : playTracks(list);
+  }
+
   /// «Слушать всё»: если перемешивание включено — начинаем со случайного трека.
   Future<void> playAll(List<Track> tracks) async {
     if (tracks.isEmpty) return;

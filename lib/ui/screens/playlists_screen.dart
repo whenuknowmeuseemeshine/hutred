@@ -254,7 +254,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<LibraryStore>();
-    final player = context.read<PlayerService>();
+    final player = context.watch<PlayerService>();
     final playlist = playlistId == null ? null : store.playlistById(playlistId!);
     if (playlistId != null && playlist == null) {
       return Scaffold(appBar: AppBar(), body: const Center(child: Text('Плейлист удалён')));
@@ -384,7 +384,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
 
     final canPlay = tracks.isNotEmpty;
-    void play() => player.playTracks(tracks);
+    final listPlaying = player.playing && player.isFrom(tracks);
+    void play() => player.playOrToggle(tracks);
     void shuffle() => player.shufflePlay(tracks);
 
     // Большая кнопка «Слушать»: круг (Моно), капсула со словом (Стекло),
@@ -392,8 +393,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final playButton = style.glass
         ? FilledButton.icon(
             onPressed: canPlay ? play : null,
-            icon: Icon(Ic.play_arrow_rounded),
-            label: const Text('Слушать'),
+            icon: Icon(listPlaying ? Ic.pause_rounded : Ic.play_arrow_rounded),
+            label: Text(listPlaying ? 'Пауза' : 'Слушать'),
           )
         : SizedBox(
             width: style.sharp ? 76 : 56,
@@ -407,7 +408,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 foregroundColor:
                     style.sharp ? HutredTheme.onAccent(scheme.primary) : Colors.black,
               ),
-              child: Icon(Ic.play_arrow_rounded, size: 32),
+              child: Icon(listPlaying ? Ic.pause_rounded : Ic.play_arrow_rounded, size: 32),
             ),
           );
 
