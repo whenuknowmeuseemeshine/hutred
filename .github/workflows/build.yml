@@ -109,14 +109,6 @@ jobs:
       - name: Добавить yt-dlp
         shell: pwsh
         run: Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile build/windows/x64/runner/Release/yt-dlp.exe
-      # Ядро Xray для своего VPN-ключа (только для трафика Hutred).
-      - name: Добавить ядро VPN (Xray)
-        shell: pwsh
-        run: |
-          Invoke-WebRequest https://github.com/XTLS/Xray-core/releases/download/v26.9.30/Xray-windows-64.zip -OutFile xray.zip
-          Expand-Archive xray.zip -DestinationPath xray-tmp -Force
-          Copy-Item xray-tmp/xray.exe build/windows/x64/runner/Release/hutred-xray.exe
-          Remove-Item xray.zip, xray-tmp -Recurse -Force
       - name: Упаковать в zip
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath Hutred-windows.zip
@@ -128,12 +120,22 @@ jobs:
           $env:HUTRED_VERSION = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" windows\installer\hutred.iss
           Move-Item build\installer\Hutred-Setup.exe Hutred-Setup.exe
+      # Ядро Xray для своего VPN-ключа. В установщик не кладём (Supabase
+      # принимает файлы до 50 МБ) — Hutred скачает его сам при включении VPN.
+      - name: Ядро VPN (Xray)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/XTLS/Xray-core/releases/download/v26.9.30/Xray-windows-64.zip -OutFile xray.zip
+          Expand-Archive xray.zip -DestinationPath xray-tmp -Force
+          Copy-Item xray-tmp/xray.exe hutred-xray.exe
+          Remove-Item xray.zip, xray-tmp -Recurse -Force
       - uses: actions/upload-artifact@v4
         with:
           name: Hutred-windows
           path: |
             Hutred-Setup.exe
             Hutred-windows.zip
+            hutred-xray.exe
 
   # Готовые файлы выкладываются на страницу Releases → «Hutred — последняя сборка»:
   # оттуда их удобно скачивать (и оттуда же потом будет брать обновления приложение).
@@ -175,6 +177,7 @@ jobs:
           up Hutred-Setup.exe "windows/Hutred-Setup-$BUILD.exe" application/octet-stream
           up Hutred.apk "android/Hutred-$BUILD.apk" application/vnd.android.package-archive
           up src/assets/logo.png discord/logo.png image/png
+          up hutred-xray.exe "tools/hutred-xray-v26.9.30.exe" application/octet-stream || echo "ядро VPN не выложено"
           PUB="$SB_URL/storage/v1/object/public/releases"
           python3 - <<PY
           import json, os
@@ -268,3 +271,4 @@ jobs:
             Hutred.ipa
             Hutred-Setup.exe
             Hutred-windows.zip
+            hutred-xray.exe
