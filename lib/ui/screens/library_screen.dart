@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +14,7 @@ import '../actions.dart';
 import '../theme.dart';
 import '../widgets/account_button.dart';
 import '../widgets/controls.dart';
+import '../widgets/favorites_card.dart';
 import '../widgets/filter_field.dart';
 import '../widgets/logo.dart';
 import '../widgets/track_tile.dart';
@@ -483,71 +486,16 @@ class _LibraryHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final st = HutredStyle.of(context);
-    final accent = Theme.of(context).colorScheme.primary;
     final store = context.read<LibraryStore>();
     final dur = totalDuration(favorites);
     final sub = [tracksWord(favorites.length), if (dur.isNotEmpty) dur].join(' · ');
 
-    Widget favCard(double h) {
-      final Widget content;
-      final BoxDecoration deco;
-      if (st.sharp) {
-        deco = BoxDecoration(color: accent);
-        final on = HutredTheme.onAccent(accent);
-        content = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('ЛЮБИМЫЕ ТРЕКИ', style: st.caption(color: on)),
-            const Spacer(),
-            Text('${favorites.length}',
-                style: st.display(56).copyWith(color: on, height: 1)),
-            const SizedBox(height: 10),
-            Text('треков с ♥${dur.isEmpty ? '' : ' · $dur'}',
-                style: TextStyle(color: on, fontWeight: FontWeight.w600)),
-          ],
+    Widget favCard(double h) => FavoritesCard(
+          favorites: favorites,
+          subtitle: sub,
+          height: h,
+          onOpen: () => _open(context, null),
         );
-      } else {
-        deco = BoxDecoration(
-          borderRadius: BorderRadius.circular(st.glass ? 22 : 10),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: st.glass
-                ? [accent, Color.lerp(accent, Colors.black, 0.55)!, const Color(0xFF0EA5E9)]
-                : const [Color(0xFF4A4A4A), Color(0xFF161616)],
-            stops: st.glass ? const [0, 0.6, 1] : null,
-          ),
-          boxShadow: st.glass
-              ? [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 50, offset: const Offset(0, 20))]
-              : null,
-        );
-        content = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text('Любимые треки', style: st.display(30)),
-            const SizedBox(height: 6),
-            Text(sub,
-                style: TextStyle(
-                    color: st.glass ? const Color(0xFFE9E5FF) : const Color(0xFFD4D4D4),
-                    fontWeight: st.glass ? FontWeight.w600 : FontWeight.w500)),
-          ],
-        );
-      }
-      return Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _open(context, null),
-          borderRadius: BorderRadius.circular(st.glass ? 22 : st.sharp ? 0 : 10),
-          child: Ink(
-            height: h,
-            decoration: deco,
-            padding: const EdgeInsets.all(20),
-            child: content,
-          ),
-        ),
-      );
-    }
 
     Widget tile(Playlist p, double size) {
       final tracks = store.tracksOf(p);
@@ -581,7 +529,7 @@ class _LibraryHero extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            favCard(150),
+            favCard(196),
             if (playlists.isNotEmpty) ...[
               const SizedBox(height: 16),
               SizedBox(
@@ -598,13 +546,16 @@ class _LibraryHero extends StatelessWidget {
         );
       }
       const gap = 18.0;
-      final favW = w * 0.3;
-      final size = (w - favW - gap * 4) / 4;
+      // Карточка любимых крупно слева, справа — сколько влезет плейлистов.
+      final favW = min(max(w * 0.48, 520.0), 680.0);
+      const size = 250.0;
+      final left = w - favW;
+      final count = max(0, ((left + gap) / (size + gap)).floor());
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: favW, child: favCard(size)),
-          for (final p in playlists.take(4)) ...[
+          SizedBox(width: favW, child: favCard(300)),
+          for (final p in playlists.take(count)) ...[
             const SizedBox(width: gap),
             tile(p, size),
           ],
