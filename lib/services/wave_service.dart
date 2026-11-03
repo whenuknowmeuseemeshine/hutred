@@ -389,15 +389,23 @@ class WaveService extends ChangeNotifier {
   /// Группы опор для джема: у каждого участника своя, треки чередуются.
   List<List<({Track track, int weight})>>? _groups;
 
+  /// Чья группа подобрала трек (номер группы в миксе джема).
+  final Map<String, int> _origin = {};
+  int? originOf(Track t) => _origin[_key(t)];
+
   Future<List<Track>> _nextBatch({int size = 8, List<Track>? from}) async {
     final groups = from == null ? _groups : null;
     if (groups != null && groups.length > 1) {
       // Джем 50/50: рекомендации по вкусу каждого, по очереди.
       final per = (size / groups.length).ceil() + 1;
       final lists = <List<Track>>[];
-      for (final g in groups) {
+      for (final (gi, g) in groups.indexed) {
         try {
-          lists.add(await _recsFor(g, per));
+          final got = await _recsFor(g, per);
+          for (final t in got) {
+            _origin[_key(t)] = gi;
+          }
+          lists.add(got);
         } catch (e) {
           debugPrint('Волна (участник): $e');
           lists.add(const []);
