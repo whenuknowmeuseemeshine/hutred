@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/settings_store.dart';
@@ -12,6 +13,7 @@ import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
 import '../icons.dart';
 import '../widgets/style_bits.dart';
+import '../widgets/settings_kit.dart';
 
 /// Перенос треков с других площадок.
 class TransferScreen extends StatefulWidget {
@@ -86,6 +88,399 @@ class _TransferScreenState extends State<TransferScreen> {
     _input.clear();
   }
 
+  /// Телефон: фильтр результатов поиска.
+  String _filter = 'all';
+
+  /// Откуда ссылка — по адресу.
+  static (String, Color)? _detect(String text) {
+    final s = text.toLowerCase();
+    String kind() => s.contains('album')
+        ? 'альбом'
+        : s.contains('track') || s.contains('watch?v=') || s.contains('youtu.be')
+            ? 'трек'
+            : 'плейлист';
+    if (s.contains('spotify.com') || s.startsWith('spotify:')) {
+      return ('Spotify · ${kind()}', const Color(0xFF1ED760));
+    }
+    if (s.contains('music.yandex') || s.contains('yandex.')) {
+      return ('Яндекс Музыка · ${kind()}', const Color(0xFFFFCC00));
+    }
+    if (s.contains('youtube.com') || s.contains('youtu.be')) {
+      return ('YouTube · ${s.contains('list=') ? 'плейлист' : kind()}', const Color(0xFFFF3D3D));
+    }
+    if (s.contains('soundcloud.com')) {
+      return ('SoundCloud · ${s.contains('/sets/') ? 'плейлист' : 'трек'}', const Color(0xFFFF7A1A));
+    }
+    if (s.contains('\n')) return ('Список треков', const Color(0xFFA78BFA));
+    return null;
+  }
+
+  Widget _phone(BuildContext context, TransferService t, bool busy) {
+    final k = Sk.of(context);
+    final st = k.st;
+    final canPop = Navigator.of(context).canPop();
+    final top = MediaQuery.paddingOf(context).top;
+    final hasResults = t.items.isNotEmpty;
+
+    final header = Padding(
+      padding: EdgeInsets.fromLTRB(canPop ? 4 : 16, top + 6, 16, 6),
+      child: Row(children: [
+        if (canPop)
+          IconButton(
+            tooltip: 'Назад',
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(st.sharp ? 'ПЕРЕНОС МУЗЫКИ' : 'Перенос музыки',
+                maxLines: 1, style: st.display(st.glass ? 22 : 28)),
+          ),
+        ),
+      ]),
+    );
+
+    Widget card(Widget child, {EdgeInsets pad = const EdgeInsets.all(14)}) => Container(
+          padding: pad,
+          decoration: BoxDecoration(
+            color: k.card,
+            border: k.cardBorder,
+            borderRadius: BorderRadius.circular(k.r),
+          ),
+          child: child,
+        );
+
+    final List<Widget> body;
+    Widget dock;
+
+    if (!hasResults) {
+      final detected = _detect(_input.text);
+      final field = Container(
+        height: _src == 'text' ? null : 48,
+        padding: EdgeInsets.fromLTRB(14, _src == 'text' ? 8 : 0, 6, _src == 'text' ? 8 : 0),
+        decoration: BoxDecoration(
+          color: k.sharp ? Colors.transparent : k.inner,
+          border: k.sharp ? Border.all(color: k.ghost) : null,
+          borderRadius: BorderRadius.circular(k.sharp ? 0 : k.glass ? 24 : 12),
+        ),
+        child: Row(children: [
+          Icon(_src == 'text' ? Ic.notes : Ic.link, size: 18, color: k.muted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _input,
+              enabled: !busy,
+              minLines: _src == 'text' ? 4 : 1,
+              maxLines: _src == 'text' ? 8 : 1,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: _src == 'text' ? null : (_) => _start(),
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                hintText: _src == 'text'
+                    ? 'Исполнитель — Название\nИсполнитель — Название'
+                    : 'Ссылка на плейлист',
+              ),
+            ),
+          ),
+          if (_src != 'text')
+            SkChip('Вставить', height: 36, onTap: busy
+                ? null
+                : () async {
+                    final clip = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+                    if (clip.trim().isEmpty) return;
+                    setState(() => _input.text = clip.trim());
+                  }),
+        ]),
+      );
+
+      final sourceRows = [
+        for (final (i, src) in _sources.indexed)
+          InkWell(
+            onTap: busy
+                ? null
+                : () {
+                    setState(() => _src = src.$1);
+                    if (src.$1 == 'csv') _pickFile();
+                    if (src.$1 == 'folder') _pickFolder();
+                  },
+            child: Container(
+              height: 56,
+              padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
+              decoration: BoxDecoration(
+                color: _src == src.$1 && src.$1 != 'csv' && src.$1 != 'folder'
+                    ? k.inner
+                    : Colors.transparent,
+                border: i == 0 ? null : Border(top: BorderSide(color: k.line)),
+              ),
+              child: Row(children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: src.$3,
+                    borderRadius: BorderRadius.circular(k.sharp ? 0 : 8),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(src.$2, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      Text(_shortHints[src.$1]!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: k.muted)),
+                    ],
+                  ),
+                ),
+                Icon(Ic.chevron_right, size: 18, color: k.muted),
+              ]),
+            ),
+          ),
+      ];
+
+      final hasSp = context.watch<SettingsStore>().hasSpotifyKeys;
+      final firstOpts = <(String, String)>[
+        if (hasSp) ('spotify', 'Spotify'),
+        ('soundcloud', 'SoundCloud'),
+        ('youtube', 'YouTube'),
+      ];
+      final firstVal = firstOpts.any((o) => o.$1 == t.searchFirst) ? t.searchFirst : 'soundcloud';
+
+      body = [
+        Text(
+          _src == 'text'
+              ? 'Вставь названия — по одному в строке, как «Исполнитель — Название».'
+              : 'Вставь ссылку на плейлист — Hutred найдёт каждый трек и сложит в медиатеку.',
+          style: TextStyle(fontSize: 14, color: k.muted, height: 1.4),
+        ),
+        const SizedBox(height: 14),
+        card(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          field,
+          if (detected != null && _src != 'text') ...[
+            const SizedBox(height: 12),
+            Row(children: [
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                    color: detected.$2, borderRadius: BorderRadius.circular(k.sharp ? 0 : 6)),
+              ),
+              const SizedBox(width: 8),
+              Text(detected.$1, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('распознал по ссылке',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: k.muted)),
+              ),
+            ]),
+          ],
+        ])),
+        const SizedBox(height: 18),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: const SkCap('Или откуда перенести'),
+        ),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(k.r),
+          child: card(Column(children: sourceRows), pad: EdgeInsets.zero),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          Text('Искать на', style: TextStyle(fontSize: 13, color: k.muted)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SkSeg<String>(
+              options: firstOpts,
+              value: firstVal,
+              onChanged: t.setSearchFirst,
+            ),
+          ),
+        ]),
+        if (t.localTracks.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          card(Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Отвязать от папки',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text('${tracksWord(t.localTracks.length)} из файлов — найду онлайн и заменю',
+                    style: TextStyle(fontSize: 12, color: k.muted)),
+              ]),
+            ),
+            const SizedBox(width: 10),
+            SkButton('Найти', height: 34, onTap: busy ? null : t.startRelink),
+          ])),
+        ],
+        if (busy) ...[
+          const SizedBox(height: 20),
+          const Center(child: CircularProgressIndicator()),
+        ],
+        if (t.error != null) ...[
+          const SizedBox(height: 14),
+          Text(t.error!, style: TextStyle(color: k.bad)),
+        ],
+      ];
+      dock = SkButton('Найти треки',
+          primary: true, height: 52, expand: true, onTap: busy ? null : () => _start());
+    } else {
+      final notFound = t.items.where((i) => i.done && i.found == null).toList();
+      final foundN = t.items.where((i) => i.found != null).length;
+      final shown = t.items.where((i) => switch (_filter) {
+            'found' => i.found != null,
+            'missing' => i.done && i.found == null,
+            _ => true,
+          });
+      final firstCovers = [for (final i in t.items) if (i.found != null) i.found!].take(4).toList();
+      body = [
+        card(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            SizedBox.square(
+              dimension: 44,
+              child: firstCovers.isEmpty
+                  ? Container(
+                      decoration: BoxDecoration(
+                          color: k.inner, borderRadius: BorderRadius.circular(k.sharp ? 0 : 8)))
+                  : Artwork(track: firstCovers.first, size: 44, radius: k.sharp ? 0 : 8),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                    t.relinking
+                        ? 'Замена файлов'
+                        : (_name.text.isNotEmpty ? _name.text : t.suggestedName.isEmpty ? 'Перенос' : t.suggestedName),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(
+                    busy
+                        ? 'ищу ${t.doneCount} из ${t.items.length}'
+                        : 'нашёл ${t.foundCount} из ${t.items.length}',
+                    style: k.st.caption(color: k.muted, size: 12).copyWith(letterSpacing: 0)),
+              ]),
+            ),
+            SkButton(busy ? 'Отменить' : 'Заново', height: 32, onTap: () {
+              t.reset();
+              _input.clear();
+              if (busy) AppActions.toast(context, 'Перенос отменён');
+            }),
+          ]),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(k.sharp ? 0 : 3),
+            child: LinearProgressIndicator(
+              value: t.items.isEmpty ? null : t.doneCount / t.items.length,
+              minHeight: 6,
+              color: k.btn,
+              backgroundColor: k.off,
+            ),
+          ),
+        ])),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, children: [
+          SkChip('Все ${t.items.length}', selected: _filter == 'all', onTap: () => setState(() => _filter = 'all')),
+          SkChip('Нашёл $foundN', selected: _filter == 'found', onTap: () => setState(() => _filter = 'found')),
+          SkChip('Не нашёл ${notFound.length}',
+              selected: _filter == 'missing', onTap: () => setState(() => _filter = 'missing')),
+        ]),
+        const SizedBox(height: 6),
+        for (final item in shown) _PhoneItem(item: item),
+      ];
+      dock = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (!t.relinking) ...[
+          Container(
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: k.sharp ? Colors.transparent : k.inner,
+              border: k.sharp ? Border.all(color: k.ghost) : null,
+              borderRadius: BorderRadius.circular(k.sharp ? 0 : k.glass ? 23 : 12),
+            ),
+            child: Row(children: [
+              Icon(Ic.playlist_add, size: 18, color: k.muted),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _name,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    hintText: 'Название плейлиста (пусто — только в медиатеку)',
+                  ),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 10),
+        ],
+        SkButton(
+          '${t.relinking ? 'Заменить' : 'Добавить'} ${tracksWord(t.selectedCount)}',
+          primary: true,
+          height: 52,
+          expand: true,
+          onTap: t.stage == TransferStage.ready && t.selectedCount > 0 ? _save : null,
+        ),
+        if (notFound.isNotEmpty && !busy)
+          TextButton(
+            onPressed: () {
+              for (final i in notFound) {
+                t.retry(i, where: 'youtube');
+              }
+            },
+            child: Text('Искать ненайденные на YouTube · ${notFound.length}',
+                style: TextStyle(color: k.text, fontWeight: FontWeight.w600)),
+          ),
+      ]);
+    }
+
+    return Scaffold(
+      body: Column(children: [
+        header,
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            children: body,
+          ),
+        ),
+        Container(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.paddingOf(context).bottom),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: k.line)),
+          ),
+          child: dock,
+        ),
+      ]),
+    );
+  }
+
+  static const _shortHints = {
+    'spotify': 'Трек, альбом или плейлист',
+    'yandex': 'Открытый плейлист или альбом',
+    'youtube': 'Плейлист YouTube или YouTube Music',
+    'soundcloud': 'Плейлист или альбом',
+    'folder': 'Файлы на устройстве — найду онлайн',
+    'csv': 'Например, из Exportify',
+    'text': '«Исполнитель — Название» по строкам',
+  };
+
   /// Выбранная плитка-источник: от неё зависят подсказка и вид поля.
   String _src = 'spotify';
 
@@ -122,6 +517,7 @@ class _TransferScreenState extends State<TransferScreen> {
     final pad = stylePagePadding(context);
     final accent = scheme.primary;
     final multi = _src == 'text';
+    if (!wide) return _phone(context, t, busy);
 
     Widget tile((String, String, Color) src) {
       final on = _src == src.$1;
@@ -514,6 +910,107 @@ class _ItemTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+/// Строка результата на телефоне: обложка, название, галочка или «Найти».
+class _PhoneItem extends StatelessWidget {
+  const _PhoneItem({required this.item});
+  final TransferItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.read<TransferService>();
+    final k = Sk.of(context);
+    final found = item.found;
+    final missing = item.done && found == null;
+    final r = BorderRadius.circular(k.sharp ? 0 : 8);
+    Widget leading;
+    if (!item.done) {
+      leading = Container(
+        decoration: BoxDecoration(color: k.inner, borderRadius: r),
+        alignment: Alignment.center,
+        child: const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    } else if (found == null) {
+      leading = Container(
+        decoration: BoxDecoration(borderRadius: r, border: Border.all(color: k.bad, width: 1.5)),
+        alignment: Alignment.center,
+        child: Text('?', style: TextStyle(color: k.bad, fontSize: 18, fontWeight: FontWeight.w800)),
+      );
+    } else {
+      leading = Artwork(track: found, size: 44, radius: k.sharp ? 0 : 8);
+    }
+    return SizedBox(
+      height: 60,
+      child: Row(children: [
+        SizedBox.square(dimension: 44, child: leading),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(found?.title ?? item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Row(children: [
+                if (found != null) ...[
+                  Icon(sourceIcon(found.source), size: 12, color: k.muted),
+                  const SizedBox(width: 5),
+                ],
+                Expanded(
+                  child: Text(
+                      found != null
+                          ? found.artist
+                          : missing
+                              ? 'Не нашёл · ${item.label}'
+                              : 'ищу… ${item.artist}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: missing ? k.bad : k.muted)),
+                ),
+              ]),
+            ],
+          ),
+        ),
+        if (item.done)
+          PopupMenuButton<String>(
+            tooltip: 'Искать в другом месте',
+            onSelected: (where) => t.retry(item, where: where),
+            itemBuilder: (_) => [
+              if (context.read<SettingsStore>().hasSpotifyKeys)
+                const PopupMenuItem(value: 'spotify', child: Text('Искать в Spotify')),
+              const PopupMenuItem(value: 'soundcloud', child: Text('Искать на SoundCloud')),
+              const PopupMenuItem(value: 'youtube', child: Text('Искать на YouTube')),
+            ],
+            child: missing
+                ? IgnorePointer(child: SkButton('Найти', height: 30, onTap: () {}))
+                : Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(Ic.manage_search, size: 20, color: k.muted),
+                  ),
+          ),
+        if (found != null)
+          GestureDetector(
+            onTap: () => t.setSelected(item, !item.selected),
+            child: Container(
+              width: 24,
+              height: 24,
+              margin: const EdgeInsets.only(left: 4),
+              decoration: BoxDecoration(
+                color: item.selected ? k.btn : Colors.transparent,
+                border: item.selected ? null : Border.all(color: k.ghost, width: 1.5),
+                borderRadius: BorderRadius.circular(k.sharp ? 0 : k.glass ? 12 : 6),
+              ),
+              child: item.selected ? Icon(Ic.check, size: 16, color: k.btnFg) : null,
+            ),
+          ),
+      ]),
     );
   }
 }
