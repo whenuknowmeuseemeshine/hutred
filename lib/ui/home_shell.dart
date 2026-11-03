@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +8,6 @@ import '../services/account_service.dart';
 import '../services/friends_service.dart';
 import '../services/jam_service.dart';
 import '../services/offline_service.dart';
-import '../services/update_service.dart';
 import '../services/player_service.dart';
 import '../services/settings_store.dart';
 import 'screens/friends_screen.dart';
@@ -21,6 +19,7 @@ import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/transfer_screen.dart';
 import 'screens/wave_screen.dart';
+import 'widgets/update_toast.dart';
 import 'widgets/blurred_background.dart';
 import 'widgets/mini_player.dart';
 import 'shell_nav.dart';
@@ -172,27 +171,26 @@ class _HomeShellState extends State<HomeShell> {
       child: Builder(builder: (context) {
         // Полоски сверху не должны залезать под кнопки окна: если хоть одна
         // показана, отступ сверху берут они, а содержимое под ними — без отступа.
-        final u = context.watch<UpdateService>();
         final inJam = context.watch<JamService>().active;
-        final banner = inJam ||
-            !context.watch<OfflineService>().online ||
-            u.readyToInstall ||
-            (u.available && !Platform.isWindows);
+        final banner = inJam || !context.watch<OfflineService>().online;
         final top = MediaQuery.paddingOf(context).top;
         final body = _KeyboardShortcuts(child: _stack(settings.waveBackground));
-        return Column(
-          children: [
-            if (banner) SizedBox(height: top),
-            if (inJam) _JamBanner(onTap: _openJam),
-            const _OfflineBanner(),
-            const _UpdateBanner(),
-            Expanded(
-              child: banner
-                  ? MediaQuery.removePadding(context: context, removeTop: true, child: body)
-                  : body,
-            ),
-          ],
-        );
+        return Stack(children: [
+          Column(
+            children: [
+              if (banner) SizedBox(height: top),
+              if (inJam) _JamBanner(onTap: _openJam),
+              const _OfflineBanner(),
+              Expanded(
+                child: banner
+                    ? MediaQuery.removePadding(context: context, removeTop: true, child: body)
+                    : body,
+              ),
+            ],
+          ),
+          // Плашка обновления — своя у каждого стиля.
+          const UpdateToast(),
+        ]);
       }),
     );
 
@@ -279,7 +277,13 @@ class _HomeShellState extends State<HomeShell> {
           const MiniPlayer(),
         ],
       ),
-      bottomNavigationBar: PhoneNav(items: items, selected: _current, onSelect: onSelect),
+      // На телефоне плейлисты живут в Медиатеке, а перенос — в Настройках:
+      // так меню помещается в одну строку.
+      bottomNavigationBar: PhoneNav(
+        items: [for (final i in items) if (i.id != 'playlists' && i.id != 'transfer') i],
+        selected: _current,
+        onSelect: onSelect,
+      ),
     );
   }
 }
@@ -400,52 +404,6 @@ class _OfflineBanner extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
-              ),
-            ),
-    );
-  }
-}
-
-/// Полоска «Вышла новая версия» (Android) или «Новая версия скачана» (Windows).
-class _UpdateBanner extends StatelessWidget {
-  const _UpdateBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final u = context.watch<UpdateService>();
-    final show = u.readyToInstall || (u.available && !Platform.isWindows);
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 250),
-      child: !show
-          ? const SizedBox(width: double.infinity)
-          : Material(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-                child: Row(
-                  children: [
-                    Icon(Ic.system_update_alt, size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        u.readyToInstall
-                            ? 'Новая версия Hutred скачана'
-                            : Platform.isIOS
-                                ? 'Вышла новая версия Hutred — обнови в SideStore'
-                                : 'Вышла новая версия Hutred',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: u.updateNow,
-                      child: Text(u.readyToInstall
-                          ? 'Перезапустить'
-                          : Platform.isIOS
-                              ? 'Открыть'
-                              : 'Скачать'),
-                    ),
-                  ],
                 ),
               ),
             ),

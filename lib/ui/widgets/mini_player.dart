@@ -49,19 +49,21 @@ class MiniPlayer extends StatelessWidget {
       },
     );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+      padding: style.sharp ? EdgeInsets.zero : EdgeInsets.fromLTRB(style.glass ? 10 : 8, 0, style.glass ? 10 : 8, style.glass ? 8 : 6),
       child: Material(
       color: style.glass
-          ? Colors.black.withValues(alpha: 0.45)
+          ? const Color(0xFF0C3B3D).withValues(alpha: 0.72)
           : style.sharp
               ? scheme.surface
               : Color.alphaBlend(tint.withValues(alpha: 0.18), scheme.surfaceContainerHighest),
-      shape: RoundedRectangleBorder(
-        borderRadius: radius,
-        side: style.mono
-            ? BorderSide.none
-            : BorderSide(color: Colors.white.withValues(alpha: style.sharp ? 0.16 : 0.1)),
-      ),
+      shape: style.sharp
+          ? const Border(top: BorderSide(color: Color(0xFF222222)))
+          : RoundedRectangleBorder(
+              borderRadius: radius,
+              side: style.mono
+                  ? BorderSide.none
+                  : BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+            ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => NowPlayingScreen.open(context),
@@ -75,7 +77,11 @@ class MiniPlayer extends StatelessWidget {
                   Hero(
                     tag: 'artwork',
                     child: TrackContextMenu(
-                        track: track, child: Artwork(track: track, size: 46, radius: 4)),
+                        track: track,
+                        child: Artwork(
+                            track: track,
+                            size: 46,
+                            radius: style.sharp ? 0 : style.glass ? 12 : 4)),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -118,14 +124,36 @@ class MiniPlayer extends StatelessWidget {
                               child:
                                   CircularProgressIndicator(strokeWidth: 2)),
                         )
-                      : IconButton(
-                          tooltip: player.playing ? 'Пауза' : 'Играть',
-                          iconSize: 32,
-                          onPressed: player.togglePlay,
-                          icon: SwapIcon(player.playing
-                              ? Ic.pause_rounded
-                              : Ic.play_arrow_rounded),
-                        ),
+                      : style.mono
+                          ? IconButton(
+                              tooltip: player.playing ? 'Пауза' : 'Играть',
+                              iconSize: 32,
+                              onPressed: player.togglePlay,
+                              icon: SwapIcon(player.playing
+                                  ? Ic.pause_rounded
+                                  : Ic.play_arrow_rounded),
+                            )
+                          // Стекло — белый круг, Резкий — квадрат цвета акцента.
+                          : Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Material(
+                                color: style.glass ? Colors.white : scheme.primary,
+                                shape: style.glass ? const CircleBorder() : const RoundedRectangleBorder(),
+                                child: InkWell(
+                                  customBorder: style.glass ? const CircleBorder() : const RoundedRectangleBorder(),
+                                  onTap: player.togglePlay,
+                                  child: SizedBox.square(
+                                    dimension: 44,
+                                    child: Icon(
+                                      player.playing ? Ic.pause_rounded : Ic.play_arrow_rounded,
+                                      color: style.glass
+                                          ? const Color(0xFF06221F)
+                                          : HutredTheme.onAccent(scheme.primary),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                   IconButton(
                     tooltip: 'Следующий',
                     onPressed: player.next,

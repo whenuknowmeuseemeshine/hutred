@@ -227,6 +227,25 @@ class JamService extends ChangeNotifier {
   /// Что сейчас играет у хозяина (для экрана джема у гостей).
   Track? _hostTrack;
   List<Track> _hostUpNext = const [];
+
+  /// Участники по порядку групп микса (чьи рекомендации).
+  final List<String> _mixUids = [];
+
+  /// Метки «чей трек» у очереди гостя (приходят от хозяина).
+  Map<String, String> _hostBy = const {};
+
+  /// Кто «принёс» трек в микс: «ты» или имя друга (null — не из микса).
+  String? pickedBy(Track t) {
+    if (!isHost) return _hostBy['${t.source.name}:${t.uri}'];
+    final gi = wave.originOf(t);
+    if (gi == null || gi >= _mixUids.length) return null;
+    final uid = _mixUids[gi];
+    if (uid == _me) return 'ты';
+    for (final m in _members) {
+      if (m.uid == uid) return m.name;
+    }
+    return null;
+  }
   bool _hostPlaying = false;
   String? _problem;
 
@@ -376,6 +395,17 @@ class JamService extends ChangeNotifier {
     }
   }
 
+  /// Метка для гостей: хозяин «ты» → его имя, гостю — «ты» для его треков.
+  String? _byFor(Track t) {
+    final gi = wave.originOf(t);
+    if (gi == null || gi >= _mixUids.length) return null;
+    final uid = _mixUids[gi];
+    for (final m in _members) {
+      if (m.uid == uid) return uid == _me ? _myName : m.name;
+    }
+    return uid == _me ? _myName : null;
+  }
+
   void _sendState() {
     final ch = _jam;
     if (ch == null || !isHost) return;
@@ -385,6 +415,10 @@ class JamService extends ChangeNotifier {
       'pos': player.position.inMilliseconds,
       'playing': player.playing && !player.loading,
       'next': [for (final n in upNext) _wire(n)],
+      'by': {
+        for (final n in upNext)
+          if (_byFor(n) case final b?) '${n.source.name}:${n.uri}': b,
+      },
     }));
   }
 
@@ -419,12 +453,16 @@ class JamService extends ChangeNotifier {
       }
     });
     final groups = <List<({Track track, int weight})>>[];
+    _mixUids.clear();
     _seeds.forEach((uid, list) {
       final g = [
         for (final t in list)
           (track: t, weight: (fans[WaveService.artistKey(t.artist)]?.length ?? 1) > 1 ? 6 : 2),
       ];
-      if (g.isNotEmpty) groups.add(g);
+      if (g.isNotEmpty) {
+        groups.add(g);
+        _mixUids.add(uid);
+      }
     });
     if (groups.isEmpty) {
       throw Exception('Пока не из чего собрать микс — поставьте ♥ любимым трекам');
@@ -489,6 +527,13 @@ class JamService extends ChangeNotifier {
     final pos = Duration(milliseconds: (p['pos'] as num?)?.toInt() ?? 0);
     _hostTrack = track;
     _hostPlaying = playing;
+    final by = p['by'];
+    _hostBy = by is Map
+        ? {
+            for (final e in by.entries)
+              '${e.key}': '${e.value}' == _myName ? 'ты' : '${e.value}',
+          }
+        : const {};
     _hostUpNext = [
       for (final n in (p['next'] as List? ?? const []))
         if (n is Map) Track.fromJson(Map<String, dynamic>.from(n)),

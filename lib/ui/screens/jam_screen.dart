@@ -161,7 +161,7 @@ class JamScreen extends StatelessWidget {
         nowBlock,
         if (jam.upNext.isNotEmpty) ...[
           const _Head('Дальше в джеме'),
-          for (final t in jam.upNext) _TrackRow(track: t),
+          for (final t in jam.upNext) _TrackRow(track: t, by: jam.pickedBy(t)),
         ],
       ],
     ];
@@ -251,9 +251,12 @@ class _Members extends StatelessWidget {
 }
 
 class _TrackRow extends StatelessWidget {
-  const _TrackRow({required this.track, this.playing});
+  const _TrackRow({required this.track, this.playing, this.by});
   final Track track;
   final bool? playing;
+
+  /// Чей это трек в миксе: «ты» или имя друга.
+  final String? by;
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +277,7 @@ class _TrackRow extends StatelessWidget {
                 style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
           ]),
         ),
+        if (by != null) _ByTag(by!),
         if (playing != null)
           Icon(playing! ? Ic.graphic_eq : Ic.pause,
               size: 18, color: HutredTheme.muted),
@@ -334,5 +338,31 @@ class _InviteList extends StatelessWidget {
           }(),
         ),
     ]);
+  }
+}
+
+
+/// Метка «чей трек»: свой — цвета акцента, друга — нейтральная.
+class _ByTag extends StatelessWidget {
+  const _ByTag(this.name);
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final mine = name == 'ты';
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: mine ? accent : (st.sharp ? Colors.transparent : Colors.white.withValues(alpha: 0.12)),
+        border: st.sharp && !mine ? Border.all(color: const Color(0xFF3A3A3A)) : null,
+        borderRadius: BorderRadius.circular(st.sharp ? 0 : 999),
+      ),
+      child: Text(name,
+          style: st.caption(
+              size: 11, color: mine ? HutredTheme.onAccent(accent) : HutredTheme.text)),
+    );
   }
 }
