@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -149,20 +150,24 @@ extension SpotifyImport on SpotifyService {
     final key = '${query.trim().toLowerCase()}|$offset';
     final cached = await _cacheGet(key);
     if (cached != null) return _paged(cached.$1, cached.$2, id, secret, query, offset);
-    if (DateTime.now().isBefore(_PacedClient._blockedUntil)) {
-      return _deezer(query, offset);
-    }
+    // Сначала каталог Deezer: те же названия, альбомы и обложки, ключи не
+    // нужны, а лимит запросов у каждого пользователя свой. Общие ключи
+    // Spotify (лимит один на всех) — только если Deezer не ответил.
     try {
-      final page = await _spotifySearch(id: id, secret: secret, query: query, offset: offset);
-      unawaited(_cachePut(key, page.$1, page.$2));
-      return _paged(page.$1, page.$2, id, secret, query, offset);
-    } catch (e) {
-      try {
-        return await _deezer(query, offset);
-      } catch (_) {
-        rethrow;
+      final page = await _deezerPage(query, offset);
+      if (page.$1.isNotEmpty || offset > 0) {
+        unawaited(_cachePut(key, page.$1, page.$2));
+        return _paged(page.$1, page.$2, id, secret, query, offset);
       }
+    } catch (e) {
+      debugPrint('[Deezer] $e');
     }
+    if (id.isEmpty || DateTime.now().isBefore(_PacedClient._blockedUntil)) {
+      return Paged(const [], null);
+    }
+    final page = await _spotifySearch(id: id, secret: secret, query: query, offset: offset);
+    unawaited(_cachePut(key, page.$1, page.$2));
+    return _paged(page.$1, page.$2, id, secret, query, offset);
   }
 
   Paged<Track> _paged(List<Track> items, int total, String id, String secret, String query, int offset) {
@@ -255,7 +260,7 @@ extension SpotifyImport on SpotifyService {
 
   final http.Client _dz = http.Client();
 
-  Future<Paged<Track>> _deezer(String query, int offset) async {
+  Future<(List<Track>, int)> _deezerPage(String query, int offset) async {
     final res = await _dz
         .get(Uri.https('api.deezer.com', '/search', {
           'q': query,
@@ -287,8 +292,7 @@ extension SpotifyImport on SpotifyService {
       ));
     }
     final total = (j['total'] as num?)?.toInt() ?? out.length;
-    final next = offset + out.length;
-    return Paged(out, out.isEmpty || next >= total || next >= 200 ? null : () async => _deezer(query, next));
+    return (out, total);
   }
 
   Future<(List<Track>, int)> _spotifySearch(

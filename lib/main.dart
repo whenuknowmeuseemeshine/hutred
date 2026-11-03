@@ -336,7 +336,10 @@ class _UiScale extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
       final mq = MediaQuery.of(context);
-      final s = scale > 0 ? scale : (box.maxWidth / 1700).clamp(1.0, 1.35);
+      // Авто: по ширине и высоте окна, чтобы во весь экран на большом
+      // мониторе интерфейс заполнял его, а не терялся посередине.
+      final auto = [box.maxWidth / 1440, box.maxHeight / 840].reduce((a, b) => a < b ? a : b);
+      final s = scale > 0 ? scale : auto.clamp(1.0, 1.6).toDouble();
       if ((s - 1).abs() < 0.01 || !box.hasBoundedWidth || !box.hasBoundedHeight) return child;
       final size = Size(box.maxWidth / s, box.maxHeight / s);
       return MediaQuery(
