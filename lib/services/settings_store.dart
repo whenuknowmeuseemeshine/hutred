@@ -110,6 +110,7 @@ class SettingsStore extends ChangeNotifier {
   int _vpnIndex = 0;
   bool _vpnOn = false;
   String _vpnHwid = '';
+  double _uiScale = 0;
   bool _eqOn = false;
   List<double> _eqGains = const [];
   bool _pickArtists = false;
@@ -132,6 +133,13 @@ class SettingsStore extends ChangeNotifier {
   List<String> get vpnServers => _vpnServers;
   int get vpnIndex => _vpnIndex;
   bool get vpnOn => _vpnOn;
+
+  /// Масштаб интерфейса на компьютере: 0 — сам по размеру окна.
+  double get uiScale => _uiScale;
+  set uiScale(double v) {
+    _uiScale = v;
+    _save();
+  }
 
   /// Номер этого устройства для VPN-подписок с лимитом устройств.
   String get vpnHwid {
@@ -614,6 +622,7 @@ class SettingsStore extends ChangeNotifier {
       _vpnIndex = (j['vpnIndex'] as num?)?.toInt() ?? 0;
       _vpnOn = j['vpnOn'] as bool? ?? false;
       _vpnHwid = j['vpnHwid'] as String? ?? '';
+      _uiScale = (j['uiScale'] as num?)?.toDouble() ?? 0;
       _eqOn = j['eqOn'] as bool? ?? false;
       _eqGains = [for (final g in (j['eqGains'] as List? ?? const [])) (g as num).toDouble()];
       _pickArtists = j['pickArtists'] as bool? ?? false;
@@ -658,6 +667,7 @@ class SettingsStore extends ChangeNotifier {
         'vpnIndex': _vpnIndex,
         'vpnOn': _vpnOn,
         'vpnHwid': _vpnHwid,
+        'uiScale': _uiScale,
         'eqOn': _eqOn,
         'eqGains': _eqGains,
         'pickArtists': _pickArtists,

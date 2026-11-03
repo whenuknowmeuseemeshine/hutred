@@ -41,7 +41,7 @@ class SettingsScreen extends StatefulWidget {
 /// Слова, по которым находится раздел в поиске (кроме его названия).
 const _sectionKeywords = {
   'Аккаунт': 'вход войти логин аватар аватарка почта пароль облако синхронизация файлы',
-  'Стиль': 'стиль тема оформление дизайн шрифт моно стекло резкий вид',
+  'Стиль': 'стиль тема оформление дизайн шрифт моно стекло резкий вид масштаб размер крупнее полный экран',
   'Акцентный цвет': 'цвет тема оформление акцент',
   'Фон': 'фон цвет тема оформление обои плеер подкрашивать волна картинка gif',
   'Медиатека': 'любимые избранное лайк добавленные исполнители волна',
@@ -114,6 +114,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: StylePicker(),
           ),
+          if (HutredTheme.desktop)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('Масштаб интерфейса  ',
+                      style: TextStyle(color: HutredTheme.muted, fontSize: 13)),
+                  for (final (v, label) in const [
+                    (0.0, 'Авто'),
+                    (1.0, '100%'),
+                    (1.15, '115%'),
+                    (1.3, '130%'),
+                    (1.5, '150%'),
+                  ])
+                    StyleChip(
+                      label: label,
+                      selected: s.uiScale == v,
+                      onTap: () => s.uiScale = v,
+                    ),
+                ],
+              ),
+            ),
           const _Section('Акцентный цвет'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),

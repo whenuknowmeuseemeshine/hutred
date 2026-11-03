@@ -303,6 +303,7 @@ class HutredApp extends StatelessWidget {
           child = GlassBackdrop(
               accent: settings.accent, ink: settings.background.ink, child: child!);
         }
+        if (HutredTheme.desktop) child = _UiScale(scale: settings.uiScale, child: child!);
         if (!HutredTheme.desktop || !Platform.isWindows) return child!;
         // Приложение занимает всё окно, полоса лежит поверх него, а
         // содержимому сообщаем «отступ сверху», как для строки состояния.
@@ -323,6 +324,38 @@ class HutredApp extends StatelessWidget {
   }
 }
 
+
+/// На большом окне (во весь экран на широком мониторе) всё становится
+/// крупнее, чтобы не оставалось пустых полей. [scale] 0 — по ширине окна.
+class _UiScale extends StatelessWidget {
+  const _UiScale({required this.scale, required this.child});
+  final double scale;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final mq = MediaQuery.of(context);
+      final s = scale > 0 ? scale : (box.maxWidth / 1700).clamp(1.0, 1.35);
+      if ((s - 1).abs() < 0.01 || !box.hasBoundedWidth || !box.hasBoundedHeight) return child;
+      final size = Size(box.maxWidth / s, box.maxHeight / s);
+      return MediaQuery(
+        data: mq.copyWith(
+          size: size,
+          devicePixelRatio: mq.devicePixelRatio * s,
+          padding: mq.padding / s,
+          viewPadding: mq.viewPadding / s,
+          viewInsets: mq.viewInsets / s,
+        ),
+        child: FittedBox(
+          fit: BoxFit.fill,
+          alignment: Alignment.topLeft,
+          child: SizedBox.fromSize(size: size, child: child),
+        ),
+      );
+    });
+  }
+}
 
 /// Что показать при запуске: вход → «кого слушаешь» → само приложение.
 class _Gate extends StatelessWidget {
