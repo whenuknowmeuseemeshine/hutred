@@ -258,7 +258,7 @@ extension SpotifyImport on SpotifyService {
 
   // ---------- Deezer: запасной каталог ----------
 
-  final http.Client _dz = http.Client();
+  static final http.Client _dz = http.Client();
 
   Future<(List<Track>, int)> _deezerPage(String query, int offset) async {
     final res = await _dz
