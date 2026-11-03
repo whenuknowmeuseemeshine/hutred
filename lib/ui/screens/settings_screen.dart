@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/account_service.dart';
+import '../../services/library_store.dart';
 import '../../services/offline_service.dart';
 import '../../services/settings_store.dart';
 import '../../services/update_service.dart';
@@ -239,6 +240,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const _Section('Медиатека'),
+          const _LibraryStats(),
           ListTile(
             leading: Icon(Ic.favorite_outline_rounded),
             title: const Text('Любимые исполнители'),
@@ -472,6 +474,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _Section('YouTube'),
           const _YoutubeLoginTile(),
           const _Section('Загрузки и кэш'),
+          const _StorageBar(),
           const _DownloadsTile(),
           const _CacheTile(),
           const _Section('Версия'),
@@ -518,30 +521,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Без поиска — аккаунт и список групп; при поиске — найденные пункты.
   List<Widget> _body(BuildContext context) {
     final all = _items(context);
-    if (_q.trim().isNotEmpty) return _filter(all);
+    if (_q.trim().isNotEmpty) return _asCards(_filter(all));
     final sections = _sections(all);
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final shown = [for (final g in _groups) if (g.$4.any(sections.containsKey)) g];
     return [
-      const _AccountTile(),
-      const SizedBox(height: 8),
-      for (final g in _groups)
-        if (g.$4.any(sections.containsKey))
-          ListTile(
-            leading: Icon(g.$2),
-            title: Text(g.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(g.$3),
-            trailing: Icon(Ic.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => _GroupPage(
-                title: g.$1,
-                // Пункты строятся заново при каждой перерисовке страницы,
-                // чтобы переключатели сразу показывали новое значение.
-                items: (ctx) {
-                  final sec = _sections(_items(ctx));
-                  return [for (final name in g.$4) ...?sec[name]];
-                },
+      const Padding(
+        padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: StylePanel(padding: EdgeInsets.zero, child: _AccountTile()),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: StylePanel(
+          padding: EdgeInsets.zero,
+          child: Column(children: [
+            for (final (i, g) in shown.indexed)
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  border: i == 0
+                      ? null
+                      : Border(
+                          top: BorderSide(
+                              color: st.glass
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : const Color(0xFF1F1F1F))),
+                ),
+                child: ListTile(
+                  leading: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: st.sharp
+                          ? Colors.transparent
+                          : st.glass
+                              ? accent.withValues(alpha: 0.22)
+                              : const Color(0xFF262626),
+                      borderRadius: BorderRadius.circular(st.sharp ? 0 : st.glass ? 17 : 8),
+                    ),
+                    child: Icon(g.$2, size: 18, color: st.mono ? HutredTheme.text : accent),
+                  ),
+                  title: Text(g.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(g.$3, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: Icon(Ic.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => _GroupPage(
+                      title: g.$1,
+                      // Пункты строятся заново при каждой перерисовке страницы,
+                      // чтобы переключатели сразу показывали новое значение.
+                      items: (ctx) {
+                        final sec = _sections(_items(ctx));
+                        return [for (final name in g.$4) ...?sec[name]];
+                      },
+                    ),
+                  )),
+                ),
               ),
-            )),
-          ),
+          ]),
+        ),
+      ),
       const _Footer(),
     ];
   }
@@ -660,7 +698,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Text(searching ? 'Поиск: ${_q.trim()}' : g.$1,
                         style: st.display(40)),
                   ),
-                  ...right,
+                  if (!searching)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                      child: Text(g.$3,
+                          style: const TextStyle(color: HutredTheme.muted, fontSize: 14)),
+                    ),
+                  ..._asCards(right),
                   if (!searching && sel == groups.length - 1) const _Footer(),
                 ],
               ),
@@ -717,6 +761,158 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 
+/// Раздел настроек — отдельной карточкой с подписью, как в макете.
+List<Widget> _asCards(List<Widget> items) {
+  final out = <Widget>[];
+  String? title;
+  var group = <Widget>[];
+  void flush() {
+    if (group.isEmpty && title == null) return;
+    final t = title;
+    final g = group;
+    out.add(Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+      child: StylePanel(
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (t != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: StyleCaption(t),
+              ),
+            ...g,
+          ],
+        ),
+      ),
+    ));
+  }
+
+  for (final w in items) {
+    if (w is _Section) {
+      flush();
+      title = w.text;
+      group = [];
+    } else if (w is _Footer) {
+      flush();
+      title = null;
+      group = [];
+      out.add(w);
+    } else {
+      group.add(w);
+    }
+  }
+  flush();
+  return out;
+}
+
+/// Сводка медиатеки: сколько любимых, скрытых и в чёрном списке.
+class _LibraryStats extends StatelessWidget {
+  const _LibraryStats();
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final fav = context.watch<LibraryStore>().favorites.length;
+    final wave = context.watch<WaveService>();
+    Widget stat(int n, String label) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$n', style: st.display(26)),
+            Text(label, style: const TextStyle(fontSize: 12, color: HutredTheme.muted)),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Row(children: [
+        stat(fav, 'любимых'),
+        stat(wave.dislikedCount, 'скрыто'),
+        stat(wave.blockedArtists.length, 'в чёрном списке'),
+      ]),
+    );
+  }
+}
+
+/// Сколько места занимает Hutred: загрузки, кэш — полосой.
+class _StorageBar extends StatefulWidget {
+  const _StorageBar();
+
+  @override
+  State<_StorageBar> createState() => _StorageBarState();
+}
+
+class _StorageBarState extends State<_StorageBar> {
+  int? _dl;
+  int? _cache;
+  int _seen = -1;
+
+  Future<void> _load(OfflineService off) async {
+    try {
+      final dl = await off.sizeBytes();
+      final cache =
+          await YoutubeSource.cacheSize() + await _dirSize(await SoundcloudSource.cacheDir());
+      if (mounted) setState(() {
+        _dl = dl;
+        _cache = cache;
+      });
+    } catch (_) {}
+  }
+
+  String _fmt(int b) => b >= 1024 * 1024 * 1024
+      ? '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1).replaceAll('.', ',')} ГБ'
+      : '${(b / (1024 * 1024)).round()} МБ';
+
+  @override
+  Widget build(BuildContext context) {
+    final off = context.watch<OfflineService>();
+    if (_seen != off.count) {
+      _seen = off.count;
+      _load(off);
+    }
+    final st = HutredStyle.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    final main = st.mono ? HutredTheme.text : accent;
+    final dl = _dl ?? 0, cache = _cache ?? 0;
+    final total = dl + cache;
+    final r = BorderRadius.circular(st.sharp ? 0 : 7);
+    Widget legend(Color c, String n, int v) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 10, height: 10, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(st.sharp ? 0 : 3))),
+          const SizedBox(width: 8),
+          Text('$n ', style: const TextStyle(fontSize: 13)),
+          Text(_fmt(v), style: const TextStyle(fontSize: 13, color: HutredTheme.muted)),
+        ]);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text(_dl == null ? '…' : _fmt(total), style: st.display(38)),
+          const SizedBox(width: 10),
+          const Text('занимает Hutred', style: TextStyle(color: HutredTheme.muted)),
+        ]),
+        const SizedBox(height: 12),
+        ClipRRect(
+          borderRadius: r,
+          child: SizedBox(
+            height: 14,
+            child: Row(children: [
+              if (total > 0) ...[
+                Expanded(flex: (dl * 1000 ~/ total).clamp(1, 1000), child: ColoredBox(color: main)),
+                Expanded(flex: (cache * 1000 ~/ total).clamp(1, 1000), child: const ColoredBox(color: Color(0xFF8A8A8A))),
+              ] else
+                const Expanded(child: ColoredBox(color: Color(0xFF262626))),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(spacing: 22, runSpacing: 6, children: [
+          legend(main, 'Загрузки', dl),
+          legend(const Color(0xFF8A8A8A), 'Кэш', cache),
+        ]),
+      ]),
+    );
+  }
+}
+
 /// «Проверить обновления» — в самом низу настроек.
 class _UpdateCheckTile extends StatelessWidget {
   const _UpdateCheckTile();
@@ -735,19 +931,39 @@ class _UpdateCheckTile extends StatelessWidget {
                     : u.available
                         ? 'Доступна новая сборка ${u.latestBuild}'
                         : u.error ?? 'У тебя последняя версия';
-    return ListTile(
-          leading: Icon(Ic.system_update_alt),
-          title: Text(
-              'Hutred, сборка ${UpdateService.build == 0 ? 'локальная' : UpdateService.build}'),
-          subtitle: Text(status),
-          trailing: u.available
-              ? FilledButton(onPressed: u.updateNow, child: const Text('Обновить'))
-              : TextButton(
-                  onPressed:
-                      u.supported && !u.checking ? () => u.check(manual: true) : null,
-                  child: const Text('Проверить'),
-                ),
-        );
+    final st = HutredStyle.of(context);
+    final ok = !u.available && !u.readyToInstall && u.error == null && u.supported;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 18,
+        runSpacing: 12,
+        children: [
+          HutredLogo(size: 64, radius: st.sharp ? 0 : null),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Hutred ${UpdateService.build == 0 ? '· локальная сборка' : '1.4.${UpdateService.build}'}',
+                  style: st.display(22)),
+              const SizedBox(height: 4),
+              Text(ok ? '● $status' : status,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: ok ? const Color(0xFF4ADE80) : HutredTheme.muted)),
+            ]),
+          ),
+          if (u.available || u.readyToInstall)
+            StyleButton(label: u.readyToInstall ? 'Перезапустить' : 'Обновить', onPressed: u.updateNow)
+          else
+            StyleButton(
+              label: 'Проверить обновления',
+              primary: false,
+              onPressed: u.supported && !u.checking ? () => u.check(manual: true) : null,
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1718,7 +1934,7 @@ class _GroupPage extends StatelessWidget {
         body: Builder(
           builder: (ctx) => ListView(
             padding: const EdgeInsets.only(bottom: 96),
-            children: items(ctx),
+            children: _asCards(items(ctx)),
           ),
         ),
       );
