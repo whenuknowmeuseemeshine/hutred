@@ -350,10 +350,17 @@ class _UiScale extends StatelessWidget {
           viewPadding: mq.viewPadding / s,
           viewInsets: mq.viewInsets / s,
         ),
-        child: FittedBox(
-          fit: BoxFit.fill,
-          alignment: Alignment.topLeft,
-          child: SizedBox.fromSize(size: size, child: child),
+        // Рамка ровно во всё окно: иначе при свободных ограничениях
+        // FittedBox сжимается до размера содержимого и справа/снизу
+        // остаётся чёрная полоса.
+        child: SizedBox(
+          width: box.maxWidth,
+          height: box.maxHeight,
+          child: FittedBox(
+            fit: BoxFit.fill,
+            alignment: Alignment.topLeft,
+            child: SizedBox.fromSize(size: size, child: child),
+          ),
         ),
       );
     });

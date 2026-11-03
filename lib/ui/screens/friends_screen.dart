@@ -28,11 +28,14 @@ class FriendsScreen extends StatefulWidget {
 
 class _FriendsScreenState extends State<FriendsScreen> {
   final _name = TextEditingController();
+  final _find = TextEditingController();
+  String _query = '';
   bool _sending = false;
 
   @override
   void dispose() {
     _name.dispose();
+    _find.dispose();
     super.dispose();
   }
 
@@ -83,6 +86,15 @@ class _FriendsScreenState extends State<FriendsScreen> {
         final oa = jam.isOnline(a.userId) ? 0 : 1, ob = jam.isOnline(b.userId) ? 0 : 1;
         return oa != ob ? oa - ob : (a.username ?? '').compareTo(b.username ?? '');
       });
+    final q = _query.trim().toLowerCase().replaceFirst('@', '');
+    final shown = q.isEmpty
+        ? friends
+        : friends
+            .where((fr) =>
+                fr.name.toLowerCase().contains(q) ||
+                (fr.username ?? '').toLowerCase().contains(q) ||
+                (jam.listeningOf(fr.userId) ?? '').toLowerCase().contains(q))
+            .toList();
 
     String ago(DateTime t) {
       final d = DateTime.now().difference(t);
@@ -295,7 +307,34 @@ class _FriendsScreenState extends State<FriendsScreen> {
         for (final r in f.incoming) requestCard(r),
       ],
       const SizedBox(height: 18),
-      const StyleCaption('Друзья'),
+      Row(children: [
+        StyleCaption('Друзья${friends.isEmpty ? '' : ' · ${friends.length}'}'),
+        const Spacer(),
+        if (friends.length > 1)
+          SizedBox(
+            width: wide ? 280 : 200,
+            height: 40,
+            child: TextField(
+              controller: _find,
+              onChanged: (v) => setState(() => _query = v),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Найти среди друзей',
+                prefixIcon: Icon(Ic.search, size: 18),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Очистить',
+                        icon: Icon(Ic.close, size: 16),
+                        onPressed: () => setState(() {
+                          _find.clear();
+                          _query = '';
+                        }),
+                      ),
+              ),
+            ),
+          ),
+      ]),
       const SizedBox(height: 6),
       if (f.loading && f.friends.isEmpty)
         const Padding(
@@ -305,8 +344,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
       else if (f.friends.isEmpty)
         const Text('Пока никого. Добавь друга по логину.',
             style: TextStyle(color: HutredTheme.muted))
+      else if (shown.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Text('Среди друзей нет «${_query.trim()}»',
+              style: const TextStyle(color: HutredTheme.muted)),
+        )
       else
-        for (final (i, fr) in friends.indexed) friendRow(fr, i),
+        for (final (i, fr) in shown.indexed) friendRow(fr, i),
       if (f.outgoing.isNotEmpty) ...[
         const SizedBox(height: 18),
         const StyleCaption('Отправленные заявки'),
