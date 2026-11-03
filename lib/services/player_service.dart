@@ -95,6 +95,12 @@ class PlayerService extends ChangeNotifier {
         if (j is Map) {
           _shuffle = j['shuffle'] == true;
           _smart = _shuffle && j['smart'] == true;
+          recent
+            ..clear()
+            ..addAll([
+              for (final t in (j['recent'] as List? ?? const []))
+                if (t is Map) Track.fromJson(Map<String, dynamic>.from(t)),
+            ]);
           final r = (j['repeat'] as num?)?.toInt() ?? 0;
           if (r >= 0 && r < RepeatSetting.values.length) _repeat = RepeatSetting.values[r];
         }
@@ -148,6 +154,7 @@ class PlayerService extends ChangeNotifier {
         'shuffle': _shuffle,
         'smart': _smart,
         'repeat': _repeat.index,
+        'recent': [for (final t in recent.take(30)) t.toJson()],
       }));
     } catch (_) {}
   }
@@ -392,6 +399,29 @@ class PlayerService extends ChangeNotifier {
     await load;
   }
 
+  /// Недавно игравшие треки (новые первыми, без повторов, до 30).
+  final List<Track> recent = [];
+
+  void _noteRecent(Track t) {
+    if (recent.isNotEmpty && recent.first.id == t.id) return;
+    recent.removeWhere((e) => e.id == t.id || (e.source == t.source && e.uri == t.uri));
+    recent.insert(0, t);
+    if (recent.length > 30) recent.removeRange(30, recent.length);
+  }
+
+  /// Сейчас играет трек из этого списка (кнопка «Слушать» становится паузой).
+  bool isFrom(List<Track> list) {
+    final c = current;
+    return c != null && list.any((t) => t.id == c.id);
+  }
+
+  /// Большая кнопка списка: если играет этот список — пауза/продолжить,
+  /// иначе — включить список.
+  Future<void> playOrToggle(List<Track> list, {bool all = false}) async {
+    if (isFrom(list)) return togglePlay();
+    return all ? playAll(list) : playTracks(list);
+  }
+
   /// «Слушать всё»: если перемешивание включено — начинаем со случайного трека.
   Future<void> playAll(List<Track> tracks) async {
     if (tracks.isEmpty) return;
@@ -417,6 +447,7 @@ class PlayerService extends ChangeNotifier {
   Future<void> _loadCurrent({bool autoplay = true}) async {
     var t = current;
     if (t == null) return;
+    if (autoplay) _noteRecent(t);
     // Нажали на трек исполнителя из чёрного списка — не играем, объясняем.
     final banned = blockedArtist?.call(t);
     if (banned != null && t.id == _allowId) {

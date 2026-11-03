@@ -7,6 +7,7 @@ import '../../models/playlist.dart';
 import '../../models/track.dart';
 import '../../services/account_service.dart';
 import '../../services/library_store.dart';
+import '../../services/settings_store.dart';
 import '../../services/offline_service.dart';
 import '../../services/player_service.dart';
 import '../actions.dart';
@@ -254,7 +255,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<LibraryStore>();
-    final player = context.read<PlayerService>();
+    final player = context.watch<PlayerService>();
     final playlist = playlistId == null ? null : store.playlistById(playlistId!);
     if (playlistId != null && playlist == null) {
       return Scaffold(appBar: AppBar(), body: const Center(child: Text('Плейлист удалён')));
@@ -384,7 +385,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
 
     final canPlay = tracks.isNotEmpty;
-    void play() => player.playTracks(tracks);
+    final listPlaying = player.playing && player.isFrom(tracks);
+    void play() => player.playOrToggle(tracks);
     void shuffle() => player.shufflePlay(tracks);
 
     // Большая кнопка «Слушать»: круг (Моно), капсула со словом (Стекло),
@@ -392,8 +394,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final playButton = style.glass
         ? FilledButton.icon(
             onPressed: canPlay ? play : null,
-            icon: Icon(Ic.play_arrow_rounded),
-            label: const Text('Слушать'),
+            icon: Icon(listPlaying ? Ic.pause_rounded : Ic.play_arrow_rounded),
+            label: Text(listPlaying ? 'Пауза' : 'Слушать'),
           )
         : SizedBox(
             width: style.sharp ? 76 : 56,
@@ -407,7 +409,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 foregroundColor:
                     style.sharp ? HutredTheme.onAccent(scheme.primary) : Colors.black,
               ),
-              child: Icon(Ic.play_arrow_rounded, size: 32),
+              child: Icon(listPlaying ? Ic.pause_rounded : Ic.play_arrow_rounded, size: 32),
             ),
           );
 
@@ -458,6 +460,20 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final share = playlist != null
         ? iconAction('Поделиться ссылкой', Ic.ios_share, () => _share(context, playlist, all))
         : null;
+    final settings = context.watch<SettingsStore>();
+    final pinnedNav = playlist != null && settings.isPlaylistPinned(playlist.id);
+    final pinNav = playlist != null
+        ? iconAction(
+            pinnedNav ? 'Убрать из меню слева' : 'Закрепить в меню слева',
+            pinnedNav ? Ic.push_pin : Ic.push_pin_outlined,
+            () {
+              settings.setPlaylistPinned(playlist.id, !pinnedNav);
+              AppActions.toast(context,
+                  pinnedNav ? 'Убран из меню' : '«${playlist.name}» теперь в меню');
+            },
+            color: pinnedNav ? scheme.primary : null,
+          )
+        : null;
     final search = all.length > 8
         ? ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 230),
@@ -506,6 +522,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             iconAction('Перемешать', Ic.shuffle, canPlay ? shuffle : null),
             download,
             if (share != null) share,
+            if (pinNav != null) pinNav,
             if (edit != null) edit,
             if (unfollow != null) unfollow,
             const Spacer(),
@@ -523,6 +540,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               children: [
                 download,
                 if (share != null) share,
+            if (pinNav != null) pinNav,
                 if (edit != null) edit,
                 if (unfollow != null) unfollow,
                 const Spacer(),

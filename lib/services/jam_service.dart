@@ -8,6 +8,7 @@ import '../models/track.dart';
 import 'account_service.dart';
 import 'library_store.dart';
 import 'player_service.dart';
+import 'update_service.dart';
 import 'wave_service.dart';
 
 /// Участник джема.
@@ -125,6 +126,16 @@ class JamService extends ChangeNotifier {
     });
   }
 
+  /// Сборки Hutred у тех, кто сейчас в сети (для админа).
+  final Map<String, int> _builds = {};
+
+  /// Сколько людей сейчас в сети (с тобой).
+  int get onlineCount => _online2.length + 1;
+
+  /// Сколько из тех, кто в сети, уже на сборке [latest] или новее (с тобой).
+  int onLatest(int latest) =>
+      _builds.values.where((b) => b >= latest).length + (UpdateService.build >= latest ? 1 : 0);
+
   /// Настройку «показывать, что я в сети» поменяли.
   void refreshPresence() {
     final ch = _online;
@@ -152,6 +163,7 @@ class JamService extends ChangeNotifier {
     ch
         .onPresenceSync((_) {
           _jamOf.clear();
+          _builds.clear();
           final was = Set.of(_online2.keys);
           _online2.clear();
           for (final s in ch.presenceState()) {
@@ -160,6 +172,8 @@ class JamService extends ChangeNotifier {
               final jam = p.payload['jam'];
               if (uid is String && jam is String) _jamOf[uid] = jam;
               if (uid is String) _online2[uid] = '${p.payload['track'] ?? ''}';
+              final b = p.payload['build'];
+              if (uid is String && b is num) _builds[uid] = b.toInt();
             }
           }
           final now = DateTime.now();
@@ -200,6 +214,7 @@ class JamService extends ChangeNotifier {
     }
     unawaited(ch.track({
       'uid': me,
+      'build': UpdateService.build,
       if (_host != null) 'jam': _host,
       'track': _lastShared = _nowPlaying(),
     }));

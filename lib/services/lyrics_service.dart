@@ -200,6 +200,9 @@ class LyricsService {
   final http.Client _client = http.Client();
   static const _headers = {'User-Agent': 'Hutred music player 1.0'};
 
+  /// Порядок источников (из настроек): lrclib, youtube, genius.
+  static List<String> order = const ['lrclib', 'youtube', 'genius'];
+
   Future<LyricsResult?> find(
     Track t, {
     bool useYoutube = true,
@@ -210,41 +213,42 @@ class LyricsService {
     final title = YoutubeSource.searchTitle(split.title);
     final artist = split.artist;
 
-    // 1. LRCLIB: самые точные тайминги.
+    // Порядок источников задаётся в настройках (по умолчанию LRCLIB →
+    // YouTube → Genius). NetEase — запасной к LRCLIB.
     ({String? synced, String? plain})? lrclib;
-    if (only == null || only == LyricsOrigin.lrclib) {
-      lrclib = await _tryOrNull(() => _lrclib(t, artist, title));
-      if (lrclib?.synced != null) {
-        return LyricsResult(lrclib!.synced!, LyricsOrigin.lrclib);
+    for (final src in order) {
+      switch (src) {
+        case 'lrclib':
+          if (only == null || only == LyricsOrigin.lrclib) {
+            lrclib = await _tryOrNull(() => _lrclib(t, artist, title));
+            if (lrclib?.synced != null) {
+              return LyricsResult(lrclib!.synced!, LyricsOrigin.lrclib);
+            }
+          }
+          if (only == null || only == LyricsOrigin.netease) {
+            final lrc = await _tryOrNull(() => _netease(t, artist, title));
+            if (lrc != null) return LyricsResult(lrc, LyricsOrigin.netease);
+          }
+        case 'youtube':
+          if ((only == null && useYoutube) || only == LyricsOrigin.youtube) {
+            final lrc = await _tryOrNull(() => youtube.findCaptionLyrics(
+                  videoId: t.source == TrackSource.youtube ? t.uri : null,
+                  artist: artist,
+                  title: title,
+                  duration: t.duration,
+                ));
+            if (lrc != null) return LyricsResult(lrc, LyricsOrigin.youtube);
+          }
+        case 'genius':
+          if ((only == null && useGenius) || only == LyricsOrigin.genius) {
+            final text = await _tryOrNull<String>(() async {
+              final song = await genius.findSong(artist, title);
+              if (song == null) return null;
+              return await genius.fetchLyrics(song);
+            });
+            if (text != null) return LyricsResult(text, LyricsOrigin.genius);
+          }
       }
-    }
-
-    // 1б. NetEase Music: большая база синхронных текстов, выручает,
-    // когда LRCLIB не отвечает или не знает песню.
-    if (only == null || only == LyricsOrigin.netease) {
-      final lrc = await _tryOrNull(() => _netease(t, artist, title));
-      if (lrc != null) return LyricsResult(lrc, LyricsOrigin.netease);
-    }
-
-    // 2. Субтитры YouTube: тоже с таймингами.
-    if ((only == null && useYoutube) || only == LyricsOrigin.youtube) {
-      final lrc = await _tryOrNull(() => youtube.findCaptionLyrics(
-            videoId: t.source == TrackSource.youtube ? t.uri : null,
-            artist: artist,
-            title: title,
-            duration: t.duration,
-          ));
-      if (lrc != null) return LyricsResult(lrc, LyricsOrigin.youtube);
-    }
-
-    // 3. Genius: полный текст, но без таймингов.
-    if ((only == null && useGenius) || only == LyricsOrigin.genius) {
-      final text = await _tryOrNull<String>(() async {
-        final song = await genius.findSong(artist, title);
-        if (song == null) return null;
-        return await genius.fetchLyrics(song);
-      });
-      if (text != null) return LyricsResult(text, LyricsOrigin.genius);
     }
 
     // 4. Обычный текст из LRCLIB.

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../services/account_service.dart';
 import '../services/friends_service.dart';
 import '../services/jam_service.dart';
+import '../services/library_store.dart';
 import '../services/offline_service.dart';
 import '../services/player_service.dart';
 import '../services/settings_store.dart';
@@ -195,16 +196,33 @@ class _HomeShellState extends State<HomeShell> {
     );
 
     final style = HutredStyle.of(context);
+    // Закреплённые плейлисты — в меню рядом с вкладками, перед Настройками.
+    final lib = context.watch<LibraryStore>();
+    final pinned = <NavItem>[
+      for (final pid in settings.pinnedPlaylists)
+        if (lib.playlistById(pid) case final p?)
+          (id: 'pl:$pid', icon: Ic.queue_music, label: p.name, badge: 0),
+    ];
     final items = <NavItem>[
-      for (final id in order)
+      for (final id in order) ...[
+        if (id == 'settings') ...pinned,
         (
           id: id,
           icon: navTabs[id]!.icon,
           label: navTabs[id]!.label,
           badge: id == 'friends' ? context.watch<FriendsService>().incoming.length : 0,
         ),
+      ],
+      if (!order.contains('settings')) ...pinned,
     ];
-    void onSelect(String id) => _select(order.indexOf(id));
+    void onSelect(String id) {
+      if (id.startsWith('pl:')) {
+        _navKeys[_current]!.currentState?.push(MaterialPageRoute(
+            builder: (_) => PlaylistDetailScreen(playlistId: id.substring(3))));
+        return;
+      }
+      _select(order.indexOf(id));
+    }
 
     if (wide) {
       // Три раскладки по макетам: A — боковая панель, B — стеклянные панели,
@@ -280,7 +298,10 @@ class _HomeShellState extends State<HomeShell> {
       // На телефоне плейлисты живут в Медиатеке, а перенос — в Настройках:
       // так меню помещается в одну строку.
       bottomNavigationBar: PhoneNav(
-        items: [for (final i in items) if (i.id != 'playlists' && i.id != 'transfer') i],
+        items: [
+          for (final i in items)
+            if (i.id != 'playlists' && i.id != 'transfer' && !i.id.startsWith('pl:')) i
+        ],
         selected: _current,
         onSelect: onSelect,
       ),

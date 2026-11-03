@@ -7,7 +7,10 @@ import '../theme.dart';
 
 /// Эквалайзер: полосы частот и готовые настройки.
 class EqualizerScreen extends StatefulWidget {
-  const EqualizerScreen({super.key});
+  const EqualizerScreen({super.key, this.embedded = false});
+
+  /// Встроен прямо в настройки (без своей шапки и прокрутки).
+  final bool embedded;
 
   @override
   State<EqualizerScreen> createState() => _EqualizerScreenState();
@@ -62,9 +65,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
   Widget build(BuildContext context) {
     final player = context.read<PlayerService>();
     final p = _params;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Эквалайзер')),
-      body: !player.eqSupported
+    final body = !player.eqSupported
           ? const Padding(
               padding: EdgeInsets.all(24),
               child: Text(
@@ -82,7 +83,11 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                           style: TextStyle(color: HutredTheme.muted)),
                     )
                   : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                      shrinkWrap: widget.embedded,
+                      physics: widget.embedded ? const NeverScrollableScrollPhysics() : null,
+                      padding: widget.embedded
+                          ? const EdgeInsets.fromLTRB(16, 0, 16, 8)
+                          : const EdgeInsets.fromLTRB(16, 0, 16, 96),
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -152,7 +157,8 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                           ),
                         ),
                       ],
-                    ),
-    );
+                    );
+    if (widget.embedded) return body;
+    return Scaffold(appBar: AppBar(title: const Text('Эквалайзер')), body: body);
   }
 }

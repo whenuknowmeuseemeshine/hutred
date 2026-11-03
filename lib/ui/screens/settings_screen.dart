@@ -5,8 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide Provider;
 
 import '../../services/account_service.dart';
+import '../../services/jam_service.dart';
 import '../../services/library_store.dart';
 import '../../services/offline_service.dart';
 import '../../services/settings_store.dart';
@@ -292,7 +294,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Text('12 с', style: TextStyle(color: HutredTheme.muted)),
               ]),
             ),
-          ListTile(
+          if (!HutredTheme.desktop || Platform.isMacOS) ListTile(
             leading: Icon(Ic.equalizer_rounded),
             title: const Text('Эквалайзер'),
             subtitle: Text(Platform.isIOS || Platform.isMacOS
@@ -309,19 +311,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.fadePause,
             onChanged: (v) => s.fadePause = v,
           ),
+          if (HutredTheme.desktop && !Platform.isMacOS) ...[
+            const _Section('Эквалайзер'),
+            const EqualizerScreen(embedded: true),
+          ],
           const _Section('Чёрный список'),
           const _BlacklistTiles(),
           const _Section('Вкладки'),
           const _NavOrderEditor(),
           const _Section('Тексты песен'),
-          const ListTile(
-            dense: true,
-            title: Text(
-              'Сначала ищу текст с таймингами в LRCLIB и NetEase Music, потом '
-              'в субтитрах YouTube, потом обычный текст на Genius.',
-              style: TextStyle(color: HutredTheme.muted),
+          const _LyricsOrder(),
+          if (Platform.isAndroid || Platform.isIOS)
+            SwitchListTile(
+              title: const Text('Строка текста на обложке'),
+              subtitle: const Text('В плеере поверх обложки — текущая строка песни'),
+              value: s.lyricsOnCover,
+              onChanged: (v) => s.lyricsOnCover = v,
             ),
-          ),
           SwitchListTile(
             title: const Text('Субтитры YouTube'),
             subtitle: const Text('Текст по таймеру из клипа, если он там залит'),
@@ -383,6 +389,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (acc.isAdmin && acc.enabled && acc.signedIn) ...[
             const _Section('Админ'),
+            const _AdminStats(),
             const _AdminTiles(),
             const _RelayAdminTile(),
           ],
@@ -408,6 +415,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
                       ),
               ),
+            if (s.discordPresence) ...[
+              SwitchListTile(
+                title: const Text('Время трека'),
+                subtitle: const Text('Полоска «сколько осталось» в статусе'),
+                value: s.discordTime,
+                onChanged: (v) => s.discordTime = v,
+              ),
+              SwitchListTile(
+                title: const Text('Кнопка «Слушать трек»'),
+                subtitle: const Text('Друг откроет этот трек на YouTube, Spotify или Deezer'),
+                value: s.discordButton,
+                onChanged: (v) => s.discordButton = v,
+              ),
+              SwitchListTile(
+                title: const Text('Скрывать на паузе'),
+                subtitle: const Text('Иначе в статусе будет «На паузе»'),
+                value: s.discordHideOnPause,
+                onChanged: (v) => s.discordHideOnPause = v,
+              ),
+            ],
             if (acc.isAdmin)
               ListTile(
                 leading: Icon(Ic.key_outlined),
@@ -477,6 +504,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _StorageBar(),
           const _DownloadsTile(),
           const _CacheTile(),
+          const _AudioPrefs(),
           const _Section('Версия'),
           const _UpdateCheckTile(),
           const _Footer(),
@@ -488,7 +516,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ('Внешний вид', Ic.palette_outlined, 'Стиль, цвет, фон, вкладки',
         ['Стиль', 'Акцентный цвет', 'Фон', 'Вкладки']),
     ('Воспроизведение', Ic.play_circle_outline, 'Плавный переход, пауза, эквалайзер',
-        ['Воспроизведение']),
+        ['Воспроизведение', 'Эквалайзер']),
     ('Медиатека и волна', Ic.library_music_outlined, 'Любимые исполнители, чёрный список',
         ['Медиатека', 'Чёрный список']),
     ('Тексты и обложки', Ic.lyrics_outlined, 'Караоке, Spotify, Genius',
@@ -734,7 +762,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Text(g.$3,
                           style: const TextStyle(color: HutredTheme.muted, fontSize: 14)),
                     ),
-                  ..._asCards(right),
+                  _CardGrid(cards: _asCards(right)),
                   if (!searching && sel == groups.length - 1) const _Footer(),
                 ],
               ),
@@ -835,6 +863,189 @@ List<Widget> _asCards(List<Widget> items) {
   }
   flush();
   return out;
+}
+
+/// Карточки разделов на широком экране — в две колонки, как в макете:
+/// первая во всю ширину, остальные попеременно слева и справа.
+class _CardGrid extends StatelessWidget {
+  const _CardGrid({required this.cards});
+  final List<Widget> cards;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final panels = [for (final c in cards) if (c is! _Footer) c];
+      final rest = [for (final c in cards) if (c is _Footer) c];
+      if (box.maxWidth < 1000 || panels.length < 3) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: cards);
+      }
+      final left = <Widget>[], right = <Widget>[];
+      for (var i = 1; i < panels.length; i++) {
+        (i.isOdd ? left : right).add(panels[i]);
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        panels.first,
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: left)),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: right)),
+        ]),
+        ...rest,
+      ]);
+    });
+  }
+}
+
+/// Качество звука, лимит кэша, «только по Wi-Fi», папка загрузок.
+class _AudioPrefs extends StatelessWidget {
+  const _AudioPrefs();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final off = context.watch<OfflineService>();
+    Widget row(String title, String sub, List<Widget> chips) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(sub, style: const TextStyle(fontSize: 12, color: HutredTheme.muted)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: chips),
+          ]),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      row('Качество звука', 'Для YouTube: лучшее ~6 МБ на трек, экономия ~1,5 МБ', [
+        for (final (v, l) in const [('best', 'Лучшее'), ('normal', 'Обычное'), ('saver', 'Экономия')])
+          StyleChip(label: l, selected: s.audioQuality == v, onTap: () => s.audioQuality = v),
+      ]),
+      row('Лимит кэша прослушанного', 'Старые файлы удаляются сами, загрузки не трогаются', [
+        for (final (v, l) in const [(500, '500 МБ'), (1024, '1 ГБ'), (3072, '3 ГБ'), (0, 'Без лимита')])
+          StyleChip(label: l, selected: s.cacheLimitMb == v, onTap: () => s.cacheLimitMb = v),
+      ]),
+      if (Platform.isAndroid || Platform.isIOS)
+        SwitchListTile(
+          title: const Text('Качать только по Wi-Fi'),
+          subtitle: Text(off.waitingForWifi
+              ? 'Сейчас мобильный интернет — загрузки ждут Wi-Fi'
+              : 'Загрузки не тратят мобильный трафик'),
+          value: s.wifiOnly,
+          onChanged: (v) => s.wifiOnly = v,
+        ),
+      if (HutredTheme.desktop && off.folder != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: StyleButton(
+              label: 'Открыть папку загрузок',
+              icon: Ic.folder_open_rounded,
+              primary: false,
+              onPressed: () {
+                final path = off.folder!.path;
+                if (Platform.isWindows) {
+                  Process.start('explorer', [path]);
+                } else if (Platform.isMacOS) {
+                  Process.start('open', [path]);
+                } else {
+                  Process.start('xdg-open', [path]);
+                }
+              },
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
+/// Для админа: сколько всего людей, сколько в сети и на последней сборке.
+class _AdminStats extends StatefulWidget {
+  const _AdminStats();
+
+  @override
+  State<_AdminStats> createState() => _AdminStatsState();
+}
+
+class _AdminStatsState extends State<_AdminStats> {
+  int? _users;
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      try {
+        final n = await Supabase.instance.client.from('profiles').count(CountOption.exact);
+        if (mounted) setState(() => _users = n);
+      } catch (_) {}
+    }();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final jam = context.watch<JamService>();
+    final latest = context.watch<UpdateService>().latestBuild ?? UpdateService.build;
+    Widget stat(String v, String label) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(v, style: st.display(28)),
+            Text(label, style: const TextStyle(fontSize: 12, color: HutredTheme.muted)),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Row(children: [
+        stat(_users == null ? '…' : '$_users', 'пользователей'),
+        stat('${jam.onlineCount}', 'в сети сейчас'),
+        stat('${jam.onLatest(latest)}', 'в сети на сборке $latest'),
+      ]),
+    );
+  }
+}
+
+/// Где искать текст по порядку — перетаскиванием.
+class _LyricsOrder extends StatelessWidget {
+  const _LyricsOrder();
+
+  static const _info = {
+    'lrclib': ('LRCLIB и NetEase', 'Тексты с таймингами — караоке'),
+    'youtube': ('Субтитры YouTube', 'Если текст залит в клип'),
+    'genius': ('Genius', 'Полный текст без таймингов'),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final st = HutredStyle.of(context);
+    final order = s.lyricsOrder;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 4, 16, 6),
+        child: Text('Где искать по порядку — перетащи, чтобы поменять',
+            style: TextStyle(fontSize: 13, color: HutredTheme.muted)),
+      ),
+      ReorderableListView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        onReorder: s.moveLyricsSource,
+        children: [
+          for (final (i, id) in order.indexed)
+            ListTile(
+              key: ValueKey(id),
+              leading: CircleAvatar(
+                radius: 12,
+                backgroundColor: st.sharp ? Colors.transparent : const Color(0xFF262626),
+                child: Text('${i + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+              title: Text(_info[id]!.$1),
+              subtitle: Text(_info[id]!.$2),
+              trailing: ReorderableDragStartListener(
+                index: i,
+                child: Icon(Ic.drag_handle),
+              ),
+            ),
+        ],
+      ),
+    ]);
+  }
 }
 
 /// Сводка медиатеки: сколько любимых, скрытых и в чёрном списке.
