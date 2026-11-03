@@ -205,6 +205,8 @@ Future<void> main(List<String> args) async {
   );
   // Треки из Spotify играют с SoundCloud/YouTube.
   player.resolveSpotify = transfer.resolveSpotify;
+  // В джеме трек из файла хозяина гости слушают онлайн-копию.
+  jam.findOnline = transfer.findPlayable;
   // Загрузки: скачанное играет без интернета.
   final offline = OfflineService(store: store, youtube: youtube, soundcloud: soundcloud)
     ..resolveSpotify = transfer.resolveSpotify

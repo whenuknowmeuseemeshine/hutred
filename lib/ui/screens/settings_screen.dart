@@ -1968,6 +1968,33 @@ class _VpnTileState extends State<_VpnTile> {
     await _applyKey(clip);
   }
 
+  void _showJournal() {
+    final text = XrayVpn.journal.join('\n');
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Журнал VPN'),
+        content: SizedBox(
+          width: 640,
+          child: SingleChildScrollView(
+            child: SelectableText(text, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: text));
+              Navigator.pop(ctx);
+              AppActions.toast(context, 'Журнал скопирован');
+            },
+            child: const Text('Скопировать'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pingAll() async {
     final list = _servers(context.read<SettingsStore>());
     setState(() => _pings = null);
@@ -2119,6 +2146,12 @@ class _VpnTileState extends State<_VpnTile> {
                             label: 'Проверить скорость',
                             primary: false,
                             onPressed: _busy ? null : _pingAll,
+                          ),
+                        if (XrayVpn.journal.isNotEmpty)
+                          StyleButton(
+                            label: 'Журнал',
+                            primary: false,
+                            onPressed: _showJournal,
                           ),
                       ]),
                     if (list.length > 1 && !showField) ...[

@@ -110,7 +110,7 @@ class DpiBypass {
       final host = colon > 0 ? hp.substring(0, colon) : hp;
       final port = colon > 0 ? int.tryParse(hp.substring(colon + 1)) ?? 443 : 443;
 
-      final address = await _resolve(host);
+      final address = await resolve(host);
       remote = await Socket.connect(address, port, timeout: const Duration(seconds: 15));
       remote.setOption(SocketOption.tcpNoDelay, true);
       client.add(latin1.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
@@ -358,7 +358,7 @@ class DpiBypass {
 
   /// Адрес сайта через Cloudflare DoH (провайдер не подменит),
   /// при ошибке — обычным способом.
-  static Future<InternetAddress> _resolve(String host) async {
+  static Future<InternetAddress> resolve(String host) async {
     final ip = InternetAddress.tryParse(host);
     if (ip != null) return ip;
     final cached = _dns[host];
