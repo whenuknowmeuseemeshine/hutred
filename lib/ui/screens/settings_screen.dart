@@ -5,8 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide Provider;
 
 import '../../services/account_service.dart';
+import '../../services/jam_service.dart';
 import '../../services/library_store.dart';
 import '../../services/offline_service.dart';
 import '../../services/settings_store.dart';
@@ -318,14 +320,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _Section('Вкладки'),
           const _NavOrderEditor(),
           const _Section('Тексты песен'),
-          const ListTile(
-            dense: true,
-            title: Text(
-              'Сначала ищу текст с таймингами в LRCLIB и NetEase Music, потом '
-              'в субтитрах YouTube, потом обычный текст на Genius.',
-              style: TextStyle(color: HutredTheme.muted),
+          const _LyricsOrder(),
+          if (Platform.isAndroid || Platform.isIOS)
+            SwitchListTile(
+              title: const Text('Строка текста на обложке'),
+              subtitle: const Text('В плеере поверх обложки — текущая строка песни'),
+              value: s.lyricsOnCover,
+              onChanged: (v) => s.lyricsOnCover = v,
             ),
-          ),
           SwitchListTile(
             title: const Text('Субтитры YouTube'),
             subtitle: const Text('Текст по таймеру из клипа, если он там залит'),
@@ -387,6 +389,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (acc.isAdmin && acc.enabled && acc.signedIn) ...[
             const _Section('Админ'),
+            const _AdminStats(),
             const _AdminTiles(),
             const _RelayAdminTile(),
           ],
@@ -412,6 +415,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
                       ),
               ),
+            if (s.discordPresence) ...[
+              SwitchListTile(
+                title: const Text('Время трека'),
+                subtitle: const Text('Полоска «сколько осталось» в статусе'),
+                value: s.discordTime,
+                onChanged: (v) => s.discordTime = v,
+              ),
+              SwitchListTile(
+                title: const Text('Кнопка «Слушать трек»'),
+                subtitle: const Text('Друг откроет этот трек на YouTube, Spotify или Deezer'),
+                value: s.discordButton,
+                onChanged: (v) => s.discordButton = v,
+              ),
+              SwitchListTile(
+                title: const Text('Скрывать на паузе'),
+                subtitle: const Text('Иначе в статусе будет «На паузе»'),
+                value: s.discordHideOnPause,
+                onChanged: (v) => s.discordHideOnPause = v,
+              ),
+            ],
             if (acc.isAdmin)
               ListTile(
                 leading: Icon(Ic.key_outlined),
@@ -929,6 +952,98 @@ class _AudioPrefs extends StatelessWidget {
             ),
           ),
         ),
+    ]);
+  }
+}
+
+/// Для админа: сколько всего людей, сколько в сети и на последней сборке.
+class _AdminStats extends StatefulWidget {
+  const _AdminStats();
+
+  @override
+  State<_AdminStats> createState() => _AdminStatsState();
+}
+
+class _AdminStatsState extends State<_AdminStats> {
+  int? _users;
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      try {
+        final n = await Supabase.instance.client.from('profiles').count(CountOption.exact);
+        if (mounted) setState(() => _users = n);
+      } catch (_) {}
+    }();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = HutredStyle.of(context);
+    final jam = context.watch<JamService>();
+    final latest = context.watch<UpdateService>().latestBuild ?? UpdateService.build;
+    Widget stat(String v, String label) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(v, style: st.display(28)),
+            Text(label, style: const TextStyle(fontSize: 12, color: HutredTheme.muted)),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Row(children: [
+        stat(_users == null ? '…' : '$_users', 'пользователей'),
+        stat('${jam.onlineCount}', 'в сети сейчас'),
+        stat('${jam.onLatest(latest)}', 'в сети на сборке $latest'),
+      ]),
+    );
+  }
+}
+
+/// Где искать текст по порядку — перетаскиванием.
+class _LyricsOrder extends StatelessWidget {
+  const _LyricsOrder();
+
+  static const _info = {
+    'lrclib': ('LRCLIB и NetEase', 'Тексты с таймингами — караоке'),
+    'youtube': ('Субтитры YouTube', 'Если текст залит в клип'),
+    'genius': ('Genius', 'Полный текст без таймингов'),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final st = HutredStyle.of(context);
+    final order = s.lyricsOrder;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 4, 16, 6),
+        child: Text('Где искать по порядку — перетащи, чтобы поменять',
+            style: TextStyle(fontSize: 13, color: HutredTheme.muted)),
+      ),
+      ReorderableListView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        onReorder: s.moveLyricsSource,
+        children: [
+          for (final (i, id) in order.indexed)
+            ListTile(
+              key: ValueKey(id),
+              leading: CircleAvatar(
+                radius: 12,
+                backgroundColor: st.sharp ? Colors.transparent : const Color(0xFF262626),
+                child: Text('${i + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+              title: Text(_info[id]!.$1),
+              subtitle: Text(_info[id]!.$2),
+              trailing: ReorderableDragStartListener(
+                index: i,
+                child: Icon(Ic.drag_handle),
+              ),
+            ),
+        ],
+      ),
     ]);
   }
 }

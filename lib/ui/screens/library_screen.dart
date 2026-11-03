@@ -330,8 +330,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     // ---------- Верх вкладки «Треки»: любимые и «часто слушаешь» ----------
     Widget? hero;
     if (_tab == _Tab.tracks && _q.isEmpty && _source == null && _sel == null) {
-      final top = List.of(favs)..sort((a, b) => b.plays.compareTo(a.plays));
-      final often = top.where((t) => t.plays > 0).take(6).toList();
+      // «Недавно играли»: последние включённые треки; пока их нет — что слушаешь чаще.
+      var often = player.recent.take(6).toList();
+      var oftenTitle = 'Недавно играли';
+      if (often.length < 2) {
+        final top = List.of(favs)..sort((a, b) => b.plays.compareTo(a.plays));
+        often = top.where((t) => t.plays > 0).take(6).toList();
+        oftenTitle = 'Часто слушаешь';
+      }
       final card = FavoritesCard(
         favorites: favs,
         subtitle: '${tracksWord(favs.length)}${dur.isEmpty ? '' : ' · $dur'}',
@@ -345,13 +351,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 SizedBox(width: 520, child: card),
                 const SizedBox(width: 20),
-                Expanded(child: _Often(tracks: often, all: favs)),
+                Expanded(child: _Often(title: oftenTitle, tracks: often, all: favs)),
               ])
             : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 card,
                 if (often.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  _Often(tracks: often, all: favs, strip: true),
+                  _Often(title: oftenTitle, tracks: often, all: favs, strip: true),
                 ],
               ]),
       );
@@ -669,7 +675,8 @@ class _LibTabs extends StatelessWidget {
 
 /// «Часто слушаешь»: плитки (на компьютере — сетка 2×3, на телефоне — лента).
 class _Often extends StatelessWidget {
-  const _Often({required this.tracks, required this.all, this.strip = false});
+  const _Often({required this.title, required this.tracks, required this.all, this.strip = false});
+  final String title;
   final List<Track> tracks;
   final List<Track> all;
   final bool strip;
@@ -680,7 +687,7 @@ class _Often extends StatelessWidget {
     final player = context.read<PlayerService>();
     final caption = Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: StyleCaption('Часто слушаешь'),
+      child: StyleCaption(title),
     );
     if (strip) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

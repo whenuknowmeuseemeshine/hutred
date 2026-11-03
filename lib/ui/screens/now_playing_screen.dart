@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
 import '../../services/library_store.dart';
+import '../../services/lyrics_service.dart';
 import '../../services/player_service.dart';
 import '../../services/settings_store.dart';
 import '../../services/wave_service.dart';
@@ -202,11 +203,14 @@ class _Cover extends StatelessWidget {
                       offset: Offset(0, 16)),
                 ],
               ),
-              child: Hero(
-                tag: 'artwork',
-                child: TrackContextMenu(
-                    track: track, child: Artwork(track: track, radius: 10)),
-              ),
+              child: Stack(children: [
+                Hero(
+                  tag: 'artwork',
+                  child: TrackContextMenu(
+                      track: track, child: Artwork(track: track, radius: 10)),
+                ),
+                Positioned(left: 12, right: 12, bottom: 12, child: _CoverLyric(track: track, radius: 10)),
+              ]),
             ),
           ),
         ),
@@ -760,13 +764,16 @@ class _GlassNarrowState extends State<_GlassNarrow> {
                     color: accent.withValues(alpha: 0.5), blurRadius: 70, offset: const Offset(0, 30)),
               ],
             ),
-            child: Hero(
-              tag: 'artwork',
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Artwork(track: track, radius: 0),
+            child: Stack(children: [
+              Hero(
+                tag: 'artwork',
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Artwork(track: track, radius: 0),
+                ),
               ),
-            ),
+              Positioned(left: 14, right: 14, bottom: 14, child: _CoverLyric(track: track, radius: 14)),
+            ]),
           ),
         ),
         const SizedBox(height: 26),
@@ -1037,6 +1044,61 @@ class _SharpWide extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+/// Текущая строка текста песни поверх обложки (телефон, если включено).
+class _CoverLyric extends StatelessWidget {
+  const _CoverLyric({required this.track, required this.radius});
+  final Track track;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<SettingsStore>();
+    if (!settings.lyricsOnCover || MediaQuery.sizeOf(context).width >= 700) {
+      return const SizedBox.shrink();
+    }
+    final saved = context.watch<LibraryStore>().byId(track.id) ?? track;
+    final raw = saved.lyrics;
+    if (raw == null) return const SizedBox.shrink();
+    final lyrics = Lyrics.parse(raw);
+    if (!lyrics.synced || lyrics.isEmpty) return const SizedBox.shrink();
+    final player = context.read<PlayerService>();
+    final offset = Duration(milliseconds: saved.lyricsOffsetMs);
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      builder: (context, snap) {
+        final pos = (snap.data ?? Duration.zero) + offset;
+        String? line;
+        for (final l in lyrics.lines) {
+          if (l.time <= pos) {
+            line = l.text;
+          } else {
+            break;
+          }
+        }
+        final text = line?.trim() ?? '';
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          child: text.isEmpty
+              ? const SizedBox.shrink()
+              : Container(
+                  key: ValueKey(text),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(radius),
+                  ),
+                  child: Text(text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                ),
+        );
+      },
     );
   }
 }

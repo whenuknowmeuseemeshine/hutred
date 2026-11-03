@@ -230,6 +230,7 @@ Future<void> main(List<String> args) async {
   await offline.load();
   // Качество звука и лимит кэша — из настроек, меняются на лету.
   void applyAudioPrefs() {
+    LyricsService.order = settings.lyricsOrder;
     YoutubeSource.quality = settings.audioQuality;
     YoutubeSource.cacheLimitBytes = settings.cacheLimitMb * 1024 * 1024;
   }

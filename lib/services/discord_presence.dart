@@ -69,7 +69,8 @@ class DiscordPresence {
       final appId = settings.discordAppId;
       final enabled = settings.discordPresence && appId.isNotEmpty;
       final t = player.current;
-      final activity = enabled && t != null && player.playing ? _activity(t) : null;
+      final show = t != null && (player.playing || !settings.discordHideOnPause);
+      final activity = enabled && show ? _activity(t) : null;
       final key = jsonEncode(activity);
       // Тот же статус уже отправлен — не дёргаем Discord.
       if (key == _lastSent && _connectedFor == appId) return;
@@ -119,11 +120,16 @@ class DiscordPresence {
       // 2 — «Слушает», как у Spotify.
       'type': 2,
       'details': cut(t.title),
-      'state': cut(t.artist),
-      'timestamps': {
-        'start': now - pos,
-        if (dur != null && dur > pos) 'end': now - pos + dur,
-      },
+      'state': cut(player.playing ? t.artist : 'На паузе · ${t.artist}'),
+      if (settings.discordTime && player.playing)
+        'timestamps': {
+          'start': now - pos,
+          if (dur != null && dur > pos) 'end': now - pos + dur,
+        },
+      if (settings.discordButton && _linkFor(t) != null)
+        'buttons': [
+          {'label': 'Слушать трек', 'url': _linkFor(t)},
+        ],
       'assets': {
         // Обложка по ссылке; у своих файлов её нет — тогда логотип Hutred.
         if (art != null && art.startsWith('http') && art.length < 250)
@@ -136,6 +142,25 @@ class DiscordPresence {
         if (_logoUrl != null) 'small_text': 'Hutred',
       },
     };
+  }
+
+  /// Ссылка на трек для кнопки в статусе (у своих файлов её нет).
+  static String? _linkFor(Track t) {
+    final u = t.uri;
+    switch (t.source) {
+      case TrackSource.youtube:
+        return 'https://youtu.be/$u';
+      case TrackSource.soundcloud:
+        return u.startsWith('https://') ? u : null;
+      case TrackSource.spotify:
+        return u.startsWith('deezer:')
+            ? 'https://www.deezer.com/track/${u.substring(7)}'
+            : 'https://open.spotify.com/track/$u';
+      case TrackSource.url:
+        return u.startsWith('https://') ? u : null;
+      case TrackSource.local:
+        return null;
+    }
   }
 
   /// Логотип для статуса (выкладывается вместе с обновлениями).
