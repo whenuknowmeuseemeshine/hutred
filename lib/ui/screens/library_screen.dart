@@ -24,6 +24,7 @@ import '../../models/playlist.dart';
 import 'playlists_screen.dart';
 import 'artist_screen.dart';
 import '../widgets/artwork.dart';
+import '../widgets/settings_kit.dart';
 
 enum _Sort { recent, title, artist }
 
@@ -41,6 +42,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   TrackSource? _source;
   String _q = '';
   _Tab _tab = _Tab.tracks;
+
+  /// Телефон: открыта строка поиска.
+  bool _searchOpen = false;
 
   /// Режим выбора: id выбранных треков (null — режим выключен).
   Set<String>? _sel;
@@ -215,7 +219,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// Медиатека = любимые треки (как в Spotify).
   List<Track> _visible(LibraryStore store, OfflineService offline) {
-    var list = store.favorites.where((t) {
+    // «Скачанные» — все скачанные треки, даже те, что только в плейлистах.
+    final base = _tab == _Tab.downloaded ? store.tracks : store.favorites;
+    var list = base.where((t) {
       if (_tab == _Tab.downloaded && !offline.isDownloaded(t)) return false;
       if (_source != null && t.source != _source) return false;
       if (_q.isNotEmpty && !trackMatches(t, _q)) return false;
@@ -461,7 +467,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
         );
 
     final List<Widget> slivers;
-    if (favs.isEmpty && store.playlists.isEmpty) {
+    if (!wide && _sel == null && !(favs.isEmpty && store.playlists.isEmpty)) {
+      slivers = _phoneSlivers(context,
+          store: store,
+          player: player,
+          offline: offline,
+          favs: favs,
+          tracks: tracks,
+          artists: artists,
+          albums: albums,
+          sources: sources,
+          gridOf: gridOf);
+    } else if (favs.isEmpty && store.playlists.isEmpty) {
       slivers = [
         SliverToBoxAdapter(child: header),
         const SliverFillRemaining(hasScrollBody: false, child: _EmptyLibrary()),
@@ -516,6 +533,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         SliverToBoxAdapter(
           child: gridOf([
             _NewPlaylistTile(onTap: () => _newPlaylist(context, store)),
+            _DownloadedTile(tracks: store.tracks.where(offline.isDownloaded).toList()),
             for (final p in store.playlists) _PlaylistTile(playlist: p),
           ], 220),
         ),
@@ -558,6 +576,277 @@ class _LibraryScreenState extends State<LibraryScreen> {
       appBar: _sel != null ? _selectionBar(tracks, store, offline) : null,
       body: CustomScrollView(slivers: slivers),
     );
+  }
+
+  /// Медиатека на телефоне: одна строка шапки, чипы-фильтры, тонкая строка
+  /// сортировки и сразу список. «Любимые» и «Скачанные» — плейлистами.
+  List<Widget> _phoneSlivers(
+    BuildContext context, {
+    required LibraryStore store,
+    required PlayerService player,
+    required OfflineService offline,
+    required List<Track> favs,
+    required List<Track> tracks,
+    required List<({String name, int count, Track cover})> artists,
+    required List<({String title, String artist, List<Track> tracks})> albums,
+    required List<TrackSource> sources,
+    required Widget Function(List<Widget>, double) gridOf,
+  }) {
+    final st = HutredStyle.of(context);
+    final k = Sk.of(context);
+    final downloadedTracks = store.tracks.where(offline.isDownloaded).toList();
+
+    final header = Padding(
+      padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + 8, 4, 6),
+      child: Row(children: [
+        const AccountButton(),
+        const SizedBox(width: 6),
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(st.sharp ? 'МЕДИАТЕКА' : 'Медиатека',
+                maxLines: 1, style: st.display(st.glass ? 24 : 30)),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Найти в медиатеке',
+          onPressed: () => setState(() {
+            _searchOpen = !_searchOpen;
+            if (!_searchOpen) _q = '';
+          }),
+          icon: Icon(_searchOpen ? Ic.close : Ic.search),
+        ),
+        IconButton(
+          tooltip: _tab == _Tab.playlists ? 'Новый плейлист' : 'Добавить',
+          onPressed: () => _tab == _Tab.playlists
+              ? _newPlaylist(context, store)
+              : AppActions.showAddSheet(context),
+          icon: Icon(Ic.add, size: 26),
+        ),
+      ]),
+    );
+
+    final search = !_searchOpen
+        ? null
+        : Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: FilterField(
+                hint: 'Найти в медиатеке', onChanged: (v) => setState(() => _q = v.trim())),
+          );
+
+    const chipTabs = [_Tab.playlists, _Tab.artists, _Tab.albums, _Tab.downloaded];
+    final counts = {
+      _Tab.playlists: store.playlists.length + 2,
+      _Tab.artists: artists.length,
+      _Tab.albums: albums.length,
+      _Tab.downloaded: downloadedTracks.length,
+    };
+    final chips = SizedBox(
+      height: 34,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: chipTabs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final t = chipTabs[i];
+          final on = _tab == t;
+          final label = _LibTabs._labels[t]!;
+          return Material(
+            color: on ? k.btn : k.chip,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(k.sharp ? 0 : 17),
+              side: k.sharp && !on ? BorderSide(color: k.ghost) : BorderSide.none,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => setState(() {
+                _tab = on ? _Tab.tracks : t;
+                _sel = null;
+              }),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (on) ...[
+                    Icon(Ic.close, size: 14, color: k.btnFg),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(k.sharp ? label.toUpperCase() : label,
+                      style: (k.sharp ? st.caption(size: 12) : const TextStyle(fontSize: 13))
+                          .copyWith(
+                              fontWeight: FontWeight.w600, color: on ? k.btnFg : k.text)),
+                  const SizedBox(width: 6),
+                  Text('${counts[t]}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: (on ? k.btnFg : k.text).withValues(alpha: 0.6))),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    final top = <Widget>[
+      SliverToBoxAdapter(child: header),
+      if (search != null) SliverToBoxAdapter(child: search),
+      SliverToBoxAdapter(child: chips),
+      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+    ];
+
+    // ---------- Плейлисты: любимые и скачанные первыми ----------
+    if (_tab == _Tab.playlists) {
+      final q = _q.toLowerCase();
+      final lists = store.playlists.where((p) => q.isEmpty || p.name.toLowerCase().contains(q));
+      return [
+        ...top,
+        SliverToBoxAdapter(
+          child: Column(children: [
+            _PhoneListRow(
+              leading: _SquareIcon(icon: Ic.favorite, filled: true),
+              title: 'Любимые треки',
+              subtitle: 'Плейлист · ${tracksWord(favs.length)}',
+              pinned: true,
+              trailing: _PlayButton(
+                playing: player.playing && player.isFrom(favs),
+                onPressed: favs.isEmpty ? null : () => player.playOrToggle(favs, all: true),
+              ),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const PlaylistDetailScreen(playlistId: null))),
+            ),
+            _PhoneListRow(
+              leading: _SquareIcon(icon: Ic.download_outlined),
+              title: 'Скачанные',
+              subtitle: 'Плейлист · ${tracksWord(downloadedTracks.length)} · без интернета',
+              onTap: () => _openDownloaded(context, downloadedTracks),
+            ),
+            _PhoneListRow(
+              leading: _SquareIcon(icon: Ic.add, dashed: true),
+              title: 'Новый плейлист',
+              subtitle: 'или перенести из Spotify',
+              onTap: () => _newPlaylist(context, store),
+            ),
+            for (final p in lists)
+              _PhoneListRow(
+                leading: PlaylistCollage(tracks: store.tracksOf(p), cover: p.cover, size: 56),
+                title: p.name,
+                subtitle: 'Плейлист · ${tracksWord(p.trackIds.length)}',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => PlaylistDetailScreen(playlistId: p.id))),
+              ),
+            const SizedBox(height: 120),
+          ]),
+        ),
+      ];
+    }
+
+    if (_tab == _Tab.artists || _tab == _Tab.albums) {
+      final q = _q.toLowerCase();
+      return [
+        ...top,
+        SliverToBoxAdapter(
+          child: _tab == _Tab.artists
+              ? gridOf([
+                  for (final a in artists)
+                    if (q.isEmpty || a.name.toLowerCase().contains(q))
+                      _CircleTile(
+                        track: a.cover,
+                        title: a.name,
+                        subtitle: tracksWord(a.count),
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => ArtistScreen(name: a.name))),
+                      ),
+                ], 150)
+              : gridOf([
+                  for (final al in albums)
+                    if (q.isEmpty || al.title.toLowerCase().contains(q))
+                      _AlbumTile(title: al.title, artist: al.artist, tracks: al.tracks),
+                ], 170),
+        ),
+      ];
+    }
+
+    // ---------- Треки (все или скачанные) ----------
+    final muted = k.muted;
+    final sortRow = Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 4, 2),
+      child: Row(children: [
+        PopupMenuButton<_Sort>(
+          tooltip: 'Сортировка',
+          position: PopupMenuPosition.under,
+          onSelected: (v) => setState(() => _sort = v),
+          itemBuilder: (_) => [
+            for (final e in _sortLabels.entries) _item(e.key, e.value.$2, e.value.$1, _sort == e.key),
+          ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(_sortLabels[_sort]!.$2, size: 16),
+              const SizedBox(width: 6),
+              Text(k.sharp ? _sortLabels[_sort]!.$1.toUpperCase() : _sortLabels[_sort]!.$1,
+                  style: (k.sharp ? st.caption(size: 12) : const TextStyle(fontSize: 13))
+                      .copyWith(fontWeight: FontWeight.w600, color: k.text)),
+            ]),
+          ),
+        ),
+        const Spacer(),
+        if (sources.length > 1)
+          PopupMenuButton<int>(
+            tooltip: 'Откуда трек',
+            position: PopupMenuPosition.under,
+            onSelected: (v) => setState(() => _source = v < 0 ? null : TrackSource.values[v]),
+            itemBuilder: (_) => [
+              _item(-1, Ic.library_music_outlined, 'Все источники', _source == null),
+              for (final src in sources)
+                _item(src.index, Ic.library_music_outlined, sourceLabel(src), _source == src),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Text(_source == null ? 'Все источники' : sourceLabel(_source!),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: muted)),
+            ),
+          ),
+        IconButton(
+          tooltip: 'Выбрать несколько',
+          onPressed: favs.isEmpty ? null : () => setState(() => _sel = {}),
+          icon: Icon(Ic.checklist_rtl, size: 20, color: muted),
+        ),
+      ]),
+    );
+    return [
+      ...top,
+      SliverToBoxAdapter(child: sortRow),
+      if (tracks.isEmpty)
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Text(_tab == _Tab.downloaded ? 'Скачанных треков пока нет' : 'Ничего не нашлось',
+                style: const TextStyle(color: HutredTheme.muted)),
+          ),
+        )
+      else
+        SliverList.builder(
+          itemCount: tracks.length,
+          itemBuilder: (context, i) => TrackTile(
+            key: ValueKey(tracks[i].id),
+            track: tracks[i],
+            onTap: () => player.playTracks(tracks, start: i),
+          ),
+        ),
+      const SliverToBoxAdapter(child: SizedBox(height: 120)),
+    ];
+  }
+
+  void _openDownloaded(BuildContext context, List<Track> tracks) {
+    if (tracks.isEmpty) {
+      AppActions.toast(context, 'Скачанных треков пока нет. Скачать — в меню трека или ⬇ у плейлиста');
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => _TrackListScreen(
+            title: 'Скачанные', subtitle: 'Играют без интернета', tracks: tracks)));
   }
 
   Future<void> _newPlaylist(BuildContext context, LibraryStore store) async {
@@ -995,6 +1284,123 @@ class _EmptyLibrary extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// Строка плейлиста на телефоне: обложка 56, название, подпись.
+class _PhoneListRow extends StatelessWidget {
+  const _PhoneListRow({
+    required this.leading,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.trailing,
+    this.pinned = false,
+  });
+  final Widget leading;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Widget? trailing;
+  final bool pinned;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = Sk.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(children: [
+          SizedBox.square(dimension: 56, child: leading),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Row(children: [
+                if (pinned) ...[
+                  Icon(Ic.push_pin, size: 12, color: k.mono ? k.text : k.accent),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(
+                  child: Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: k.muted)),
+                ),
+              ]),
+            ]),
+          ),
+          if (trailing != null) trailing!,
+        ]),
+      ),
+    );
+  }
+}
+
+/// Квадратная «обложка»-значок: сердце любимых, загрузки, плюс.
+class _SquareIcon extends StatelessWidget {
+  const _SquareIcon({required this.icon, this.filled = false, this.dashed = false});
+  final IconData icon;
+  final bool filled;
+  final bool dashed;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = Sk.of(context);
+    final r = BorderRadius.circular(k.sharp ? 0 : k.glass ? 14 : 8);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: r,
+        color: filled ? k.btn : dashed ? Colors.transparent : k.inner,
+        border: dashed ? Border.all(color: k.ghost, width: 1.5) : null,
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: 24, color: filled ? k.btnFg : (dashed ? k.muted : k.text)),
+    );
+  }
+}
+
+/// «Скачанные» плиткой в сетке плейлистов (компьютер).
+class _DownloadedTile extends StatelessWidget {
+  const _DownloadedTile({required this.tracks});
+  final List<Track> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = Sk.of(context);
+    final r = BorderRadius.circular(k.sharp ? 0 : k.glass ? 18 : 10);
+    return InkWell(
+      borderRadius: r,
+      onTap: () {
+        if (tracks.isEmpty) {
+          AppActions.toast(context, 'Скачанных треков пока нет');
+          return;
+        }
+        Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => _TrackListScreen(
+                title: 'Скачанные', subtitle: 'Играют без интернета', tracks: tracks)));
+      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        AspectRatio(
+          aspectRatio: 1,
+          child: Container(
+            decoration: BoxDecoration(borderRadius: r, color: k.inner),
+            alignment: Alignment.center,
+            child: Icon(Ic.download_outlined, size: 48, color: k.mono ? k.text : k.accent),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text('Скачанные', style: TextStyle(fontWeight: FontWeight.w700)),
+        Text('${tracksWord(tracks.length)} · без интернета',
+            style: const TextStyle(fontSize: 12, color: HutredTheme.muted)),
+      ]),
     );
   }
 }
