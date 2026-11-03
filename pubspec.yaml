@@ -11,7 +11,8 @@ dependencies:
     sdk: flutter
   # Воспроизведение (Android, iOS, macOS нативно; Windows/Linux через media_kit)
   just_audio: ^0.9.42
-  just_audio_media_kit: ^2.0.6
+  just_audio_media_kit:
+    path: packages/just_audio_media_kit
   # Управление музыкой из шторки Android и «Исполняется» на iPhone.
   audio_service: ^0.18.15
   audio_session: ^0.1.21

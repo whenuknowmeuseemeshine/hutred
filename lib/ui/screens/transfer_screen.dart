@@ -59,12 +59,27 @@ class _TransferScreenState extends State<TransferScreen> {
     await _start(fileName: f.name);
   }
 
+  Future<void> _pickFolder() async {
+    final dir = await FilePicker.platform.getDirectoryPath();
+    if (dir == null || !mounted) return;
+    final t = context.read<TransferService>();
+    try {
+      await t.startFolder(dir);
+      if (mounted) _name.text = t.suggestedName;
+    } catch (_) {
+      if (mounted) AppActions.toast(context, 'Не получилось открыть папку');
+    }
+  }
+
   void _save() {
     final t = context.read<TransferService>();
+    final relink = t.relinking;
     final r = t.save(playlistName: _name.text);
     AppActions.toast(
         context,
-        r.playlist == null
+        relink
+            ? 'Теперь играют онлайн: ${tracksWord(r.added)}. Папка больше не нужна'
+            : r.playlist == null
             ? 'Добавлено в медиатеку: ${tracksWord(r.added)}'
             : 'Плейлист «${r.playlist}» готов, новых треков: ${r.added}');
     t.reset();
@@ -79,6 +94,7 @@ class _TransferScreenState extends State<TransferScreen> {
     ('yandex', 'Яндекс Музыка', Color(0xFFFFCC00)),
     ('youtube', 'YouTube', Color(0xFFFF3D3D)),
     ('soundcloud', 'SoundCloud', Color(0xFFFF7A1A)),
+    ('folder', 'Из папки', Color(0xFF34D399)),
     ('csv', 'Файл CSV', Color(0xFF4DA3FF)),
     ('text', 'Списком', Color(0xFFA78BFA)),
   ];
@@ -89,6 +105,8 @@ class _TransferScreenState extends State<TransferScreen> {
     'yandex': 'Ссылка на открытый плейлист или альбом Яндекс Музыки.',
     'youtube': 'Ссылка на плейлист YouTube или YouTube Music.',
     'soundcloud': 'Ссылка на плейлист или альбом SoundCloud.',
+    'folder': 'Выбери папку с музыкой — Hutred найдёт каждый трек на Spotify, SoundCloud '
+        'или YouTube по названию файла и сложит в медиатеку. Сами файлы не нужны.',
     'csv': 'Файл CSV (например, из Exportify) или TXT со списком треков.',
     'text': 'Вставь названия — по одному в строке, как «Исполнитель — Название». '
         'Подойдёт список из любой площадки.',
@@ -139,6 +157,7 @@ class _TransferScreenState extends State<TransferScreen> {
           onTap: () {
             setState(() => _src = src.$1);
             if (src.$1 == 'csv') _pickFile();
+            if (src.$1 == 'folder') _pickFolder();
           },
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -213,7 +232,7 @@ class _TransferScreenState extends State<TransferScreen> {
 
     final setup = <Widget>[
       LayoutBuilder(builder: (context, box) {
-        final cols = box.maxWidth >= 760 ? 6 : 3;
+        final cols = box.maxWidth >= 760 ? 7 : 4;
         const gap = 10.0;
         final w = (box.maxWidth - gap * (cols - 1)) / cols;
         return Wrap(spacing: gap, runSpacing: gap, children: [
@@ -221,7 +240,17 @@ class _TransferScreenState extends State<TransferScreen> {
         ]);
       }),
       const SizedBox(height: 14),
-      field,
+      if (_src == 'folder')
+        Align(
+          alignment: Alignment.centerLeft,
+          child: StyleButton(
+            label: 'Выбрать папку',
+            icon: Ic.folder_open_rounded,
+            onPressed: busy ? null : _pickFolder,
+          ),
+        )
+      else
+        field,
       if (multi) ...[const SizedBox(height: 10), Align(alignment: Alignment.centerLeft, child: findButton)],
       const SizedBox(height: 10),
       Text(_hints[_src]!, style: const TextStyle(fontSize: 13, color: HutredTheme.muted, height: 1.4)),
@@ -247,6 +276,30 @@ class _TransferScreenState extends State<TransferScreen> {
             ),
         ],
       ),
+      if (t.localTracks.isNotEmpty) ...[
+        const SizedBox(height: 24),
+        StylePanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const StyleCaption('Отвязать от папки'),
+              const SizedBox(height: 8),
+              Text(
+                'В медиатеке ${tracksWord(t.localTracks.length)} из файлов на этом устройстве. '
+                'Hutred найдёт их на Spotify, SoundCloud или YouTube и заменит — '
+                'плейлисты, «любимое» и прослушивания останутся, а папка станет не нужна.',
+                style: const TextStyle(color: HutredTheme.muted, height: 1.4, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              StyleButton(
+                label: 'Найти онлайн',
+                icon: Ic.search,
+                onPressed: busy ? null : t.startRelink,
+              ),
+            ],
+          ),
+        ),
+      ],
     ];
 
     final notFound = t.items.where((i) => i.done && i.found == null).toList();
@@ -293,18 +346,28 @@ class _TransferScreenState extends State<TransferScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const StyleCaption('Куда сложить'),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(
-              hintText: 'Название плейлиста',
-              helperText: 'Пусто — только в медиатеку',
+          if (t.relinking) ...[
+            const StyleCaption('Заменить файлы'),
+            const SizedBox(height: 10),
+            const Text(
+              'Отмеченные треки будут играть онлайн. Проверь найденное — '
+              'неверное можно снять галочкой или поискать на YouTube.',
+              style: TextStyle(color: HutredTheme.muted, fontSize: 13, height: 1.4),
             ),
-          ),
+          ] else ...[
+            const StyleCaption('Куда сложить'),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(
+                hintText: 'Название плейлиста',
+                helperText: 'Пусто — только в медиатеку',
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           StyleButton(
-            label: 'Добавить ${t.selectedCount}',
+            label: '${t.relinking ? 'Заменить' : 'Добавить'} ${t.selectedCount}',
             icon: Ic.add,
             onPressed: t.stage == TransferStage.ready && t.selectedCount > 0 ? _save : null,
           ),

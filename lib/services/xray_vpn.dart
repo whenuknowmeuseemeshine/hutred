@@ -50,7 +50,7 @@ class XrayVpn {
 
   /// Разбирает то, что вставил пользователь: одна или несколько ссылок
   /// или base64-подписка. Ссылки-подписки (https://) нужно сначала скачать
-  /// через [fetchSubscription].
+  /// через [loadSubscription].
   static List<VpnServer> parseMany(String text) {
     var body = text.trim();
     if (!body.contains('://')) {
@@ -82,6 +82,8 @@ class XrayVpn {
         return _trojan(link);
       case 'ss':
         return _ss(link);
+      case 'xrayjson':
+        return _xrayJson(link);
       default:
         return null;
     }
@@ -92,20 +94,115 @@ class XrayVpn {
     return (t.startsWith('https://') || t.startsWith('http://')) && !t.contains('\n');
   }
 
-  /// Скачивает подписку (как Happ / v2rayN) и возвращает её содержимое.
-  static Future<String> fetchSubscription(String url) async {
-    final c = HttpClient()..connectionTimeout = const Duration(seconds: 15);
-    try {
-      final req = await c.getUrl(Uri.parse(url.trim()));
-      // Многие панели отдают список серверов только «знакомым» клиентам.
-      req.headers.set(HttpHeaders.userAgentHeader, 'v2rayN/7.10.0');
-      final res = await req.close().timeout(const Duration(seconds: 20));
-      final body = await res.transform(utf8.decoder).join();
-      if (res.statusCode != 200) throw 'сервер подписки ответил ${res.statusCode}';
-      return body;
-    } finally {
-      c.close(force: true);
+  /// Уникальный номер устройства для панелей с лимитом устройств (Remnawave и др.).
+  static String hwid = '';
+
+  /// Скачивает подписку так, как это делают Happ / v2rayNG / v2rayN.
+  /// Панели часто отдают настоящие серверы только «знакомым» приложениям,
+  /// а остальным — сервер-заглушку «Приложение не поддерживается»,
+  /// поэтому пробуем представиться по очереди разными клиентами.
+  static Future<List<VpnServer>> loadSubscription(String url) async {
+    final os = Platform.isAndroid ? 'Android' : (Platform.isWindows ? 'Windows' : Platform.operatingSystem);
+    const agents = [
+      'Happ/3.7.0',
+      'v2rayNG/1.10.16',
+      'v2rayN/7.13.8',
+      'Hiddify/2.5.7',
+      'Streisand/1.6',
+    ];
+    String? lastError;
+    var sawPlaceholder = false;
+    for (final ua in agents) {
+      final c = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+      try {
+        final req = await c.getUrl(Uri.parse(url.trim()));
+        req.headers
+          ..set(HttpHeaders.userAgentHeader, ua)
+          ..set(HttpHeaders.acceptHeader, '*/*');
+        if (hwid.isNotEmpty) {
+          req.headers
+            ..set('x-hwid', hwid)
+            ..set('x-device-os', os)
+            ..set('x-ver-os', Platform.operatingSystemVersion.split(' ').first)
+            ..set('x-device-model', 'Hutred');
+        }
+        final res = await req.close().timeout(const Duration(seconds: 20));
+        final body = await res.transform(utf8.decoder).join();
+        if (res.statusCode != 200) {
+          lastError = 'сервер подписки ответил ${res.statusCode}';
+          continue;
+        }
+        final all = parseAny(body);
+        final real = all.where((x) => !_isPlaceholder(x)).toList();
+        if (real.isNotEmpty) return real;
+        if (all.isNotEmpty) sawPlaceholder = true;
+        if (body.contains('happ://crypt')) lastError = 'подписка отдаёт только зашифрованные ссылки Happ';
+      } catch (e) {
+        lastError = '$e';
+      } finally {
+        c.close(force: true);
+      }
     }
+    if (sawPlaceholder) {
+      throw 'Подписка не отдала серверы (вместо них — заглушка). Возможно, исчерпан '
+          'лимит устройств. Скопируй в Happ один из серверов (долгое нажатие → '
+          '«Копировать») и вставь сюда ключ vless://';
+    }
+    throw lastError ?? 'в подписке нет серверов';
+  }
+
+  static bool _isPlaceholder(VpnServer s) {
+    final o = jsonEncode(s.outbound);
+    final addr = RegExp(r'"address":"([^"]*)"').firstMatch(o)?.group(1) ?? '';
+    final port = RegExp(r'"port":(\d+)').firstMatch(o)?.group(1) ?? '';
+    final n = s.name.toLowerCase();
+    return addr == '0.0.0.0' ||
+        addr.startsWith('127.') ||
+        addr == 'localhost' ||
+        port == '1' ||
+        o.contains('00000000-0000-0000-0000-000000000000') ||
+        n.contains('не поддерж') ||
+        n.contains('not supported') ||
+        n.contains('unsupported');
+  }
+
+  /// Текст подписки в любом виде: ссылки, base64 или JSON-конфиги Xray.
+  static List<VpnServer> parseAny(String body) {
+    final t = body.trim();
+    if (t.startsWith('[') || t.startsWith('{')) {
+      try {
+        final j = jsonDecode(t);
+        final configs = j is List ? j : [j];
+        final out = <VpnServer>[];
+        for (final (i, cfg) in configs.indexed) {
+          if (cfg is! Map) continue;
+          final name = '${cfg['remarks'] ?? cfg['ps'] ?? 'Сервер ${i + 1}'}';
+          for (final o in (cfg['outbounds'] as List? ?? const [])) {
+            if (o is! Map) continue;
+            final proto = '${o['protocol']}';
+            if (!const ['vless', 'vmess', 'trojan', 'shadowsocks'].contains(proto)) continue;
+            final ob = Map<String, dynamic>.from(o)..remove('tag');
+            out.add(VpnServer(
+              link: 'xrayjson://${base64Url.encode(utf8.encode(jsonEncode({'name': name, 'outbound': ob})))}',
+              name: name,
+              outbound: ob,
+            ));
+            break;
+          }
+        }
+        return out;
+      } catch (_) {}
+    }
+    return parseMany(t);
+  }
+
+  static VpnServer _xrayJson(String link) {
+    final j = jsonDecode(_b64(link.substring('xrayjson://'.length))!) as Map<String, dynamic>;
+    return VpnServer(
+      link: link,
+      name: '${j['name']}',
+      outbound: Map<String, dynamic>.from(j['outbound'] as Map),
+    );
   }
 
   static String? _b64(String s) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show Random;
 import 'dart:convert';
 import 'dart:io';
 
@@ -108,6 +109,7 @@ class SettingsStore extends ChangeNotifier {
   List<String> _vpnServers = const [];
   int _vpnIndex = 0;
   bool _vpnOn = false;
+  String _vpnHwid = '';
   bool _eqOn = false;
   List<double> _eqGains = const [];
   bool _pickArtists = false;
@@ -130,6 +132,16 @@ class SettingsStore extends ChangeNotifier {
   List<String> get vpnServers => _vpnServers;
   int get vpnIndex => _vpnIndex;
   bool get vpnOn => _vpnOn;
+
+  /// Номер этого устройства для VPN-подписок с лимитом устройств.
+  String get vpnHwid {
+    if (_vpnHwid.isEmpty) {
+      final r = Random.secure();
+      _vpnHwid = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      _save();
+    }
+    return _vpnHwid;
+  }
   void setVpn({String? link, List<String>? servers, int? index, bool? on}) {
     if (link != null) _vpnLink = link;
     if (servers != null) _vpnServers = servers;
@@ -601,6 +613,7 @@ class SettingsStore extends ChangeNotifier {
       _vpnServers = [for (final v in (j['vpnServers'] as List? ?? const [])) '$v'];
       _vpnIndex = (j['vpnIndex'] as num?)?.toInt() ?? 0;
       _vpnOn = j['vpnOn'] as bool? ?? false;
+      _vpnHwid = j['vpnHwid'] as String? ?? '';
       _eqOn = j['eqOn'] as bool? ?? false;
       _eqGains = [for (final g in (j['eqGains'] as List? ?? const [])) (g as num).toDouble()];
       _pickArtists = j['pickArtists'] as bool? ?? false;
@@ -644,6 +657,7 @@ class SettingsStore extends ChangeNotifier {
         'vpnServers': _vpnServers,
         'vpnIndex': _vpnIndex,
         'vpnOn': _vpnOn,
+        'vpnHwid': _vpnHwid,
         'eqOn': _eqOn,
         'eqGains': _eqGains,
         'pickArtists': _pickArtists,

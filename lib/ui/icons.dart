@@ -413,6 +413,12 @@ class Ic {
         _ => LucideIcons.link,
       };
 
+  static IconData get content_paste_rounded => switch (style) {
+        'glass' => Icons.content_paste_rounded,
+        'sharp' => Icons.content_paste_sharp,
+        _ => LucideIcons.clipboard,
+      };
+
   static IconData get link_rounded => switch (style) {
         'glass' => Icons.link_rounded,
         'sharp' => Icons.link_sharp,

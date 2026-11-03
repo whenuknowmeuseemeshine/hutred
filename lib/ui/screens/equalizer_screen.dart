@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/player_service.dart';
@@ -15,7 +14,7 @@ class EqualizerScreen extends StatefulWidget {
 }
 
 class _EqualizerScreenState extends State<EqualizerScreen> {
-  AndroidEqualizerParameters? _params;
+  EqInfo? _params;
   bool _loading = true;
   late bool _on;
   late List<double> _gains;
@@ -23,6 +22,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
   // Готовые настройки: доли от максимального усиления по полосам (от низких к высоким).
   static const _presets = <String, List<double>>{
     'Ровно': [0, 0, 0, 0, 0],
+    'Громкие басы': [1, 0.6, 0.1, 0, 0.1],
     'Бас': [0.7, 0.4, 0, 0, 0.1],
     'Вокал': [-0.2, 0.1, 0.5, 0.4, 0.1],
     'Рок': [0.5, 0.2, -0.2, 0.3, 0.5],
@@ -68,8 +68,8 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
           ? const Padding(
               padding: EdgeInsets.all(24),
               child: Text(
-                'Эквалайзер пока работает только на Android. На компьютере и iPhone '
-                'для него нужен другой движок воспроизведения — это следующий шаг.',
+                'На iPhone эквалайзер недоступен: системный плеер iOS не даёт '
+                'менять частоты. На компьютере и Android он работает.',
                 style: TextStyle(color: HutredTheme.muted),
               ),
             )
@@ -108,8 +108,8 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                                       for (var i = 0; i < p.bands.length; i++)
                                         (e.value[(i * e.value.length / p.bands.length).floor()] *
                                                 (e.value[(i * e.value.length / p.bands.length).floor()] >= 0
-                                                    ? p.maxDecibels
-                                                    : -p.minDecibels))
+                                                    ? p.max
+                                                    : -p.min))
                                             .toDouble(),
                                     ];
                                   });
@@ -133,9 +133,9 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                                         child: RotatedBox(
                                           quarterTurns: 3,
                                           child: Slider(
-                                            min: p.minDecibels,
-                                            max: p.maxDecibels,
-                                            value: _gains[i].clamp(p.minDecibels, p.maxDecibels),
+                                            min: p.min,
+                                            max: p.max,
+                                            value: _gains[i].clamp(p.min, p.max),
                                             onChanged: _on
                                                 ? (v) => setState(() => _gains[i] = v)
                                                 : null,
@@ -143,7 +143,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                                           ),
                                         ),
                                       ),
-                                      Text(_freq(p.bands[i].centerFrequency),
+                                      Text(_freq(p.bands[i]),
                                           style: const TextStyle(fontSize: 11)),
                                     ],
                                   ),
