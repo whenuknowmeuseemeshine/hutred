@@ -383,33 +383,37 @@ class YoutubeSource {
     _live[videoId] = live;
     final sink = part.openWrite();
     try {
-      // Быстрый путь: качаем файл в 4 потока кусками по 512 КБ (замедление
-      // YouTube у провайдера действует на каждое соединение отдельно),
-      // а пишем по порядку — плеер начинает играть с первого куска.
-      var done = false;
+      // Качаем файл в 4 потока кусками по 512 КБ (замедление YouTube
+      // у провайдера действует на каждое соединение отдельно), а пишем
+      // по порядку — плеер начинает играть с первого куска.
       final url = info.url.toString();
       if (info.fragments.isEmpty &&
           info.size.totalBytes > 0 &&
           !url.contains('hls_playlist') &&
           !url.contains('.m3u8')) {
-        try {
-          await _parallelGet(info.url, info.size.totalBytes, sink);
-          done = true;
-        } catch (e) {
-          debugPrint('[YouTube] параллельная загрузка не вышла: $e');
-        }
-      }
-      if (!done) {
-        // Запасной путь: как раньше, одним потоком через библиотеку.
-        await sink.close();
-        final again = part.openWrite();
-        try {
-          await for (final chunk in yt.videos.streams.get(info)) {
-            again.add(chunk);
-            await again.flush();
+        final pos = _Written();
+        var src = info.url;
+        for (var attempt = 0;; attempt++) {
+          try {
+            await _parallelGet(src, info.size.totalBytes, sink, pos);
+            break;
+          } catch (e) {
+            debugPrint('[YouTube] загрузка оборвалась на ${pos.bytes} байтах: $e');
+            // Ссылка протухла или YouTube оборвал соединение: берём свежую
+            // ссылку на тот же поток и докачиваем с того же места — файл,
+            // который уже играет, не трогаем.
+            if (attempt >= 3) {
+              throw Exception('YouTube оборвал загрузку трека, попробуй ещё раз');
+            }
+            await Future<void>.delayed(Duration(seconds: 1 + attempt));
+            final fresh = await _freshUrl(videoId, info.tag);
+            if (fresh != null) src = fresh;
           }
-        } finally {
-          await again.close();
+        }
+      } else {
+        await for (final chunk in yt.videos.streams.get(info)) {
+          sink.add(chunk);
+          await sink.flush();
         }
       }
     } catch (e) {
@@ -437,10 +441,30 @@ class YoutubeSource {
   }
 
   /// Загрузка файла в несколько потоков; куски пишутся строго по порядку.
-  Future<void> _parallelGet(Uri url, int total, IOSink sink) async {
+  /// Свежая ссылка на поток [tag] этого видео (старая могла протухнуть).
+  Future<Uri?> _freshUrl(String videoId, int tag) async {
+    final order = [
+      if (_goodClient != null) _goodClient!,
+      ..._clients.where((c) => c != _goodClient),
+    ];
+    for (final client in order) {
+      try {
+        final m = await _yt.videos.streams
+            .getManifest(videoId, ytClients: [client])
+            .timeout(const Duration(seconds: 12));
+        for (final st in m.audioOnly) {
+          if (st.tag == tag) return st.url;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Future<void> _parallelGet(Uri url, int total, IOSink sink, _Written pos) async {
     const chunk = 512 * 1024;
     const workers = 4;
-    final n = (total + chunk - 1) ~/ chunk;
+    final base = pos.bytes;
+    final n = (total - base + chunk - 1) ~/ chunk;
     final results = List.generate(n, (_) => Completer<Uint8List>());
     for (final c in results) {
       c.future.ignore();
@@ -451,7 +475,7 @@ class YoutubeSource {
       while (!failed) {
         final i = next++;
         if (i >= n) return;
-        final from = i * chunk;
+        final from = base + i * chunk;
         final to = min(total, from + chunk) - 1;
         try {
           results[i].complete(await _range(url, from, to));
@@ -465,8 +489,10 @@ class YoutubeSource {
 
     final running = [for (var w = 0; w < workers; w++) worker()];
     for (final c in results) {
-      sink.add(await c.future);
+      final bytes = await c.future;
+      sink.add(bytes);
       await sink.flush();
+      pos.bytes += bytes.length;
     }
     await Future.wait(running);
   }
@@ -660,6 +686,11 @@ class YoutubeSource {
   }
 
   void dispose() => _yt.close();
+}
+
+/// Сколько байт уже записано (чтобы докачать с места обрыва).
+class _Written {
+  int bytes = 0;
 }
 
 /// Скачивание, которое идёт прямо сейчас.
