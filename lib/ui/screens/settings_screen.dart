@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide Provider;
 
@@ -32,7 +33,12 @@ import '../widgets/user_avatar.dart';
 import 'account_screen.dart';
 import '../icons.dart';
 import '../../services/relay.dart';
+import '../../services/player_service.dart';
+import '../widgets/artwork.dart';
+import '../widgets/settings_kit.dart';
 import '../../services/xray_vpn.dart';
+
+part 'settings_pages.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -593,15 +599,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: Text(g.$3, maxLines: 1, overflow: TextOverflow.ellipsis),
                   trailing: Icon(Ic.chevron_right),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => _GroupPage(
-                      title: g.$1,
-                      // Пункты строятся заново при каждой перерисовке страницы,
-                      // чтобы переключатели сразу показывали новое значение.
-                      items: (ctx) {
-                        final sec = _sections(_items(ctx));
-                        return [for (final name in g.$4) ...?sec[name]];
-                      },
-                    ),
+                    builder: (_) => _GroupPage(title: g.$1),
                   )),
                 ),
               ),
@@ -754,15 +752,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                     child: Text(searching ? 'Поиск: ${_q.trim()}' : g.$1,
-                        style: st.display(40)),
+                        style: st.display(Sk.of(context).titleSize)),
                   ),
-                  if (!searching)
+                  if (!searching) ...[
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-                      child: Text(g.$3,
-                          style: const TextStyle(color: HutredTheme.muted, fontSize: 14)),
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                      child: Text(_pageSubtitles[g.$1] ?? g.$3,
+                          style: st.caption(color: Sk.of(context).muted, size: 14)
+                              .copyWith(letterSpacing: 0, fontWeight: FontWeight.w400)),
                     ),
-                  _CardGrid(cards: _asCards(right)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: settingsPageFor(g.$1),
+                    ),
+                  ] else
+                    _CardGrid(cards: _asCards(right)),
                   if (!searching && sel == groups.length - 1) const _Footer(),
                 ],
               ),
@@ -2165,18 +2169,23 @@ class _BlacklistTiles extends StatelessWidget {
 
 /// Страница одной группы настроек.
 class _GroupPage extends StatelessWidget {
-  const _GroupPage({required this.title, required this.items});
+  const _GroupPage({required this.title});
   final String title;
-  final List<Widget> Function(BuildContext context) items;
 
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: Text(title)),
-        body: Builder(
-          builder: (ctx) => ListView(
-            padding: const EdgeInsets.only(bottom: 96),
-            children: _asCards(items(ctx)),
-          ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 110),
+          children: [
+            if (_pageSubtitles[title] != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+                child: Text(_pageSubtitles[title]!,
+                    style: TextStyle(fontSize: 13, color: Sk.of(context).muted)),
+              ),
+            settingsPageFor(title),
+          ],
         ),
       );
 }
@@ -2386,6 +2395,18 @@ class _VpnTileState extends State<_VpnTile> {
   String? _step;
 
   @override
+  void initState() {
+    super.initState();
+    // Пинг серверов сразу — чтобы рядом с названием было видно задержку.
+    final list = _servers(context.read<SettingsStore>());
+    if (list.length > 1) {
+      XrayVpn.pingAll(list).then((r) {
+        if (mounted && _pings == null) setState(() => _pings = r);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _field.dispose();
     super.dispose();
@@ -2524,16 +2545,11 @@ class _VpnTileState extends State<_VpnTile> {
             ),
             const SizedBox(height: 8),
             Wrap(spacing: 8, runSpacing: 8, children: [
-              StyleButton(
-                label: _busy ? 'Подключаю…' : 'Подключить',
-                onPressed: _busy ? null : () => _applyKey(_field.text),
-              ),
+              SkButton(_busy ? 'Подключаю…' : 'Подключить',
+                  primary: true, onTap: _busy ? null : () => _applyKey(_field.text)),
               if (context.read<SettingsStore>().vpnServers.isNotEmpty)
-                StyleButton(
-                  label: 'Отмена',
-                  primary: false,
-                  onPressed: _busy ? null : () => setState(() => _editing = false),
-                ),
+                SkButton('Отмена',
+                    onTap: _busy ? null : () => setState(() => _editing = false)),
             ]),
           ],
         ),
@@ -2542,6 +2558,7 @@ class _VpnTileState extends State<_VpnTile> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<SettingsStore>();
+    final k = Sk.of(context);
     final list = _servers(s);
     final showField = list.isEmpty || _editing;
     return ValueListenableBuilder<String>(
@@ -2549,114 +2566,106 @@ class _VpnTileState extends State<_VpnTile> {
       builder: (_, st, __) => ValueListenableBuilder<String?>(
         valueListenable: XrayVpn.message,
         builder: (_, msg, __) {
-          final dot = switch (st) {
-            'on' => Colors.greenAccent,
-            'starting' => Colors.amberAccent,
-            'error' => Colors.redAccent,
-            _ => HutredTheme.muted,
-          };
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          final on = s.vpnOn && st == 'on';
+          final cur = list.isEmpty ? null : list[s.vpnIndex.clamp(0, list.length - 1)];
+          final ping = cur == null || _pings == null || s.vpnIndex >= _pings!.length
+              ? null
+              : _pings![s.vpnIndex];
+          final String line;
+          final Color color;
+          if (list.isEmpty) {
+            line = 'Ключ из Happ, v2rayN или Hiddify. Через VPN пойдёт только музыка';
+            color = k.muted;
+          } else if (!s.vpnOn) {
+            line = 'Выключен · ${list.length == 1 ? list.first.name : '${list.length} серверов'}';
+            color = k.muted;
+          } else if (st == 'on') {
+            line = '● Музыка идёт через VPN · ${cur?.name ?? ''}${ping != null ? ' · $ping мс' : ''}';
+            color = k.ok;
+          } else if (st == 'starting') {
+            line = '● Подключаюсь…';
+            color = k.warn;
+          } else {
+            line = '● ${msg ?? 'VPN не работает — музыка идёт напрямую'}';
+            color = k.bad;
+          }
+          final icon = Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: on ? k.ok.withValues(alpha: 0.14) : k.inner,
+              borderRadius: BorderRadius.circular(k.ri),
+            ),
+            child: Icon(Ic.vpn_lock_outlined, color: on ? k.ok : k.muted, size: 22),
+          );
+          final title = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Свой VPN-ключ · только для Hutred', style: k.h),
+            const SizedBox(height: 2),
+            Text(line, style: TextStyle(fontSize: 13, color: color)),
+          ]);
+          final actions = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SwitchListTile(
-                secondary: Icon(Ic.vpn_lock_outlined),
-                title: const Text('Свой VPN-ключ (только для Hutred)'),
-                subtitle: Text(list.isEmpty
-                    ? 'Ключ из Happ, v2rayN или Hiddify. Через VPN пойдёт только музыка, '
-                        'остальной интернет — как обычно'
-                    : (s.vpnOn
-                        ? (msg ?? 'Подключаюсь…')
-                        : 'Выключен · ${list.length == 1 ? list.first.name : '${list.length} серверов'}')),
-                value: s.vpnOn,
-                onChanged: _busy ? null : _toggle,
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(72, 0, 16, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showField) _keyField(),
-                    if (_step != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(_step!,
-                            style: const TextStyle(color: HutredTheme.muted, fontSize: 13)),
-                      ),
-                    if (s.vpnOn && st != 'off' && list.isNotEmpty && _step == null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              switch (st) {
-                                'on' => 'Музыка идёт через VPN',
-                                'starting' => 'Подключаюсь…',
-                                _ => 'VPN не работает — музыка идёт напрямую',
-                              },
-                              style: const TextStyle(color: HutredTheme.muted, fontSize: 13),
-                            ),
-                          ),
-                        ]),
-                      ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(_error!,
-                            style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
-                      ),
-                    if (!showField)
-                      Wrap(spacing: 8, runSpacing: 8, children: [
-                        StyleButton(
-                          label: 'Другой ключ',
-                          primary: false,
-                          onPressed: _busy ? null : () => setState(() => _editing = true),
-                        ),
-                        if (XrayVpn.isSubscription(s.vpnLink))
-                          StyleButton(
-                            label: _busy ? 'Обновляю…' : 'Обновить подписку',
-                            primary: false,
-                            onPressed: _busy ? null : () => _applyKey(s.vpnLink),
-                          ),
-                        if (list.length > 1)
-                          StyleButton(
-                            label: 'Проверить скорость',
-                            primary: false,
-                            onPressed: _busy ? null : _pingAll,
-                          ),
-                        if (XrayVpn.journal.isNotEmpty)
-                          StyleButton(
-                            label: 'Журнал',
-                            primary: false,
-                            onPressed: _showJournal,
-                          ),
-                      ]),
-                    if (list.length > 1 && !showField) ...[
-                      const SizedBox(height: 10),
-                      Wrap(spacing: 8, runSpacing: 8, children: [
-                        for (final (i, x) in list.indexed)
-                          StyleChip(
-                            label: _pings == null || i >= _pings!.length
-                                ? x.name
-                                : '${x.name} · ${_pings![i] == null ? 'нет связи' : '${_pings![i]} мс'}',
-                            selected: s.vpnIndex == i,
-                            onTap: _busy
-                                ? null
-                                : () {
-                                    s.setVpn(index: i, on: true);
-                                    XrayVpn.start(x);
-                                  },
-                          ),
-                      ]),
-                    ],
-                  ],
-                ),
-              ),
+              if (XrayVpn.journal.isNotEmpty) SkButton('Журнал', onTap: _showJournal),
+              if (!showField)
+                SkButton('Другой ключ',
+                    onTap: _busy ? null : () => setState(() => _editing = true)),
+              if (!showField && XrayVpn.isSubscription(s.vpnLink))
+                SkButton(_busy ? 'Обновляю…' : 'Обновить подписку',
+                    onTap: _busy ? null : () => _applyKey(s.vpnLink)),
+              SkToggle(value: s.vpnOn, onChanged: _busy ? null : _toggle),
+            ],
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LayoutBuilder(builder: (context, box) {
+                if (box.maxWidth < 700) {
+                  return SkGap(gap: 12, children: [
+                    Row(children: [icon, const SizedBox(width: 14), Expanded(child: title)]),
+                    actions,
+                  ]);
+                }
+                return Row(children: [
+                  icon,
+                  const SizedBox(width: 14),
+                  Expanded(child: title),
+                  const SizedBox(width: 12),
+                  actions,
+                ]);
+              }),
+              if (showField) ...[const SizedBox(height: 14), _keyField()],
+              if (_step != null) ...[
+                const SizedBox(height: 10),
+                Text(_step!, style: k.sub),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(_error!, style: TextStyle(color: k.bad, fontSize: 13)),
+              ],
+              if (list.length > 1 && !showField) ...[
+                const SizedBox(height: 14),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final (i, x) in list.indexed)
+                    SkChip(
+                      _pings == null || i >= _pings!.length
+                          ? x.name
+                          : '${x.name} · ${_pings![i] == null ? 'нет связи' : '${_pings![i]} мс'}',
+                      height: 34,
+                      selected: s.vpnIndex == i,
+                      onTap: _busy
+                          ? null
+                          : () {
+                              s.setVpn(index: i, on: true);
+                              XrayVpn.start(x);
+                            },
+                    ),
+                  SkButton(_pings == null ? 'Проверить скорость' : 'Ещё раз',
+                      height: 34, onTap: _busy ? null : _pingAll),
+                ]),
+              ],
             ],
           );
         },
