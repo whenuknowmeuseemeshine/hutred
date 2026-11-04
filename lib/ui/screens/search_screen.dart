@@ -57,7 +57,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// Онлайн-источники: Spotify — только если есть ключи (свои или от админа).
   List<String> _online(SettingsStore s) =>
-      [if (s.hasSpotifyKeys) 'spotify', 'soundcloud', 'youtube'];
+      [if (s.hasSpotifyKeys) 'spotify', 'soundcloud', if (s.youtubeAuto) 'youtube'];
   bool _libraryCollapsed = false;
 
   static const _labels = {

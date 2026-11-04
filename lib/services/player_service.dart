@@ -24,6 +24,9 @@ class PlayerService extends ChangeNotifier {
   /// Находит, где играть трек из Spotify (SoundCloud или YouTube).
   Future<Track?> Function(Track track)? resolveSpotify;
 
+  /// Включён ли YouTube как запасной источник (для текста ошибки).
+  bool Function() youtubeAllowed = () => true;
+
   /// Скачивает копию своего файла из облака, если на устройстве его нет.
   Future<String?> Function(Track track)? cloudFile;
 
@@ -607,7 +610,9 @@ class PlayerService extends ChangeNotifier {
         // Spotify звук не отдаёт: играем тот же трек с SoundCloud/YouTube.
         final found = await resolveSpotify?.call(t);
         if (found == null || found.source == TrackSource.spotify) {
-          throw Exception('не нашёл этот трек на SoundCloud и YouTube');
+          throw Exception(youtubeAllowed()
+              ? 'не нашёл этот трек на SoundCloud и YouTube'
+              : 'нет на SoundCloud. Можно включить YouTube: Настройки → Сеть и YouTube');
         }
         return _sourceFor(found);
     }

@@ -404,10 +404,13 @@ class TransferService extends ChangeNotifier {
   /// [playable] — нужен трек, который реально играет (SoundCloud/YouTube),
   /// а не запись из каталога Spotify.
   Future<Track?> _match(TransferItem item, {bool playable = false}) async {
+    // YouTube — только если включён в настройках (там треки грузятся долго)
+    // или его явно выбрали первым в переносе.
+    final yt = settings.youtubeAuto;
     final order = switch (searchFirst) {
-      'spotify' when !playable => [_matchSpotify, _matchSoundcloud, _matchYoutube],
-      'youtube' => [_matchYoutube, _matchSoundcloud],
-      _ => [_matchSoundcloud, _matchYoutube],
+      'spotify' when !playable => [_matchSpotify, _matchSoundcloud, if (yt) _matchYoutube],
+      'youtube' when !playable || yt => [_matchYoutube, _matchSoundcloud],
+      _ => [_matchSoundcloud, if (yt) _matchYoutube],
     };
     for (final f in order) {
       try {
@@ -498,7 +501,10 @@ class TransferService extends ChangeNotifier {
       if (saved != null) {
         final src = TrackSource.values.asNameMap()[saved['source']];
         // Старые ошибочные записи «Spotify → Spotify» пропускаем.
-        if (src != null && src != TrackSource.spotify) {
+        // Старое совпадение на YouTube не берём, пока YouTube выключен.
+        if (src != null &&
+            src != TrackSource.spotify &&
+            (src != TrackSource.youtube || settings.youtubeAuto)) {
           return Track(
             id: t.id,
             title: t.title,

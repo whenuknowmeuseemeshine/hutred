@@ -284,6 +284,7 @@ Future<void> main(List<String> args) async {
   MissingFiles(navigatorKey: hutredNavigatorKey, store: store, player: player);
   // Свои устройства: пульт и перенос музыки, как в Spotify.
   final devices = DeviceSync(account: account, player: player);
+  player.youtubeAllowed = () => settings.youtubeAuto;
   // Ссылки hutred:// с сайта открывают трек в приложении.
   unawaited(DeepLinks.start(store: store, player: player));
   // Статус «Слушает Hutred» в Discord (на компьютере).
