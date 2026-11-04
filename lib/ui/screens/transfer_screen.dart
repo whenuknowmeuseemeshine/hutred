@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:simple_icons/simple_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/settings_store.dart';
@@ -1011,9 +1011,9 @@ class _SourceBadge extends StatelessWidget {
     final fg = HutredTheme.onAccent(color);
     final iconSize = size * 0.56;
     final Widget icon = switch (id) {
-      'spotify' => FaIcon(FontAwesomeIcons.spotify, size: iconSize, color: fg),
-      'youtube' => FaIcon(FontAwesomeIcons.youtube, size: iconSize, color: fg),
-      'soundcloud' => FaIcon(FontAwesomeIcons.soundcloud, size: iconSize, color: fg),
+      'spotify' => Icon(SimpleIcons.spotify, size: iconSize, color: fg),
+      'youtube' => Icon(SimpleIcons.youtube, size: iconSize, color: fg),
+      'soundcloud' => Icon(SimpleIcons.soundcloud, size: iconSize, color: fg),
       'yandex' => Text('Я',
           style: TextStyle(fontSize: size * 0.55, fontWeight: FontWeight.w900, color: fg, height: 1)),
       'folder' => Icon(Icons.folder_rounded, size: iconSize, color: fg),
