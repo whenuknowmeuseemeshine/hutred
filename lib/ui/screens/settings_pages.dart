@@ -1245,6 +1245,13 @@ class _HostCheckCardState extends State<_HostCheckCard> {
             ]),
           ),
         const SizedBox(height: 4),
+        SkRow(
+          title: 'Брать треки с YouTube',
+          sub: s.youtubeAuto
+              ? 'В поиске и когда трека нет на SoundCloud. Грузятся дольше'
+              : 'Выключено: только SoundCloud — быстрее. Треки с YouTube из медиатеки играют',
+          trailing: SkToggle(value: s.youtubeAuto, onChanged: (v) => s.youtubeAuto = v),
+        ),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

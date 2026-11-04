@@ -62,6 +62,8 @@ class SettingsStore extends ChangeNotifier {
   String _backgroundId = 'black';
   String _style = 'mono';
   bool _youtubeLyrics = true;
+  /// Брать треки с YouTube автоматически (поиск, волна, «где играть»). По умолчанию — нет: долго грузятся.
+  bool _youtubeAuto = false;
   bool _geniusLyrics = true;
   bool _geniusCovers = true;
   bool _replaceYoutubeCovers = true;
@@ -302,6 +304,7 @@ class SettingsStore extends ChangeNotifier {
     _save();
   }
   bool get youtubeLyrics => _youtubeLyrics;
+  bool get youtubeAuto => _youtubeAuto;
   bool get geniusLyrics => _geniusLyrics;
   bool get geniusCovers => _geniusCovers;
 
@@ -646,6 +649,7 @@ class SettingsStore extends ChangeNotifier {
       final cb = (j['customBg'] as num?)?.toInt();
       if (cb != null) _customBg = Color(cb);
       _youtubeLyrics = j['youtubeLyrics'] as bool? ?? true;
+      _youtubeAuto = j['youtubeAuto'] as bool? ?? false;
       _geniusLyrics = j['geniusLyrics'] as bool? ?? true;
       _geniusCovers = j['geniusCovers'] as bool? ?? true;
       _replaceYoutubeCovers = j['replaceYoutubeCovers'] as bool? ?? true;
@@ -746,6 +750,7 @@ class SettingsStore extends ChangeNotifier {
         'style': _style,
         'customBg': _customBg.toARGB32(),
         'youtubeLyrics': _youtubeLyrics,
+        'youtubeAuto': _youtubeAuto,
         'geniusLyrics': _geniusLyrics,
         'geniusCovers': _geniusCovers,
         'replaceYoutubeCovers': _replaceYoutubeCovers,
@@ -817,6 +822,11 @@ class SettingsStore extends ChangeNotifier {
 
   set backgroundId(String id) {
     _backgroundId = id;
+    _save();
+  }
+
+  set youtubeAuto(bool v) {
+    _youtubeAuto = v;
     _save();
   }
 
