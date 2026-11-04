@@ -633,9 +633,9 @@ class WaveService extends ChangeNotifier {
   static final _junkPatterns = <String, RegExp>{
     'sped': RegExp(r'sped\s*up|speed\s*up|nightcore|ускор', caseSensitive: false),
     'slowed': RegExp(r'slowed|reverb|замедл', caseSensitive: false),
-    'remix': RegExp(r'\bremix\b|\bрем[иі]кс|\bflip\b|\bbootleg\b|mashup', caseSensitive: false),
+    'remix': RegExp(r'\bremix\b|рем[иі]кс|\bflip\b|\bbootleg\b|mashup', caseSensitive: false),
     'cover': RegExp(r'\bcover\b|кавер|караоке|karaoke|instrumental|минус', caseSensitive: false),
-    'beat': RegExp(r'type\s*beat|\bбит\b|free\s*beat|\(prod\.?\s*by[^)]*\)\s*\[?free', caseSensitive: false),
+    'beat': RegExp(r'type\s*beat|(^|[\s(\[])бит($|[\s)\]])|free\s*beat|\(prod\.?\s*by[^)]*\)\s*\[?free', caseSensitive: false),
     'fx': RegExp(r'8d\b|bass\s*boost|tiktok|тикток|ringtone|рингтон|1\s*hour|10\s*hours|час(овая)?\s*версия|loop', caseSensitive: false),
     'mix': RegExp(r'\bdj\s*set|\bmixtape|\bmix\s*20\d\d|podcast|подкаст|live\s*set|сборник', caseSensitive: false),
   };
