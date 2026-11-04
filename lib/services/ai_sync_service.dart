@@ -120,8 +120,14 @@ class AiSyncService {
         flush();
       }
       lineStart ??= w.start;
-      buf.add('${Lyrics.stamp(w.start, word: true)}${w.text}');
+      // Тайминг — на всю строку, а не на каждое слово: так читать удобнее.
+      buf.add(w.text);
       prev = w.start;
+      // Конец предложения — новая строка.
+      if (RegExp(r'[.!?…]$').hasMatch(w.text)) {
+        flush();
+        prev = null;
+      }
     }
     flush();
     return lines.join('\n');
@@ -346,6 +352,15 @@ class AiSyncService {
   /// что ИИ услышал между началом этой строки и началом следующей.
   /// Если совпало меньше половины слов — оставляем обычную строку.
   static String _lineWithWords(
+      String text, Duration start, Duration end, List<HeardWord> words) {
+    // ИИ ставит время целой строке (предложению): пословная подсветка по
+    // распознанным словам выходила рваной и неточной.
+    return '${_stamp(start)}$text';
+  }
+
+  // Прежний пословный вариант — оставлен на случай, если захочется вернуть.
+  // ignore: unused_element
+  static String _lineWithWordsOld(
       String text, Duration start, Duration end, List<HeardWord> words) {
     final line = '${_stamp(start)}$text';
     final tokens = text.trim().split(RegExp(r'\s+'));
