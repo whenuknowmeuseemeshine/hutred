@@ -1,0 +1,31 @@
+:root{--bg:#000;--card:#121212;--inner:#1a1a1a;--line:#1f1f1f;--text:#f5f5f5;--muted:#9a9a9a;--btn:#f5f5f5;--btnfg:#000}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:980px;margin:0 auto;padding:28px 20px 64px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:40px}
+.top img{width:40px;height:40px;border-radius:10px}
+.top b{font-size:20px;font-weight:800;letter-spacing:-.01em}
+.top .sp{flex:1}
+.top a.link{font-size:14px;font-weight:600;color:var(--muted);text-decoration:none}
+.top a.link:hover{color:var(--text)}
+h1{font-size:clamp(36px,7vw,64px);line-height:1.02;margin:0 0 14px;font-weight:800;letter-spacing:-.03em}
+.lead{font-size:18px;color:var(--muted);max-width:620px;line-height:1.5;margin:0 0 28px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 22px;border-radius:999px;border:0;font:700 15px Inter,system-ui,sans-serif;text-decoration:none;cursor:pointer;background:var(--btn);color:var(--btnfg)}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid #333}
+.btn:hover{opacity:.9}
+.row{display:flex;flex-wrap:wrap;gap:10px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:48px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:10px}
+.card h3{margin:0;font-size:18px}
+.card p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+.card .btn{margin-top:auto;align-self:flex-start;height:42px;font-size:14px}
+.cap{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin:56px 0 14px}
+.feat{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.feat{grid-template-columns:1fr}}
+.feat div{background:var(--card);border-radius:14px;padding:16px 18px;font-size:15px;line-height:1.45}
+.feat b{display:block;margin-bottom:2px}
+.feat span{color:var(--muted);font-size:14px}
+code.copy{display:block;background:var(--inner);border-radius:10px;padding:10px 12px;font-size:12px;word-break:break-all;cursor:pointer;color:#cfcfcf}
+.foot{margin-top:64px;color:var(--muted);font-size:13px}

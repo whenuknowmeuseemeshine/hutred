@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hutred — музыка отовсюду</title>
+<meta name="description" content="Музыкальный плеер: YouTube, SoundCloud, Spotify и свои файлы в одной медиатеке. Караоке, «Моя волна», джем с друзьями.">
+<link rel="icon" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <img src="logo.png" alt="">
+    <b>Hutred</b>
+    <span class="sp"></span>
+    <a class="link" href="#download">Скачать</a>
+  </header>
+
+  <h1>Вся музыка<br>в одном плеере</h1>
+  <p class="lead">YouTube, SoundCloud, Spotify и свои файлы — в одной медиатеке. Тексты-караоке, «Моя волна», джем с друзьями и перенос плейлистов из любого сервиса.</p>
+  <div class="row">
+    <a class="btn" href="#download">Скачать бесплатно</a>
+  </div>
+
+  <div class="cap">Что умеет</div>
+  <div class="feat">
+    <div><b>Любой источник</b><span>Ищи и добавляй треки с YouTube, SoundCloud, Spotify или с диска.</span></div>
+    <div><b>Тексты-караоке</b><span>Строки подсвечиваются под музыку, как в Spotify.</span></div>
+    <div><b>Моя волна</b><span>Бесконечные рекомендации по тому, что ты любишь.</span></div>
+    <div><b>Джем</b><span>Слушайте вместе: общая очередь, каждый добавляет своё.</span></div>
+    <div><b>Перенос</b><span>Плейлисты из Spotify, Яндекс Музыки и YouTube — по ссылке.</span></div>
+    <div><b>Без интернета</b><span>Скачивай треки и плейлисты и слушай офлайн.</span></div>
+  </div>
+
+  <div class="cap" id="download">Скачать</div>
+  <div class="grid" style="margin-top:0">
+    <div class="card">
+      <h3>Windows</h3>
+      <p>Установщик. Дальше Hutred обновляется сам.</p>
+      <a class="btn" id="dl-win" href="#">Скачать для Windows</a>
+    </div>
+    <div class="card">
+      <h3>Android</h3>
+      <p>Файл .apk. <a href="phone.html#android">Как установить</a></p>
+      <a class="btn" id="dl-android" href="#">Скачать .apk</a>
+    </div>
+    <div class="card">
+      <h3>iPhone</h3>
+      <p>Через SideStore: добавь источник — обновления будут приходить сами.</p>
+      <code class="copy" id="src" title="Нажми, чтобы скопировать"></code>
+      <a class="btn ghost" href="phone.html#iphone">Как установить</a>
+    </div>
+  </div>
+
+  <p class="foot">Hutred · сделано для себя и друзей</p>
+</div>
+<script>
+const PUB = 'https://izkllkqilyspwxthssdc.supabase.co/storage/v1/object/public/releases';
+const src = document.getElementById('src');
+src.textContent = PUB + '/sidestore.json';
+src.onclick = () => { navigator.clipboard?.writeText(src.textContent); src.textContent = 'Скопировано ✓'; setTimeout(() => src.textContent = PUB + '/sidestore.json', 1500); };
+fetch(PUB + '/latest.json?t=' + Date.now()).then(r => r.json()).then(j => {
+  if (j.windows) document.getElementById('dl-win').href = j.windows;
+  if (j.android) document.getElementById('dl-android').href = j.android;
+}).catch(() => {});
+</script>
+</body>
+</html>

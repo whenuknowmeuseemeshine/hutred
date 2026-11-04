@@ -4,6 +4,7 @@
 
 #include <string>
 
+#include "app_links/app_links_plugin_c_api.h"
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -22,6 +23,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
     HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"hutred");
     if (existing != nullptr) {
+      // Ссылка hutred://… (с сайта) — передаём уже открытой копии.
+      SendAppLink(existing);
       ::ShowWindow(existing, SW_SHOW);
       ::ShowWindow(existing, SW_RESTORE);
       ::SetForegroundWindow(existing);
