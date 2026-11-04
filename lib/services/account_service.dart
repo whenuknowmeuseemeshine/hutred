@@ -468,6 +468,9 @@ class AccountService extends ChangeNotifier {
 
   // ---------- Синхронизация ----------
 
+  /// Вызывается, когда свои изменения ушли в облако (для мгновенной синхронизации).
+  VoidCallback? onPushed;
+
   /// Скрытые треки и чёрный список волны — тоже синхронизируются.
   WaveService? _wave;
   bool _waveDirty = false;
@@ -582,6 +585,7 @@ class AccountService extends ChangeNotifier {
             }
         ]);
       }
+      final pushedWave = _wave != null && (_waveDirty || state.pushed == null);
       if (_wave != null && (_waveDirty || state.pushed == null)) {
         _waveDirty = false;
         await _db.from('library_items').upsert({
@@ -594,6 +598,8 @@ class AccountService extends ChangeNotifier {
         });
       }
       await _writeState(uid, started, pulled);
+      // Другие мои устройства сразу заберут изменения, не дожидаясь таймера.
+      if (local.isNotEmpty || pushedWave) onPushed?.call();
       _lastSync = DateTime.now();
     } catch (e) {
       _syncError = 'Не удалось синхронизировать: ${_short(e)}';
