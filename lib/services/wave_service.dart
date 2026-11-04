@@ -459,7 +459,7 @@ class WaveService extends ChangeNotifier {
         throw Exception('Не получилось подобрать треки. Проверь интернет и попробуй ещё раз');
       }
       _active = true;
-      player.onQueueLow = _refill;
+      player.onQueueLow = _refillFn;
       if (first != null) _suggested.add(_key(first));
       await player.playTracks([if (first != null) first, ...batch]);
     } catch (e) {
@@ -683,7 +683,7 @@ class WaveService extends ChangeNotifier {
         throw Exception('Не получилось подобрать треки. Проверь интернет и попробуй ещё раз');
       }
       _active = true;
-      player.onQueueLow = _refill;
+      player.onQueueLow = _refillFn;
       await player.playTracks(batch);
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
@@ -698,15 +698,24 @@ class WaveService extends ChangeNotifier {
     _custom = null;
     _groups = null;
     _customLabel = null;
-    if (player.onQueueLow == _refill) player.onQueueLow = null;
+    if (identical(player.onQueueLow, _refillFn)) player.onQueueLow = null;
     notifyListeners();
   }
 
   bool _refilling = false;
 
-  Future<void> _refill() async {
+  Future<void>? _refillRun;
+  late final Future<void> Function() _refillFn = _refill;
+
+  /// Подкачка уже идёт — ждём её же, а не запускаем вторую.
+  Future<void> _refill() {
+    if (!_active || !isWaveTrack(player.current)) return Future.value();
+    return _refillRun ??= _doRefill().whenComplete(() => _refillRun = null);
+  }
+
+  Future<void> _doRefill() async {
     // Волна дозаправляется, только пока играет она сама.
-    if (!_active || _refilling || !isWaveTrack(player.current)) return;
+    if (_refilling) return;
     _refilling = true;
     try {
       final batch = await _nextBatch();

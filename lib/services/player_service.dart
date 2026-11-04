@@ -329,7 +329,7 @@ class PlayerService extends ChangeNotifier {
       if (_smart) unawaited(_ensureRecsAhead());
       _prefetchNext();
       final low = onQueueLow;
-      if (low != null && _queue.length - _index <= 3) unawaited(low());
+      if (low != null && _queue.length - _index <= 6) unawaited(low());
       final t = ++_fadeToken;
       await Future.wait([
         _ramp(incoming, 0, _userVolume, fadeLen, token: t),
@@ -526,7 +526,7 @@ class PlayerService extends ChangeNotifier {
       if (_smart) unawaited(_ensureRecsAhead());
       _prefetchNext();
       final low = onQueueLow;
-      if (low != null && _queue.length - _index <= 3) unawaited(low());
+      if (low != null && _queue.length - _index <= 6) unawaited(low());
     } on PlayerInterruptedException {
       // Загрузку прервал следующий трек — это нормально.
     } catch (e) {
@@ -687,6 +687,17 @@ class PlayerService extends ChangeNotifier {
     if (await remoteControl?.call('next') ?? false) return;
     _resumeAt = null;
     if (_queue.isEmpty) return;
+    // Волна: при быстрых пропусках треки грузятся не до конца, и подкачка после
+    // загрузки не успевает — подкачиваем сразу при нажатии.
+    final low = onQueueLow;
+    if (low != null && _queue.length - _index <= 6) {
+      if (_index >= _queue.length - 1) {
+        // Очередь кончилась — ждём новую порцию, а не останавливаемся.
+        await low();
+      } else {
+        unawaited(low());
+      }
+    }
     if (_index < _queue.length - 1) {
       _index++;
     } else if (_repeat == RepeatSetting.all) {
