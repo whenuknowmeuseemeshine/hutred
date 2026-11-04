@@ -532,6 +532,9 @@ class SoundcloudSource {
     return data is Map ? _toTrack(data) : null;
   }
 
+  /// Прослушивания, лайки и подписчики автора по id трека (-1 — неизвестно).
+  static final Map<String, ({int plays, int likes, int followers})> stats = {};
+
   Track? _toTrack(Map j) {
     final id = j['id'];
     final title = j['title'] as String?;
@@ -563,6 +566,13 @@ class SoundcloudSource {
     String? art = (j['artwork_url'] as String?) ?? (user['avatar_url'] as String?);
     art = art?.replaceFirst('-large.', '-t500x500.');
 
+    // Популярность — для отбора рекомендаций (мусор обычно никто не слушает).
+    stats['$id'] = (
+      plays: (j['playback_count'] as num?)?.toInt() ?? -1,
+      likes: (j['likes_count'] as num?)?.toInt() ?? -1,
+      followers: (user['followers_count'] as num?)?.toInt() ?? -1,
+    );
+    if (stats.length > 5000) stats.remove(stats.keys.first);
     return Track(
       id: Track.newId(),
       title: split.title,
