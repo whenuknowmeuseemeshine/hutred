@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
 import '../../services/import_service.dart';
+import '../../services/account_service.dart';
 import '../../services/library_store.dart';
 import '../../services/settings_store.dart';
 import '../spotify_check.dart';
@@ -574,7 +575,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     return Scaffold(
       appBar: _sel != null ? _selectionBar(tracks, store, offline) : null,
-      body: CustomScrollView(slivers: slivers),
+      // Потянуть вниз в самом верху — забрать изменения с других устройств.
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final acc = context.read<AccountService>();
+          if (!acc.signedIn) return;
+          await acc.syncNow();
+          if (context.mounted && acc.syncError != null) AppActions.toast(context, acc.syncError!);
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: slivers,
+        ),
+      ),
     );
   }
 

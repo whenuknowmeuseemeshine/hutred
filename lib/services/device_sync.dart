@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -49,8 +49,11 @@ class RemoteDevice {
 
 /// Синхронизация своих устройств, как в Spotify: что играет на компьютере,
 /// видно на телефоне, и им можно управлять; музыку можно перенести.
-class DeviceSync extends ChangeNotifier {
+class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
   DeviceSync({required this.account, required this.player}) {
+    WidgetsBinding.instance.addObserver(this);
+    // Медиатека поменялась на другом устройстве — сразу забираем.
+    account.onPushed = () => unawaited(_ch?.sendBroadcastMessage(event: 'lib', payload: {'from': _id}));
     account.addListener(_onAccount);
     player.addListener(_onPlayer);
     _onAccount();
@@ -154,6 +157,7 @@ class DeviceSync extends ChangeNotifier {
         })
         .onBroadcast(event: 'cmd', callback: _onCmd)
         .onBroadcast(event: 'take', callback: _onTake)
+        .onBroadcast(event: 'lib', callback: (_) => unawaited(account.syncNow()))
         .subscribe((status, _) {
           if (status == RealtimeSubscribeStatus.subscribed) _publish();
         });
@@ -314,8 +318,18 @@ class DeviceSync extends ChangeNotifier {
     }
   }
 
+  /// Вернулись в приложение — подтягиваем медиатеку и обновляем статус.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && account.signedIn) {
+      unawaited(account.syncNow());
+      _publish();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _beat?.cancel();
     _debounce?.cancel();
     account.removeListener(_onAccount);
