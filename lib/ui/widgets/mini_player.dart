@@ -5,6 +5,9 @@ import '../../services/library_store.dart';
 import '../../services/player_service.dart';
 import '../../services/settings_store.dart';
 import '../screens/now_playing_screen.dart';
+import '../screens/artist_screen.dart';
+import '../../services/device_sync.dart';
+import 'devices.dart';
 import '../theme.dart';
 import '../../models/track.dart';
 import 'artwork.dart';
@@ -21,6 +24,10 @@ class MiniPlayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = context.watch<PlayerService>();
     final store = context.watch<LibraryStore>();
+    final sync = context.watch<DeviceSync>();
+    final wide0 = MediaQuery.sizeOf(context).width >= 800;
+    // Здесь тихо, а музыка играет на другом моём устройстве — показываем пульт.
+    if (sync.remoteMode) return wide0 ? const RemoteBar() : const RemoteMini();
     final current = player.current;
     if (current == null) return const SizedBox.shrink();
     final track = store.byId(current.id) ?? current;
@@ -95,7 +102,9 @@ class MiniPlayer extends StatelessWidget {
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 2),
-                        Text(
+                        GestureDetector(
+                          onTap: player.error != null ? null : () => openArtist(context, track.artist),
+                          child: Text(
                           player.error ?? track.artist,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -106,6 +115,7 @@ class MiniPlayer extends StatelessWidget {
                                 : HutredTheme.muted,
                           ),
                         ),
+                        ),
                       ],
                     ),
                   ),
@@ -115,6 +125,7 @@ class MiniPlayer extends StatelessWidget {
                       onPressed: player.previous,
                       icon: Icon(Ic.skip_previous_rounded),
                     ),
+                  const DevicesButton(),
                   LikeButtons(track: track),
                   player.loading
                       ? const Padding(
@@ -163,6 +174,7 @@ class MiniPlayer extends StatelessWidget {
               ),
             ),
             progress,
+            const DevicesStrip(),
           ],
         ),
       ),
@@ -238,14 +250,20 @@ class PlayerBar extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
-                          Text(player.error ?? track.artist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: player.error != null
-                                      ? scheme.error
-                                      : HutredTheme.muted)),
+                          MouseRegion(
+                            cursor: player.error == null ? SystemMouseCursors.click : MouseCursor.defer,
+                            child: GestureDetector(
+                              onTap: player.error != null ? null : () => openArtist(context, track.artist),
+                              child: Text(player.error ?? track.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: player.error != null
+                                          ? scheme.error
+                                          : HutredTheme.muted)),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -315,6 +333,7 @@ class PlayerBar extends StatelessWidget {
                       }
                     },
                   ),
+                  const DevicesButton(),
                   const SizedBox(width: 4),
                   const SizedBox(width: 150, child: VolumeSlider()),
                 ],
@@ -324,7 +343,13 @@ class PlayerBar extends StatelessWidget {
         ),
       ),
     );
-    return floating ? Padding(padding: const EdgeInsets.only(top: 12), child: bar) : bar;
+    final withStrip = inFullScreen
+        ? bar
+        : Column(mainAxisSize: MainAxisSize.min, children: [
+            const DevicesStrip(align: MainAxisAlignment.end),
+            bar,
+          ]);
+    return floating ? Padding(padding: const EdgeInsets.only(top: 12), child: withStrip) : withStrip;
   }
 }
 
