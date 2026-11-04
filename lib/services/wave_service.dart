@@ -537,9 +537,11 @@ class WaveService extends ChangeNotifier {
           'Добавь в медиатеку несколько треков и поставь им ♥ — волна подстроится под них');
     }
     final candidates = <Track>[];
+    // Сколько разных опор «посоветовали» трек: чем больше, тем он ближе к вкусу.
+    final votes = <String, int>{};
     final picked = <String>{};
     final seedArtists = <String>{};
-    for (var attempt = 0; attempt < (_unfamiliar ? 12 : 9) && candidates.length < size * 5; attempt++) {
+    for (var attempt = 0; attempt < (_unfamiliar ? 12 : 9) && candidates.length < size * 6; attempt++) {
       final seed = _pickWeighted(seeds);
       if (!picked.add(seed.id) && picked.length < seeds.length) continue;
       // Опоры — от разных исполнителей, иначе всё похожее будет на одного.
@@ -548,7 +550,11 @@ class WaveService extends ChangeNotifier {
       try {
         final id = await _scIdFor(seed);
         if (id == null) continue;
-        candidates.addAll(await soundcloud.related(id, limit: 25));
+        for (final t in await soundcloud.related(id, limit: 30)) {
+          final k = _key(t);
+          votes[k] = (votes[k] ?? 0) + 1;
+          if (votes[k] == 1) candidates.add(t);
+        }
       } catch (e) {
         debugPrint('Волна: ${seed.title}: $e');
       }
@@ -558,7 +564,24 @@ class WaveService extends ChangeNotifier {
     final known = _unfamiliar
         ? {for (final t in store.tracks) artistKey(t.artist)}
         : const <String>{};
-    candidates.shuffle(_rand);
+    final mine = {for (final t in store.tracks) artistKey(t.artist)};
+    final allowJunk = _allowedJunk();
+
+    // Оценка: популярность, «голоса» опор, знакомые исполнители, немного случайности.
+    double score(Track t) {
+      final st = SoundcloudSource.stats[t.uri];
+      final plays = st == null || st.plays < 0 ? 5000 : st.plays;
+      final likes = st == null || st.likes < 0 ? 50 : st.likes;
+      var sc = log(plays + 10) / ln10; // 1 … ~7
+      sc += min(1.0, log(likes + 1) / ln10 / 4);
+      sc += (votes[_key(t)] ?? 1) * 0.9;
+      if (mine.contains(artistKey(t.artist)) && !_unfamiliar) sc += 0.8;
+      return sc + _rand.nextDouble() * 1.2;
+    }
+
+    candidates.removeWhere((t) => _junk(t, allowJunk));
+    final scored = {for (final t in candidates) _key(t): score(t)};
+    candidates.sort((a, b) => scored[_key(b)]!.compareTo(scored[_key(a)]!));
     final out = <Track>[];
     final used = <String>{};
 
@@ -574,7 +597,11 @@ class WaveService extends ChangeNotifier {
       if (strict && skips > 0 && _rand.nextDouble() < min(0.85, skips * 0.25)) return false;
       if (isOwnedLike(t)) return false;
       if (_unfamiliar && known.contains(artist)) return false;
-      if (t.durationMs != null && t.durationMs! < 60000) return false; // не сниппеты
+      // Почти никем не слушанное — в первом проходе пропускаем.
+      final st = SoundcloudSource.stats[t.uri];
+      if (strict && st != null && st.plays >= 0 && st.plays < 3000 && !mine.contains(artist)) {
+        return false;
+      }
       // Один исполнитель — не больше одного трека в пачке
       // и не чаще, чем раз в ~14 треков волны.
       if (used.contains(artist)) return false;
@@ -599,6 +626,46 @@ class WaveService extends ChangeNotifier {
       _recentArtists.removeRange(0, _recentArtists.length - _recentWindow);
     }
     return out;
+  }
+
+  /// Что обычно оказывается «хуетой» в похожих на SoundCloud: перезаливы с
+  /// эффектами, минусовки, нарезки, часовые миксы.
+  static final _junkPatterns = <String, RegExp>{
+    'sped': RegExp(r'sped\s*up|speed\s*up|nightcore|ускор', caseSensitive: false),
+    'slowed': RegExp(r'slowed|reverb|замедл', caseSensitive: false),
+    'remix': RegExp(r'\bremix\b|\bрем[иі]кс|\bflip\b|\bbootleg\b|mashup', caseSensitive: false),
+    'cover': RegExp(r'\bcover\b|кавер|караоке|karaoke|instrumental|минус', caseSensitive: false),
+    'beat': RegExp(r'type\s*beat|\bбит\b|free\s*beat|\(prod\.?\s*by[^)]*\)\s*\[?free', caseSensitive: false),
+    'fx': RegExp(r'8d\b|bass\s*boost|tiktok|тикток|ringtone|рингтон|1\s*hour|10\s*hours|час(овая)?\s*версия|loop', caseSensitive: false),
+    'mix': RegExp(r'\bdj\s*set|\bmixtape|\bmix\s*20\d\d|podcast|подкаст|live\s*set|сборник', caseSensitive: false),
+  };
+
+  /// Если такого в медиатеке много (≥3), значит, тебе это нравится — не режем.
+  Set<String> _allowedJunk() {
+    final out = <String>{};
+    _junkPatterns.forEach((name, re) {
+      var n = 0;
+      for (final t in store.tracks) {
+        if (re.hasMatch(t.title)) n++;
+        if (n >= 3) {
+          out.add(name);
+          break;
+        }
+      }
+    });
+    return out;
+  }
+
+  bool _junk(Track t, Set<String> allowed) {
+    final d = t.durationMs;
+    if (d != null && (d < 90000 || d > 9 * 60000)) return true;
+    for (final e in _junkPatterns.entries) {
+      if (!allowed.contains(e.key) && e.value.hasMatch(t.title)) return true;
+    }
+    // Почти без прослушиваний и лайков — обычно чья-то заливка «для себя».
+    final st = SoundcloudSource.stats[t.uri];
+    if (st != null && st.plays >= 0 && st.plays < 300 && st.likes < 5) return true;
+    return false;
   }
 
   Future<void> start() async {
