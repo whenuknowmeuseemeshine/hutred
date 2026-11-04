@@ -98,6 +98,7 @@ class WaveService extends ChangeNotifier {
   Map<String, dynamic> syncData() {
     final d = <String, dynamic>{};
     final b = <String, dynamic>{};
+    final f = <String, dynamic>{};
     _syncStamps.forEach((id, st) {
       final key = id.substring(2);
       if (id.startsWith('d:')) {
@@ -105,6 +106,14 @@ class WaveService extends ChangeNotifier {
         d[key] = {
           't': info?.title ?? '',
           'a': info?.artist ?? '',
+          'at': st.at.toIso8601String(),
+          if (st.del) 'x': true,
+        };
+      } else if (id.startsWith('f:')) {
+        final x = _follows[key];
+        f[key] = {
+          'n': x?.name ?? '',
+          if (x?.picture != null) 'p': x!.picture,
           'at': st.at.toIso8601String(),
           if (st.del) 'x': true,
         };
@@ -116,7 +125,7 @@ class WaveService extends ChangeNotifier {
         };
       }
     });
-    return {'d': d, 'b': b};
+    return {'d': d, 'b': b, 'f': f};
   }
 
   /// Изменения с другого устройства: по каждой записи побеждает более новая.
@@ -157,6 +166,13 @@ class WaveService extends ChangeNotifier {
         _blockedNames[key] = '${v['n'] ?? key}';
       }
     });
+    each('f', data['f'], (key, v, del) {
+      if (del) {
+        _follows.remove(key);
+      } else {
+        _follows[key] = (name: '${v['n'] ?? ''}', picture: v['p'] as String?);
+      }
+    });
     if (changed) {
       await _save();
       notifyListeners();
@@ -177,6 +193,30 @@ class WaveService extends ChangeNotifier {
   final Map<String, List<Track>> _favArtists = {};
 
   List<String> get favoriteArtists => _favArtists.keys.toList();
+
+  /// Подписки на исполнителей (id на Deezer → имя и фото): новые релизы
+  /// приходят в «Что нового». Синхронизируются между устройствами.
+  final Map<String, ({String name, String? picture})> _follows = {};
+
+  List<({String id, String name, String? picture})> get follows => [
+        for (final e in _follows.entries) (id: e.key, name: e.value.name, picture: e.value.picture),
+      ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+  bool isFollowing(String deezerId) => _follows.containsKey(deezerId);
+
+  Future<void> follow(String deezerId, String name, String? picture) async {
+    _follows[deezerId] = (name: name, picture: picture);
+    _mark('f:$deezerId');
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> unfollow(String deezerId) async {
+    if (_follows.remove(deezerId) == null) return;
+    _mark('f:$deezerId', del: true);
+    await _save();
+    notifyListeners();
+  }
 
   Future<void> setFavoriteArtists(Map<String, List<Track>> artists) async {
     _favArtists
@@ -229,6 +269,9 @@ class WaveService extends ChangeNotifier {
         _blocked.add(_norm(name));
         _blockedNames[_norm(name)] = name;
       }
+      (j['follows'] as Map? ?? const {}).forEach((k, v) {
+        if (v is Map) _follows['$k'] = (name: '${v['n'] ?? ''}', picture: v['p'] as String?);
+      });
       (j['syncStamps'] as Map? ?? const {}).forEach((k, v) {
         if (v is! Map) return;
         final at = DateTime.tryParse('${v['at']}')?.toUtc();
@@ -257,6 +300,10 @@ class WaveService extends ChangeNotifier {
         },
         'dislikedArtists': _dislikedArtists,
         'blockedArtists': _blockedNames.values.toList(),
+        'follows': {
+          for (final e in _follows.entries)
+            e.key: {'n': e.value.name, if (e.value.picture != null) 'p': e.value.picture},
+        },
         'syncStamps': {
           for (final e in _syncStamps.entries)
             e.key: {'at': e.value.at.toIso8601String(), if (e.value.del) 'x': true},

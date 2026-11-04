@@ -23,7 +23,8 @@ class DevicesButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sync = context.watch<DeviceSync>();
-    if (!sync.online || sync.others.isEmpty) return const SizedBox.shrink();
+    // Всегда на месте, пока ты в аккаунте: не мигает, когда связь с другим устройством пропадает.
+    if (!sync.online) return const SizedBox.shrink();
     final k = Sk.of(context);
     final hot = sync.remoteMode || sync.controlledBy != null;
     return IconButton(

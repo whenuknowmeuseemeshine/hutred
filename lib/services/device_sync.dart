@@ -22,7 +22,11 @@ class RemoteDevice {
     required this.durMs,
     required this.at,
     required this.volume,
-  });
+    DateTime? received,
+  }) : received = received ?? DateTime.now();
+
+  /// Когда это сообщение пришло сюда (часы устройств могут не совпадать).
+  final DateTime received;
 
   final String id;
   final String name;
@@ -39,7 +43,7 @@ class RemoteDevice {
   /// Где сейчас трек с учётом времени, прошедшего с последнего сообщения.
   Duration get position {
     var ms = posMs;
-    if (playing) ms += DateTime.now().difference(at).inMilliseconds;
+    if (playing) ms += DateTime.now().difference(received).inMilliseconds;
     if (durMs > 0) ms = ms.clamp(0, durMs);
     return Duration(milliseconds: ms);
   }
@@ -92,7 +96,7 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
           if (d.id != _id) d,
       ]..sort((a, b) => a.name.compareTo(b.name));
 
-  bool get online => _ch != null && account.signedIn;
+  bool get online => _for != null && account.signedIn;
 
   /// Устройство, где сейчас играет музыка (не это).
   RemoteDevice? get active {
@@ -135,10 +139,26 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
     final uid = account.signedIn ? account.user?.id : null;
     if (uid == _for) return;
     _for = uid;
+    _devices.clear();
+    _gone.clear();
+    await _connect();
+  }
+
+  /// Когда устройство пропало из списка: держим его ещё немного — связь у
+  /// телефона мигает, и значок не должен то появляться, то исчезать.
+  final Map<String, DateTime> _gone = {};
+  bool _joined = false;
+  Timer? _retry;
+  Timer? _sweep;
+  StreamSubscription<Duration>? _posSub;
+
+  Future<void> _connect() async {
+    final uid = _for;
     final old = _ch;
     _ch = null;
-    _devices.clear();
+    _joined = false;
     _beat?.cancel();
+    _retry?.cancel();
     if (old != null) unawaited(_db.removeChannel(old));
     notifyListeners();
     if (uid == null) return;
@@ -146,26 +166,89 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
     final ch = _db.channel('devices-$uid', opts: const RealtimeChannelConfig(self: false));
     ch
         .onPresenceSync((_) {
-          _devices.clear();
+          final now = DateTime.now();
+          final seen = <String>{};
           for (final s in ch.presenceState()) {
             for (final p in s.presences) {
               final d = _parse(p.payload);
-              if (d != null) _devices[d.id] = d;
+              if (d == null) continue;
+              // Свежее сообщение от устройства побеждает старое.
+              final old = _devices[d.id];
+              if (old == null || d.at.isAfter(old.at)) _devices[d.id] = d;
+              seen.add(d.id);
+              _gone.remove(d.id);
             }
+          }
+          for (final id in _devices.keys) {
+            if (!seen.contains(id)) _gone.putIfAbsent(id, () => now);
           }
           notifyListeners();
         })
         .onBroadcast(event: 'cmd', callback: _onCmd)
         .onBroadcast(event: 'take', callback: _onTake)
+        .onBroadcast(event: 'state', callback: (p) {
+          // Быстрое обновление позиции (перемотка, пауза) — без ожидания присутствия.
+          final d = _parse(p);
+          if (d == null || d.id == _id) return;
+          final old = _devices[d.id];
+          if (old != null && d.at.isBefore(old.at)) return;
+          _devices[d.id] = d;
+          _gone.remove(d.id);
+          notifyListeners();
+        })
         .onBroadcast(event: 'lib', callback: (_) => unawaited(account.syncNow()))
         .subscribe((status, _) {
-          if (status == RealtimeSubscribeStatus.subscribed) _publish();
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            _joined = true;
+            _publish();
+          } else if (status == RealtimeSubscribeStatus.channelError ||
+              status == RealtimeSubscribeStatus.timedOut ||
+              status == RealtimeSubscribeStatus.closed) {
+            // Связь порвалась — переподключаемся сами через пару секунд.
+            if (!identical(_ch, ch)) return;
+            _joined = false;
+            _retry?.cancel();
+            _retry = Timer(const Duration(seconds: 3), () {
+              if (identical(_ch, ch)) unawaited(_connect());
+            });
+          }
         });
     _ch = ch;
-    // Пока играет — раз в 10 секунд уточняем позицию для пультов.
-    _beat = Timer.periodic(const Duration(seconds: 10), (_) {
+    // Пока играет — раз в 8 секунд уточняем позицию для пультов.
+    _beat = Timer.periodic(const Duration(seconds: 8), (_) {
       if (player.playing) _publish();
+      if (!_joined && _retry?.isActive != true && _for != null) unawaited(_connect());
     });
+    // Убираем устройства, которых нет дольше 45 секунд.
+    _sweep ??= Timer.periodic(const Duration(seconds: 10), (_) {
+      final now = DateTime.now();
+      final drop = [
+        for (final e in _gone.entries)
+          if (now.difference(e.value) > const Duration(seconds: 45)) e.key,
+      ];
+      if (drop.isEmpty) return;
+      for (final id in drop) {
+        _gone.remove(id);
+        _devices.remove(id);
+      }
+      notifyListeners();
+    });
+    // Перемотка здесь — сразу сообщаем пультам.
+    _posSub ??= player.positionStream.listen(_onPosition);
+  }
+
+  int _lastPubPos = 0;
+  DateTime _lastPubAt = DateTime.now();
+  bool _lastPubPlaying = false;
+
+  void _onPosition(Duration pos) {
+    if (_ch == null) return;
+    final expected = _lastPubPos +
+        (_lastPubPlaying ? DateTime.now().difference(_lastPubAt).inMilliseconds : 0);
+    if ((pos.inMilliseconds - expected).abs() > 2500) {
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 250), () => _publish(fast: true));
+    }
   }
 
   RemoteDevice? _parse(Map<String, dynamic> p) {
@@ -199,15 +282,18 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
     if (key == _lastKey) return;
     _lastKey = key;
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 700), _publish);
+    _debounce = Timer(const Duration(milliseconds: 300), _publish);
     notifyListeners();
   }
 
-  void _publish() {
+  void _publish({bool fast = false}) {
     final ch = _ch;
     if (ch == null || _id.isEmpty) return;
     final t = player.current;
-    unawaited(ch.track({
+    _lastPubPos = player.position.inMilliseconds;
+    _lastPubAt = DateTime.now();
+    _lastPubPlaying = player.playing;
+    final state = <String, dynamic>{
       'id': _id,
       'name': myName,
       'kind': myKind,
@@ -217,7 +303,11 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
       'dur': player.duration?.inMilliseconds ?? t?.durationMs ?? 0,
       'at': DateTime.now().millisecondsSinceEpoch,
       'vol': player.volume,
-    }));
+    };
+    unawaited(ch.track(state));
+    // Пультам — сразу, широковещательно: присутствие обновляется медленнее.
+    unawaited(ch.sendBroadcastMessage(event: 'state', payload: state));
+    if (fast) notifyListeners();
   }
 
   static Map<String, dynamic> _compact(Track t) {
@@ -323,7 +413,12 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && account.signedIn) {
       unawaited(account.syncNow());
-      _publish();
+      // После сна телефона соединение часто уже мёртвое — подключаемся заново.
+      if (!_joined) {
+        unawaited(_connect());
+      } else {
+        _publish();
+      }
     }
   }
 
@@ -331,6 +426,9 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _beat?.cancel();
+    _sweep?.cancel();
+    _retry?.cancel();
+    _posSub?.cancel();
     _debounce?.cancel();
     account.removeListener(_onAccount);
     player.removeListener(_onPlayer);

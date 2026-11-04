@@ -44,195 +44,528 @@ class _LookPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final wide = box.maxWidth >= 860;
+      final list = _LookSections(wide: wide);
+      if (!wide) {
+        return SkGap(gap: 12, children: [
+          const SizedBox(height: 150, child: _LookPreview()),
+          Text('Так будет · цвета и фон меняются сразу', style: Sk.of(context).small),
+          list,
+        ]);
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: list),
+        const SizedBox(width: 28),
+        SizedBox(
+          width: 340,
+          child: SkGap(gap: 10, children: [
+            const SkCap('Так будет'),
+            const SizedBox(height: 300, child: _LookPreview()),
+            Text('Превью повторяет твой стиль, акцент, фон и масштаб', style: Sk.of(context).small),
+          ]),
+        ),
+      ]);
+    });
+  }
+}
+
+/// Строки «Внешнего вида»: стиль, акцент, фон, масштаб, вкладки.
+class _LookSections extends StatelessWidget {
+  const _LookSections({required this.wide});
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
     final s = context.watch<SettingsStore>();
     final k = Sk.of(context);
 
-    // Стиль: три превью.
-    final styles = SkCard(
-      child: SkGap(children: [
-        Row(children: [
-          const Expanded(child: SkCap('Стиль')),
-          if (s.styleRestartNeeded) ...[
-            Text('Применится после перезапуска', style: k.small),
-            if (Platform.isWindows) ...[
-              const SizedBox(width: 10),
-              SkButton('Перезапустить', height: 30, primary: true, onTap: () async {
-                await XrayVpn.stop();
-                await Future.delayed(const Duration(milliseconds: 400));
-                await Process.start(Platform.resolvedExecutable, const [],
-                    mode: ProcessStartMode.detached);
-                exit(0);
-              }),
-            ],
-          ] else
-            Text('Меняется после перезапуска', style: k.small),
-        ]),
-        LayoutBuilder(builder: (context, box) {
-          final cols = box.maxWidth < 420 ? 1 : 3;
-          final w = (box.maxWidth - 14 * (cols - 1)) / cols;
-          return Wrap(spacing: 14, runSpacing: 14, children: [
-            for (final info in appStyles)
-              SizedBox(
-                width: w,
-                child: _StylePreview(
-                  info: info,
-                  selected: s.chosenStyle == info.id,
-                  onTap: () => s.applyStyle(info.id),
-                ),
+    // Строка с подписью слева (компьютер) или сверху (телефон).
+    Widget labeled(String label, Widget child, {bool top = false}) => wide
+        ? Row(crossAxisAlignment: top ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
+            SizedBox(
+              width: 130,
+              child: Padding(
+                padding: EdgeInsets.only(top: top ? 8 : 0),
+                child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               ),
+            ),
+            Expanded(child: child),
+          ])
+        : SkGap(gap: 10, children: [
+            Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            child,
           ]);
-        }),
-      ]),
-    );
-
-    final isPreset = accentPresets.any((c) => c.toARGB32() == s.accent.toARGB32());
-    final accent = SkCard(
-      child: SkGap(children: [
-        const SkCap('Акцент'),
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final c in accentPresets)
-            _Dot(
-              color: c,
-              selected: s.accent.toARGB32() == c.toARGB32(),
-              onTap: () => s.accent = c,
-            ),
-          _Dot(
-            selected: !isPreset,
-            onTap: () => showDialog(
-              context: context,
-              builder: (_) => ChangeNotifierProvider.value(
-                value: s,
-                child: _ColorPickerDialog(
-                  title: 'Свой акцентный цвет',
-                  initial: s.accent,
-                  onApply: (c) => s.accent = c,
-                ),
-              ),
-            ),
-          ),
-        ]),
-        SkRow(
-          filled: false,
-          divider: true,
-          title: 'Подкрашивать под обложку',
-          sub: 'Плеер берёт цвет из играющего трека',
-          trailing: SkToggle(value: s.tintFromCover, onChanged: (v) => s.tintFromCover = v),
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SkButton('Вернуть цвета по умолчанию', height: 32, onTap: s.reset),
-        ),
-      ]),
-    );
-
-    Widget bgTile({
-      required Widget child,
-      required bool selected,
-      required VoidCallback onTap,
-      Color? color,
-      String? tooltip,
-    }) =>
-        Tooltip(
-          message: tooltip ?? '',
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(k.ri),
-            child: Container(
-              height: 50,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: color ?? k.inner,
-                borderRadius: BorderRadius.circular(k.ri),
-                border: Border.all(
-                    color: selected ? k.btn : (k.cardBorder == null ? Colors.transparent : k.ghost),
-                    width: selected ? 2 : 1),
-              ),
-              child: child,
-            ),
-          ),
+    Widget divided(Widget child) => Container(
+          padding: const EdgeInsets.only(top: 12),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: k.line))),
+          child: child,
+        );
+    Widget card(List<Widget> rows) => SkCard(
+          padding: EdgeInsets.symmetric(horizontal: wide ? 20 : 16, vertical: wide ? 18 : 14),
+          child: SkGap(gap: 12, children: rows),
         );
 
-    final bg = SkCard(
-      child: SkGap(children: [
-        SkCap(HutredTheme.desktop ? 'Фон и масштаб' : 'Фон'),
-        LayoutBuilder(builder: (context, box) {
-          const cols = 4;
-          final w = (box.maxWidth - 8 * (cols - 1)) / cols;
-          return Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final b in backgroundPresets)
-              SizedBox(
-                width: w,
-                child: bgTile(
-                  tooltip: b.name,
-                  color: b.ink,
-                  selected: s.background.id == b.id,
-                  onTap: () => s.backgroundId = b.id,
-                  child: const SizedBox.shrink(),
+    // ---------- Стиль ----------
+    final style = card([
+      labeled(
+        'Стиль',
+        SkSeg<String>(
+          options: [for (final i in appStyles) (i.id, i.name)],
+          value: s.chosenStyle,
+          onChanged: s.applyStyle,
+        ),
+      ),
+      if (s.styleRestartNeeded)
+        Row(children: [
+          if (wide) const SizedBox(width: 130),
+          Expanded(child: Text('Стиль применится после перезапуска Hutred', style: k.small)),
+          if (Platform.isWindows)
+            SkButton('Перезапустить', height: 30, primary: true, onTap: () async {
+              await XrayVpn.stop();
+              await Future.delayed(const Duration(milliseconds: 400));
+              await Process.start(Platform.resolvedExecutable, const [], mode: ProcessStartMode.detached);
+              exit(0);
+            }),
+        ])
+      else if (!wide)
+        Text('Стиль меняется после перезапуска', style: k.small),
+    ]);
+
+    // ---------- Акцент ----------
+    final isPreset = accentPresets.any((c) => c.toARGB32() == s.accent.toARGB32());
+    void pickColor(String title, Color initial, ValueChanged<Color> apply) => showDialog(
+          context: context,
+          builder: (_) => ChangeNotifierProvider.value(
+            value: s,
+            child: _ColorPickerDialog(title: title, initial: initial, onApply: apply),
+          ),
+        );
+    final accent = card([
+      labeled(
+        'Акцент',
+        Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          for (final c in accentPresets)
+            _Swatch2(color: c, selected: s.accent.toARGB32() == c.toARGB32(), onTap: () => s.accent = c),
+          SkButton(isPreset ? 'Свой…' : 'Свой ✓', height: 30,
+              onTap: () => pickColor('Свой акцентный цвет', s.accent, (c) => s.accent = c)),
+        ]),
+      ),
+      divided(Row(children: [
+        if (wide) const SizedBox(width: 130),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(wide ? 'Подкрашивать плеер под обложку' : 'Подкрашивать под обложку', style: k.rowTitle),
+            Text(wide ? 'Цвет берётся из играющего трека' : 'Цвет из играющего трека', style: k.small),
+          ]),
+        ),
+        SkToggle(value: s.tintFromCover, onChanged: (v) => s.tintFromCover = v),
+      ])),
+    ]);
+
+    // ---------- Фон ----------
+    final wavePath = s.waveBackground;
+    final waveName = wavePath == null ? null : wavePath.split(RegExp(r'[\\/]')).last;
+    Future<void> pickWave() async {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['gif', 'png', 'jpg', 'jpeg', 'webp'],
+      );
+      final path = res?.files.single.path;
+      if (path != null) await s.setWaveBackground(path);
+    }
+
+    final bg = card([
+      labeled(
+        'Фон',
+        Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          for (final b in backgroundPresets)
+            _Swatch2(
+              color: b.ink,
+              square: true,
+              tooltip: b.name,
+              selected: s.background.id == b.id,
+              onTap: () => s.backgroundId = b.id,
+            ),
+          if (s.background.id == 'custom')
+            _Swatch2(color: s.customBgColor, square: true, tooltip: 'Свой', selected: true, onTap: () {}),
+          SkButton('Свой…', height: 30,
+              onTap: () => pickColor('Свой цвет фона', s.customBgColor, (c) => s.customBgColor = c)),
+        ]),
+      ),
+      divided(Row(children: [
+        if (wide)
+          SizedBox(
+            width: 130,
+            child: Text('Картинка волны', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          ),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(k.sharp ? 0 : 8),
+          child: SizedBox(
+            width: 60,
+            height: 38,
+            child: wavePath == null
+                ? Container(color: k.inner, child: Icon(Ic.wallpaper_outlined, size: 18, color: k.muted))
+                : Image.file(File(wavePath), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: k.inner)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (!wide) Text('Картинка «Моей волны»', style: k.rowTitle),
+            Text(waveName == null ? 'Нет — своя картинка или GIF за кругом «Моей волны»' : '$waveName${wide ? ' · за кругом «Моей волны»' : ''}',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: k.small),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        SkButton(wavePath == null ? 'Выбрать' : 'Заменить', height: 32, onTap: pickWave),
+        if (wavePath != null) ...[
+          const SizedBox(width: 4),
+          TextButton(
+            onPressed: () => s.setWaveBackground(null),
+            child: Text('Убрать', style: TextStyle(color: k.muted)),
+          ),
+        ],
+      ])),
+      if (HutredTheme.desktop) divided(labeled('Масштаб', const _ScaleSlider())),
+    ]);
+
+    // ---------- Вкладки ----------
+    final tabs = card([
+      if (wide)
+        labeled('Вкладки', const _TabsGrid(columns: 2), top: true)
+      else ...[
+        Text(HutredTheme.desktop ? 'Вкладки' : 'Нижнее меню', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        Text('Перетащи, чтобы поменять порядок. Выключенные — в «Настройках»', style: k.small),
+        const _TabsGrid(columns: 1),
+      ],
+    ]);
+
+    return SkGap(gap: wide ? 14 : 12, children: [
+      style,
+      accent,
+      bg,
+      tabs,
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: () {
+            s.reset();
+            s.resetNavOrder();
+            s.tintFromCover = true;
+          },
+          child: Text('Вернуть всё как было', style: TextStyle(color: k.muted)),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// Кружок (акцент) или квадратик (фон) с обводкой у выбранного.
+class _Swatch2 extends StatelessWidget {
+  const _Swatch2({required this.color, required this.selected, required this.onTap, this.square = false, this.tooltip});
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool square;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = Sk.of(context);
+    final r = k.sharp ? 0.0 : square ? 8.0 : 15.0;
+    final dot = InkResponse(
+      onTap: onTap,
+      radius: 22,
+      child: Container(
+        width: 34,
+        height: 34,
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(r + 2),
+          border: Border.all(color: selected ? k.text : Colors.transparent, width: 2),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(r),
+            border: square ? Border.all(color: const Color(0xFF333333)) : null,
+          ),
+        ),
+      ),
+    );
+    return tooltip == null ? dot : Tooltip(message: tooltip!, child: dot);
+  }
+}
+
+/// Масштаб интерфейса: ползунок 100–150 % и «Авто».
+class _ScaleSlider extends StatefulWidget {
+  const _ScaleSlider();
+
+  @override
+  State<_ScaleSlider> createState() => _ScaleSliderState();
+}
+
+class _ScaleSliderState extends State<_ScaleSlider> {
+  double? _drag;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final k = Sk.of(context);
+    final auto = s.uiScale == 0 && _drag == null;
+    final v = _drag ?? (s.uiScale == 0 ? 1.0 : s.uiScale.clamp(1.0, 1.5));
+    return Row(children: [
+      Text('A', style: TextStyle(fontSize: 12, color: k.muted)),
+      Expanded(
+        child: SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            activeTrackColor: k.btn,
+            inactiveTrackColor: k.off,
+            thumbColor: k.text,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            overlayShape: SliderComponentShape.noOverlay,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Slider(
+              min: 1.0,
+              max: 1.5,
+              divisions: 10,
+              value: v.toDouble(),
+              onChanged: (x) => setState(() => _drag = x),
+              // Применяем, когда отпустили: весь интерфейс перестраивается.
+              onChangeEnd: (x) {
+                s.uiScale = x;
+                setState(() => _drag = null);
+              },
+            ),
+          ),
+        ),
+      ),
+      Text('A', style: TextStyle(fontSize: 18, color: k.muted)),
+      SizedBox(
+        width: 56,
+        child: Text(auto ? 'Авто' : '${(v * 100).round()}%',
+            textAlign: TextAlign.right, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+      ),
+      const SizedBox(width: 8),
+      SkChip('Авто', height: 28, selected: auto, onTap: () => s.uiScale = 0),
+    ]);
+  }
+}
+
+/// Вкладки: перетащить — порядок, переключатель — показывать ли.
+class _TabsGrid extends StatelessWidget {
+  const _TabsGrid({required this.columns});
+  final int columns;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final k = Sk.of(context);
+    final order = s.navOrder;
+
+    Widget tile(int i, {bool dragging = false}) {
+      final id = order[i];
+      final hidden = s.isTabHidden(id);
+      return Opacity(
+        opacity: hidden && !dragging ? 0.55 : 1,
+        child: Container(
+          height: columns == 1 ? 46 : 40,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(color: k.inner, borderRadius: BorderRadius.circular(k.sharp ? 0 : 10)),
+          child: Row(children: [
+            Icon(Icons.drag_indicator_rounded, size: 18, color: k.muted),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(navTabs[id]!.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: columns == 1 ? 15 : 14, fontWeight: FontWeight.w600)),
+            ),
+            if (!dragging)
+              SkToggle(
+                value: !hidden,
+                onChanged: id == 'settings' ? null : (v) => s.setTabHidden(id, !v),
+              ),
+          ]),
+        ),
+      );
+    }
+
+    if (columns == 1) {
+      return ReorderableListView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        onReorder: s.reorderNav,
+        proxyDecorator: (c, _, __) => Material(color: Colors.transparent, child: c),
+        children: [
+          for (var i = 0; i < order.length; i++)
+            Padding(
+              key: ValueKey(order[i]),
+              padding: const EdgeInsets.only(bottom: 6),
+              child: ReorderableDelayedDragStartListener(index: i, child: tile(i)),
+            ),
+        ],
+      );
+    }
+
+    // Две колонки: перетаскиваем плитку на место другой.
+    return LayoutBuilder(builder: (context, box) {
+      const gap = 12.0;
+      final w = (box.maxWidth - gap) / 2;
+      return Wrap(spacing: gap, runSpacing: 6, children: [
+        for (var i = 0; i < order.length; i++)
+          DragTarget<int>(
+            onWillAcceptWithDetails: (d) => d.data != i,
+            onAcceptWithDetails: (d) => s.reorderNav(d.data, d.data < i ? i + 1 : i),
+            builder: (context, cand, _) => SizedBox(
+              width: w,
+              child: Draggable<int>(
+                data: i,
+                feedback: Material(color: Colors.transparent, child: SizedBox(width: w, child: tile(i, dragging: true))),
+                childWhenDragging: Opacity(opacity: 0.3, child: tile(i)),
+                child: Container(
+                  decoration: cand.isNotEmpty
+                      ? BoxDecoration(
+                          border: Border.all(color: k.btn, width: 1.5),
+                          borderRadius: BorderRadius.circular(k.sharp ? 0 : 11))
+                      : null,
+                  child: tile(i),
                 ),
               ),
-            SizedBox(
-              width: w,
-              child: bgTile(
-                tooltip: 'Свой цвет фона',
-                color: s.customBgColor,
-                selected: s.background.id == 'custom',
-                onTap: () => showDialog(
-                  context: context,
-                  builder: (_) => ChangeNotifierProvider.value(
-                    value: s,
-                    child: _ColorPickerDialog(
-                      title: 'Свой цвет фона',
-                      initial: s.customBgColor,
-                      onApply: (c) => s.customBgColor = c,
-                    ),
+            ),
+          ),
+      ]);
+    });
+  }
+}
+
+/// Маленькая копия приложения в текущих цветах: видно, как будет.
+class _LookPreview extends StatelessWidget {
+  const _LookPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsStore>();
+    final k = Sk.of(context);
+    final style = HutredStyle.byId(s.chosenStyle);
+    final bg = s.background;
+    final accent = s.accent;
+    final mono = style.mono, glass = style.glass, sharp = style.sharp;
+    final r = sharp ? 0.0 : glass ? 12.0 : 8.0;
+    final text = Colors.white;
+    final card = glass ? Colors.white.withValues(alpha: 0.08) : bg.surface;
+    final btn = mono ? const Color(0xFFF5F5F5) : accent;
+    final barTint = s.tintFromCover ? const Color(0xFF8A6A4A) : accent;
+    return LayoutBuilder(builder: (context, box) {
+      final small = box.maxHeight < 200;
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(k.r),
+        child: Container(
+          decoration: BoxDecoration(
+            color: bg.ink,
+            gradient: glass
+                ? RadialGradient(
+                    center: const Alignment(-0.6, -0.8),
+                    radius: 1.4,
+                    colors: [accent.withValues(alpha: 0.35), bg.ink],
+                  )
+                : null,
+            border: Border.all(color: k.line),
+            borderRadius: BorderRadius.circular(k.r),
+          ),
+          child: Column(children: [
+            Expanded(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (!small)
+                  Container(
+                    width: 64,
+                    padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+                    decoration: BoxDecoration(border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.06)))),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Container(height: 9, width: 40, decoration: BoxDecoration(color: sharp ? accent : text, borderRadius: BorderRadius.circular(sharp ? 0 : 4))),
+                      for (var i = 0; i < 3; i++) ...[
+                        const SizedBox(height: 10),
+                        Container(height: 7, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(sharp ? 0 : 4))),
+                      ],
+                    ]),
+                  ),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(small ? 10 : 14),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(sharp ? 'МЕДИАТЕКА' : 'Медиатека',
+                          style: style.display(small ? 14 : 18).copyWith(color: text)),
+                      SizedBox(height: small ? 6 : 10),
+                      Container(
+                        height: small ? 38 : 56,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: card,
+                          borderRadius: BorderRadius.circular(r),
+                          border: sharp ? Border.all(color: const Color(0xFF2A2A2A)) : null,
+                        ),
+                        child: Row(children: [
+                          Container(
+                            width: small ? 24 : 36,
+                            height: small ? 24 : 36,
+                            decoration: BoxDecoration(color: btn, borderRadius: BorderRadius.circular(sharp ? 0 : glass ? 18 : 8)),
+                            child: Icon(Icons.favorite_rounded, size: small ? 13 : 18, color: mono ? Colors.black : HutredTheme.onAccent(accent)),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(child: Container(height: 7, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(4)))),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: small ? 20 : 26,
+                            height: small ? 20 : 26,
+                            decoration: BoxDecoration(color: glass ? accent : text, shape: sharp ? BoxShape.rectangle : BoxShape.circle),
+                          ),
+                        ]),
+                      ),
+                      if (!small)
+                        for (final c in const [Color(0xFF3B4A3A), Color(0xFF5B4A46), Color(0xFF2F3A4A)]) ...[
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Container(width: 24, height: 24, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(sharp ? 0 : 4))),
+                            const SizedBox(width: 8),
+                            Expanded(child: Container(height: 6, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)))),
+                          ]),
+                        ],
+                    ]),
                   ),
                 ),
-                child: Icon(Ic.colorize, size: 16, color: k.muted),
-              ),
+              ]),
             ),
-            SizedBox(
-              width: w,
-              child: bgTile(
-                tooltip: 'Своя картинка или GIF за кругом «Волны»',
-                selected: s.waveBackground != null,
-                onTap: () async {
-                  if (s.waveBackground != null) {
-                    await s.setWaveBackground(null);
-                    return;
-                  }
-                  final res = await FilePicker.platform.pickFiles(
-                    type: FileType.custom,
-                    allowedExtensions: const ['gif', 'png', 'jpg', 'jpeg', 'webp'],
-                  );
-                  final path = res?.files.single.path;
-                  if (path != null) await s.setWaveBackground(path);
-                },
-                child: Text(s.waveBackground == null ? 'Своя картинка' : 'Убрать картинку',
-                    textAlign: TextAlign.center, style: k.small.copyWith(fontSize: 11)),
+            Container(
+              height: small ? 34 : 46,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: barTint.withValues(alpha: 0.14),
+                border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
               ),
+              child: Row(children: [
+                Container(width: small ? 20 : 28, height: small ? 20 : 28, decoration: BoxDecoration(color: const Color(0xFF5B4A3A), borderRadius: BorderRadius.circular(sharp ? 0 : 4))),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    height: 3,
+                    alignment: Alignment.centerLeft,
+                    color: Colors.white.withValues(alpha: 0.15),
+                    child: FractionallySizedBox(widthFactor: 0.4, child: Container(color: sharp || glass ? accent : text)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(width: small ? 20 : 24, height: small ? 20 : 24, decoration: BoxDecoration(color: sharp ? accent : text, shape: sharp ? BoxShape.rectangle : BoxShape.circle)),
+              ]),
             ),
-          ]);
-        }),
-        if (HutredTheme.desktop)
-          SkSeg<double>(
-            options: const [
-              (0.0, 'Авто'),
-              (1.0, '100%'),
-              (1.15, '115%'),
-              (1.3, '130%'),
-              (1.5, '150%'),
-            ],
-            value: s.uiScale,
-            onChanged: (v) => s.uiScale = v,
-          ),
-      ]),
-    );
-
-    return SkGap(gap: 20, children: [
-      styles,
-      SkCols(children: [accent, bg]),
-      const _TabsCard(),
-    ]);
+          ]),
+        ),
+      );
+    });
   }
 }
 

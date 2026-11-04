@@ -24,6 +24,7 @@ import '../widgets/style_bits.dart';
 import '../../models/playlist.dart';
 import 'playlists_screen.dart';
 import 'artist_screen.dart';
+import 'releases_screen.dart';
 import '../widgets/artwork.dart';
 import '../widgets/settings_kit.dart';
 
@@ -285,6 +286,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ]),
           ),
           if (!wide) const AccountButton(),
+          if (wide) const ReleasesBell(),
           if (wide && (_tab == _Tab.tracks || _tab == _Tab.downloaded))
             Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -622,6 +624,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 maxLines: 1, style: st.display(st.glass ? 24 : 30)),
           ),
         ),
+        const ReleasesBell(),
         IconButton(
           tooltip: 'Найти в медиатеке',
           onPressed: () => setState(() {

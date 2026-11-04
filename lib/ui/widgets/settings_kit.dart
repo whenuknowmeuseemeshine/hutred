@@ -291,9 +291,11 @@ class SkButton extends StatelessWidget {
           child: Container(
             height: height,
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
             width: expand ? double.infinity : null,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
+            // Кнопка по ширине текста (Align без widthFactor растягивал её на всю строку).
+            child: Align(
+              widthFactor: expand ? null : 1,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
               if (icon != null) ...[Icon(icon, size: 16, color: fg), const SizedBox(width: 6)],
               Text(label0,
                   style: (k.sharp ? k.st.caption(color: fg, size: 12) : const TextStyle())
@@ -302,6 +304,7 @@ class SkButton extends StatelessWidget {
                           fontSize: k.sharp ? 12 : 13,
                           fontWeight: primary ? FontWeight.w700 : FontWeight.w600)),
             ]),
+            ),
           ),
         ),
       ),
@@ -332,12 +335,14 @@ class SkChip extends StatelessWidget {
         child: Container(
           height: height,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          alignment: Alignment.center,
-          child: Text(label,
+          child: Align(
+            widthFactor: 1,
+            child: Text(label,
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: selected ? k.btnFg : k.text)),
+          ),
         ),
       ),
     );
