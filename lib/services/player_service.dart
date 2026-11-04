@@ -114,6 +114,8 @@ class PlayerService extends ChangeNotifier {
             _queue = q;
             _unshuffled = List.of(q);
             _index = i;
+            // Какие треки подмешаны рекомендациями — чтобы ✨ не пропадала после перезапуска.
+            _recommended.addAll(List<String>.from(j['recommended'] as List? ?? const []));
             _shuffle = j['shuffle'] == true;
             final ms = (j['positionMs'] as num?)?.toInt() ?? 0;
             if (ms > 3000) _resumeAt = Duration(milliseconds: ms);
@@ -155,6 +157,10 @@ class PlayerService extends ChangeNotifier {
         'smart': _smart,
         'repeat': _repeat.index,
         'recent': [for (final t in recent.take(30)) t.toJson()],
+        'recommended': [
+          for (final t in _queue.sublist(from, to))
+            if (_recommended.contains(t.id)) t.id,
+        ],
       }));
     } catch (_) {}
   }
