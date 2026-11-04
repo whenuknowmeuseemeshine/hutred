@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:simple_icons/simple_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/settings_store.dart';
@@ -92,7 +93,7 @@ class _TransferScreenState extends State<TransferScreen> {
   String _filter = 'all';
 
   /// Откуда ссылка — по адресу.
-  static (String, Color)? _detect(String text) {
+  static (String, Color, String)? _detect(String text) {
     final s = text.toLowerCase();
     String kind() => s.contains('album')
         ? 'альбом'
@@ -100,18 +101,18 @@ class _TransferScreenState extends State<TransferScreen> {
             ? 'трек'
             : 'плейлист';
     if (s.contains('spotify.com') || s.startsWith('spotify:')) {
-      return ('Spotify · ${kind()}', const Color(0xFF1ED760));
+      return ('Spotify · ${kind()}', const Color(0xFF1ED760), 'spotify');
     }
     if (s.contains('music.yandex') || s.contains('yandex.')) {
-      return ('Яндекс Музыка · ${kind()}', const Color(0xFFFFCC00));
+      return ('Яндекс Музыка · ${kind()}', const Color(0xFFFFCC00), 'yandex');
     }
     if (s.contains('youtube.com') || s.contains('youtu.be')) {
-      return ('YouTube · ${s.contains('list=') ? 'плейлист' : kind()}', const Color(0xFFFF3D3D));
+      return ('YouTube · ${s.contains('list=') ? 'плейлист' : kind()}', const Color(0xFFFF3D3D), 'youtube');
     }
     if (s.contains('soundcloud.com')) {
-      return ('SoundCloud · ${s.contains('/sets/') ? 'плейлист' : 'трек'}', const Color(0xFFFF7A1A));
+      return ('SoundCloud · ${s.contains('/sets/') ? 'плейлист' : 'трек'}', const Color(0xFFFF7A1A), 'soundcloud');
     }
-    if (s.contains('\n')) return ('Список треков', const Color(0xFFA78BFA));
+    if (s.contains('\n')) return ('Список треков', const Color(0xFFA78BFA), 'text');
     return null;
   }
 
@@ -220,14 +221,7 @@ class _TransferScreenState extends State<TransferScreen> {
                 border: i == 0 ? null : Border(top: BorderSide(color: k.line)),
               ),
               child: Row(children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: src.$3,
-                    borderRadius: BorderRadius.circular(k.sharp ? 0 : 8),
-                  ),
-                ),
+                _SourceBadge(id: src.$1, color: src.$3, size: 32, radius: k.sharp ? 0 : 8),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -269,12 +263,7 @@ class _TransferScreenState extends State<TransferScreen> {
           if (detected != null && _src != 'text') ...[
             const SizedBox(height: 12),
             Row(children: [
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                    color: detected.$2, borderRadius: BorderRadius.circular(k.sharp ? 0 : 6)),
-              ),
+              _SourceBadge(id: detected.$3, color: detected.$2, size: 22, radius: k.sharp ? 0 : 6),
               const SizedBox(width: 8),
               Text(detected.$1, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               const SizedBox(width: 6),
@@ -558,14 +547,7 @@ class _TransferScreenState extends State<TransferScreen> {
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: st.sharp && on ? HutredTheme.onAccent(accent) : src.$3,
-                  borderRadius: BorderRadius.circular(st.sharp ? 0 : 8),
-                ),
-              ),
+              _SourceBadge(id: src.$1, color: src.$3, size: 34, radius: st.sharp ? 0 : 9),
               const SizedBox(height: 10),
               Text(src.$2,
                   maxLines: 1,
@@ -1011,6 +993,39 @@ class _PhoneItem extends StatelessWidget {
             ),
           ),
       ]),
+    );
+  }
+}
+
+
+/// Значок сервиса, откуда переносим: его иконка на фирменном цвете.
+class _SourceBadge extends StatelessWidget {
+  const _SourceBadge({required this.id, required this.color, this.size = 32, this.radius = 8});
+  final String id;
+  final Color color;
+  final double size;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = HutredTheme.onAccent(color);
+    final iconSize = size * 0.56;
+    final Widget icon = switch (id) {
+      'spotify' => Icon(SimpleIcons.spotify, size: iconSize, color: fg),
+      'youtube' => Icon(SimpleIcons.youtube, size: iconSize, color: fg),
+      'soundcloud' => Icon(SimpleIcons.soundcloud, size: iconSize, color: fg),
+      'yandex' => Text('Я',
+          style: TextStyle(fontSize: size * 0.55, fontWeight: FontWeight.w900, color: fg, height: 1)),
+      'folder' => Icon(Icons.folder_rounded, size: iconSize, color: fg),
+      'csv' => Icon(Icons.table_chart_rounded, size: iconSize, color: fg),
+      _ => Icon(Icons.format_list_bulleted_rounded, size: iconSize, color: fg),
+    };
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(radius)),
+      child: icon,
     );
   }
 }

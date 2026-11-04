@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'services/xray_vpn.dart';
+import 'services/deep_links.dart';
 import 'services/jam_service.dart';
 import 'services/relay.dart';
 import 'services/account_service.dart';
@@ -280,6 +281,8 @@ Future<void> main(List<String> args) async {
   await updates.start();
   // Файл трека переместили — спросим, где он теперь.
   MissingFiles(navigatorKey: hutredNavigatorKey, store: store, player: player);
+  // Ссылки hutred:// с сайта открывают трек в приложении.
+  unawaited(DeepLinks.start(store: store, player: player));
   // Статус «Слушает Hutred» в Discord (на компьютере).
   DiscordPresence(player: player, settings: settings);
   final spotifyCheck = SpotifyCheck(

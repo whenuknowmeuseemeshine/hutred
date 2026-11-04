@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hutred на телефоне — установка</title>
+<link rel="icon" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+.guide{max-width:720px}
+.guide h1{font-size:clamp(32px,6vw,48px)}
+.guide h2{font-size:26px;margin:52px 0 6px;letter-spacing:-.01em}
+.guide h3{font-size:18px;margin:28px 0 8px}
+.guide p,.guide li{font-size:16px;line-height:1.6;color:#d6d6d6}
+.guide .muted{color:var(--muted);font-size:14px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0 0;display:flex;flex-direction:column;gap:10px}
+.steps>li{counter-increment:s;background:var(--card);border-radius:14px;padding:14px 16px 14px 56px;position:relative}
+.steps>li::before{content:counter(s);position:absolute;left:16px;top:14px;width:26px;height:26px;border-radius:999px;background:#262626;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.steps b{color:#fff}
+kbd{font:600 13px Inter,sans-serif;background:#262626;border-radius:6px;padding:2px 7px;color:#fff;white-space:nowrap}
+.warn{background:#1a1408;border:1px solid #3a2c0d;border-radius:14px;padding:16px 18px;margin-top:14px}
+.warn p{margin:0;color:#f3d79a}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 0}
+.toc a{background:var(--card);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="fx" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="eq" aria-hidden="true" id="eq"></div>
+<div class="wrap guide">
+  <header class="top">
+    <a href="./" style="display:flex;align-items:center;gap:12px;text-decoration:none"><img src="logo.png" alt=""><b>Hutred</b></a>
+    <span class="sp"></span>
+    <span class="links">
+      <a class="ic" href="https://t.me/qxincee" target="_blank" rel="noopener" aria-label="Телеграм-канал Hutred" title="Телеграм-канал"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.3 18.7 19.4c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.3-5 9.2-8.3c.4-.4-.1-.6-.6-.2L6.2 13.1l-4.9-1.5c-1-.3-1.1-1 .2-1.6L20.6 2.7c.9-.3 1.6.2 1.3 1.6z"/></svg></a>
+      <a class="ic" href="https://github.com/whenuknowmeuseemeshine/hutred" target="_blank" rel="noopener" aria-label="Hutred на GitHub" title="GitHub"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg></a>
+    </span>
+  </header>
+
+  <h1>Установка на телефон</h1>
+  <p class="lead">Android — один файл. iPhone — через компьютер с Windows и бесплатный Apple ID.</p>
+  <div class="toc">
+    <a href="#android">Android</a>
+    <a href="#iphone">iPhone</a>
+    <a href="#err">Ошибка −80045</a>
+    <a href="#week">Каждые 7 дней</a>
+  </div>
+
+  <h2 id="android">Android</h2>
+  <ol class="steps">
+    <li>Открой на телефоне <a href="./#download">страницу загрузки</a> и нажми <b>Скачать .apk</b>.</li>
+    <li>Открой скачанный файл. Если телефон спросит — разреши установку <b>из этого источника</b> (браузера или «Файлов») и вернись назад.</li>
+    <li>Нажми <b>Установить</b>. Готово: дальше Hutred сам предлагает обновления.</li>
+  </ol>
+
+  <h2 id="iphone">iPhone</h2>
+  <p>Hutred нет в App Store, поэтому ставим через <b>SideStore</b> — он подписывает приложения твоим Apple ID. Один раз нужен компьютер с Windows и кабель.</p>
+
+  <h3>1. Подготовка компьютера</h3>
+  <ol class="steps">
+    <li>Скачай и установи <b>iloader</b> — программу, которая ставит SideStore по кабелю (github.com/nab138/iloader → Releases).</li>
+    <li>Если компьютер не видит айфон — поставь из Microsoft Store приложение <b>Apple Devices</b> (или iTunes).</li>
+    <li>Подключи айфон кабелем, разблокируй и нажми <b>Доверять</b> этому компьютеру.</li>
+  </ol>
+
+  <h3>2. Установка SideStore</h3>
+  <ol class="steps">
+    <li>В iloader в разделе <b>Settings</b> выбери сервер Anisette: нажми <b>Use custom Anisette server</b> и впиши <kbd>https://new.ani.sidestore.io</kbd>. С этим сервером не бывает ошибки −80045.</li>
+    <li>Слева <b>Add Account +</b> — войди своим Apple ID и введи код, который придёт на айфон.</li>
+    <li>Убедись, что сверху в <b>iDevice</b> выбран твой айфон, и нажми <b>SideStore (Stable)</b>. Дождись окончания.</li>
+    <li>На айфоне: <b>Настройки → Основные → VPN и управление устройством</b> → свой Apple ID → <b>Доверять</b>.</li>
+    <li>Если айфон пишет про <b>Режим разработчика</b>: <b>Настройки → Конфиденциальность и безопасность → Режим разработчика</b> → включить → перезагрузить.</li>
+  </ol>
+
+  <h3>3. Hutred через SideStore</h3>
+  <ol class="steps">
+    <li>Открой SideStore и войди тем же Apple ID (<b>Settings → Sign In</b>).</li>
+    <li>Вкладка <b>Sources</b> → <b>+</b> → вставь ссылку:<br><code class="copy" id="src" title="Нажми, чтобы скопировать"></code></li>
+    <li>Вкладка <b>Browse</b> → <b>Hutred</b> → <b>Get</b>. Через минуту он появится на экране «Домой».</li>
+    <li>Новые версии будут появляться в <b>My Apps</b> кнопкой <b>Update</b>.</li>
+  </ol>
+
+  <h2 id="err">Ошибка −80045 при входе в Apple ID</h2>
+  <div class="warn"><p>«Failed To Sign In — This action cannot be completed at this time (−80045)». С осени 2026 Apple не пускает вход через старые серверы Anisette. Лечится сменой сервера и сбросом.</p></div>
+
+  <h3>Если ошибка в iloader (на компьютере)</h3>
+  <ol class="steps">
+    <li><b>Settings → Use custom Anisette server</b> → <kbd>https://new.ani.sidestore.io</kbd>.</li>
+    <li>Нажми <b>Reset Anisette State</b> — это безопасно, сбрасывается только старая регистрация.</li>
+    <li>Снова <b>Sign in</b> и код подтверждения. <b>Delete Stored Pairing</b> не нажимай — это про кабель, а не про вход.</li>
+  </ol>
+
+  <h3>Если ошибка в SideStore (на айфоне)</h3>
+  <ol class="steps">
+    <li><b>Settings → User Customizations</b> → выключи <b>On-Device Anisette</b> (если попросит перезапуск — согласись).</li>
+    <li><b>Anisette Servers</b> → выбери <b>SideStore (New)</b> и выключи <b>Enable Auto Rotation</b>.</li>
+    <li><b>User Customizations → Anisette Client Configuration → Remote Server Sync</b> → <b>Fetch</b>, потом <b>Save as Overrides</b>. Это главный шаг.</li>
+    <li>В <b>User Customizations</b> нажми <b>Reset adi.pb</b>.</li>
+    <li>Полностью закрой SideStore, открой и войди в Apple ID заново.</li>
+  </ol>
+  <p class="muted">Не помогло — подожди час: после нескольких неудачных попыток Apple ненадолго блокирует вход.</p>
+
+  <h2 id="week">Каждые 7 дней</h2>
+  <p>Бесплатная подпись Apple живёт 7 дней. Чтобы Hutred не перестал открываться, раз в неделю открой SideStore → <b>My Apps</b> → <b>Refresh All</b>. Если SideStore просит включить свой VPN — поставь из App Store <b>LocalDevVPN</b> и включи его на время обновления.</p>
+  <p>Если всё же истекло — подключи айфон к компьютеру и в iloader снова нажми <b>SideStore (Stable)</b>: Hutred и медиатека останутся.</p>
+
+  <p class="foot"><a href="./">← На главную</a></p>
+</div>
+<script>
+const src = document.getElementById('src');
+const url = 'https://izkllkqilyspwxthssdc.supabase.co/storage/v1/object/public/releases/sidestore.json';
+src.textContent = url;
+src.onclick = () => { navigator.clipboard?.writeText(url); src.textContent = 'Скопировано ✓'; setTimeout(() => src.textContent = url, 1500); };
+</script>
+<script>
+(() => { const eq = document.getElementById('eq'); if (!eq) return;
+  const n = Math.max(24, Math.round(innerWidth / 26));
+  for (let i = 0; i < n; i++) { const s = document.createElement('span');
+    s.style.setProperty('--h', (35 + Math.random() * 60) + '%');
+    s.style.animationDelay = (-Math.random() * 1.8).toFixed(2) + 's';
+    s.style.animationDuration = (1.2 + Math.random() * 1.4).toFixed(2) + 's';
+    eq.appendChild(s); } })();
+</script>
+</body>
+</html>

@@ -15,6 +15,8 @@ dependencies:
     path: packages/just_audio_media_kit
   # Управление музыкой из шторки Android и «Исполняется» на iPhone.
   audio_service: ^0.18.15
+  app_links: ^6.4.0
+  simple_icons: any
   audio_session: ^0.1.21
   # Связь с Discord на Windows (именованный канал через WinAPI).
   win32: ^5.15.0

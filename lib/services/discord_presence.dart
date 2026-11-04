@@ -4,6 +4,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'deep_links.dart';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -126,9 +127,9 @@ class DiscordPresence {
           'start': now - pos,
           if (dur != null && dur > pos) 'end': now - pos + dur,
         },
-      if (settings.discordButton && _linkFor(t) != null)
+      if (settings.discordButton && (DeepLinks.pageFor(t) ?? _linkFor(t)) != null)
         'buttons': [
-          {'label': 'Слушать трек', 'url': _linkFor(t)},
+          {'label': 'Слушать трек', 'url': DeepLinks.pageFor(t) ?? _linkFor(t)},
         ],
       'assets': {
         // Обложка по ссылке; у своих файлов её нет — тогда логотип Hutred.
