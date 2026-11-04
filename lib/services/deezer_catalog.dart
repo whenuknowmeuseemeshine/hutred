@@ -21,7 +21,11 @@ class DzAlbum {
     this.released,
     this.type = 'album',
     this.tracks = 0,
+    this.artist = '',
+    this.artistId,
   });
+  final String artist;
+  final String? artistId;
   final int id;
   final String title;
   final String? cover;
@@ -56,6 +60,9 @@ class DeezerCatalog {
     _cache[key] = j;
     return j;
   }
+
+  /// Забыть ответы (для проверки новых релизов).
+  static void forget(String pathPart) => _cache.removeWhere((k, _) => k.contains(pathPart));
 
   static List<Map> _data(Object? j) =>
       j is Map ? (j['data'] as List? ?? const []).whereType<Map>().toList() : const [];
@@ -107,10 +114,12 @@ class DeezerCatalog {
           if ('${it['title'] ?? ''}'.isNotEmpty) _track(it),
       ];
 
-  static Future<List<DzAlbum>> albums(int artistId) async {
+  static Future<List<DzAlbum>> albums(int artistId, {String artist = ''}) async {
     final out = [
       for (final a in _data(await _get('/artist/$artistId/albums', {'limit': '100'})))
         DzAlbum(
+          artist: artist,
+          artistId: '$artistId',
           id: (a['id'] as num).toInt(),
           title: '${a['title'] ?? ''}',
           cover: (a['cover_xl'] ?? a['cover_big'] ?? a['cover_medium']) as String?,
@@ -141,4 +150,25 @@ class DeezerCatalog {
         if ('${it['title'] ?? ''}'.isNotEmpty) _track(it, album: j),
     ];
   }
+}
+
+/// Все треки исполнителя: популярное плюс треки всех его альбомов, без повторов.
+Future<List<Track>> deezerAllTracks(int artistId, {void Function(int done, int total)? progress}) async {
+  final albums = await DeezerCatalog.albums(artistId);
+  final out = <Track>[];
+  final seen = <String>{};
+  String norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '');
+  var done = 0;
+  for (var i = 0; i < albums.length; i += 4) {
+    final chunk = albums.skip(i).take(4).toList();
+    final lists = await Future.wait(chunk.map((a) => DeezerCatalog.albumTracks(a.id).catchError((_) => <Track>[])));
+    for (final l in lists) {
+      for (final t in l) {
+        if (seen.add(norm(t.title))) out.add(t);
+      }
+    }
+    done += chunk.length;
+    progress?.call(done, albums.length);
+  }
+  return out;
 }

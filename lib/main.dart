@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/xray_vpn.dart';
 import 'services/deep_links.dart';
 import 'services/device_sync.dart';
+import 'services/releases_service.dart';
 import 'services/jam_service.dart';
 import 'services/relay.dart';
 import 'services/account_service.dart';
@@ -284,6 +285,8 @@ Future<void> main(List<String> args) async {
   MissingFiles(navigatorKey: hutredNavigatorKey, store: store, player: player);
   // Свои устройства: пульт и перенос музыки, как в Spotify.
   final devices = DeviceSync(account: account, player: player);
+  // «Что нового»: релизы исполнителей, на которых подписан.
+  final releases = ReleasesService(wave: wave);
   player.youtubeAllowed = () => settings.youtubeAuto;
   // Ссылки hutred:// с сайта открывают трек в приложении.
   unawaited(DeepLinks.start(store: store, player: player));
@@ -314,6 +317,7 @@ Future<void> main(List<String> args) async {
       ChangeNotifierProvider.value(value: wave),
       ChangeNotifierProvider.value(value: jam),
       ChangeNotifierProvider.value(value: devices),
+      ChangeNotifierProvider.value(value: releases),
       Provider.value(value: covers),
       ChangeNotifierProvider.value(value: transfer),
       ChangeNotifierProvider.value(value: offline),

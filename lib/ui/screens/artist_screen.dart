@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -109,8 +110,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
           if (a == null || !mounted) return;
           setState(() => _dz = a);
           final r = await Future.wait([
-            DeezerCatalog.top(a.id).catchError((_) => <Track>[]),
-            DeezerCatalog.albums(a.id).catchError((_) => <DzAlbum>[]),
+            DeezerCatalog.top(a.id, limit: 50).catchError((_) => <Track>[]),
+            DeezerCatalog.albums(a.id, artist: a.name).catchError((_) => <DzAlbum>[]),
             DeezerCatalog.related(a.id).catchError((_) => <DzArtist>[]),
           ]);
           if (!mounted) return;
@@ -277,6 +278,21 @@ class _ArtistScreenState extends State<ArtistScreen> {
 
     void toggleBlock() => blocked ? wave.unblockArtist(widget.name) : wave.blockArtist(widget.name);
 
+    final following = _dz != null && wave.isFollowing('${_dz!.id}');
+    final followBtn = SkButton(
+      following ? 'Вы подписаны' : 'Подписаться',
+      height: wide ? 40 : 36,
+      icon: following ? Icons.check_rounded : Icons.notifications_none_rounded,
+      onTap: () {
+        final d = _dz!;
+        if (following) {
+          wave.unfollow('${d.id}');
+        } else {
+          wave.follow('${d.id}', d.name, d.picture);
+          AppActions.toast(context, 'Новые релизы ${d.name} появятся в «Что нового» 🔔');
+        }
+      },
+    );
     final playBtn = Material(
       color: k.btn,
       shape: k.sharp ? const RoundedRectangleBorder() : const CircleBorder(),
@@ -294,18 +310,21 @@ class _ArtistScreenState extends State<ArtistScreen> {
       child: wide
           ? Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
               playBtn,
+              if (_dz != null) followBtn,
               SkButton('Перемешать', height: 40, onTap: playList.isEmpty ? null : () => player.shufflePlay(playList)),
               if (_top.isNotEmpty || scMore.isNotEmpty)
                 SkButton('Добавить популярное в медиатеку', height: 40, onTap: addPopular),
               SkButton(blocked ? 'Вернуть исполнителя' : 'В чёрный список', height: 40, onTap: toggleBlock),
             ])
           : Row(children: [
-              if (_top.isNotEmpty || scMore.isNotEmpty) SkButton('В медиатеку', height: 36, onTap: addPopular),
+              if (_dz != null) followBtn else if (_top.isNotEmpty || scMore.isNotEmpty) SkButton('В медиатеку', height: 36, onTap: addPopular),
               PopupMenuButton<String>(
                 tooltip: 'Ещё',
                 icon: Icon(Icons.more_horiz_rounded, color: k.muted),
-                onSelected: (_) => toggleBlock(),
+                onSelected: (v) => v == 'b' ? toggleBlock() : addPopular(),
                 itemBuilder: (_) => [
+                  if (_dz != null && (_top.isNotEmpty || scMore.isNotEmpty))
+                    const PopupMenuItem(value: 'a', child: Text('Добавить популярное в медиатеку')),
                   PopupMenuItem(value: 'b', child: Text(blocked ? 'Вернуть исполнителя' : 'В чёрный список')),
                 ],
               ),
@@ -328,7 +347,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
         );
 
     // ---------- Популярное ----------
-    final shownTop = _allTop ? _top : _top.take(5).toList();
+    final shownTop = _allTop ? _top.take(20).toList() : _top.take(5).toList();
     final popular = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (var i = 0; i < shownTop.length; i++)
         TrackTile(
@@ -347,17 +366,22 @@ class _ArtistScreenState extends State<ArtistScreen> {
                   icon: Icon(Ic.add_circle_outline),
                 ),
         ),
-      if (_top.length > 5)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: pad - 8),
-            child: TextButton(
+      Padding(
+        padding: EdgeInsets.fromLTRB(pad - 8, 4, pad, 0),
+        child: Wrap(spacing: 4, children: [
+          if (_top.length > 5)
+            TextButton(
               onPressed: () => setState(() => _allTop = !_allTop),
-              child: Text(_allTop ? 'Свернуть' : 'Ещё ${_top.length - 5}', style: TextStyle(color: k.text)),
+              child: Text(_allTop ? 'Свернуть' : 'Ещё ${min(_top.length, 20) - 5}', style: TextStyle(color: k.text)),
             ),
-          ),
-        ),
+          if (_dz != null)
+            TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => _AllTracksScreen(artistId: _dz!.id, name: name))),
+              child: Text('Все треки исполнителя', style: TextStyle(color: k.text, fontWeight: FontWeight.w700)),
+            ),
+        ]),
+      ),
     ]);
 
     // ---------- Последний релиз ----------
@@ -561,20 +585,20 @@ class _ArtistScreenState extends State<ArtistScreen> {
   }
 
   void _openAlbum(DzAlbum a, String artist) => Navigator.of(context)
-      .push(MaterialPageRoute(builder: (_) => _AlbumScreen(album: a, artist: artist)));
+      .push(MaterialPageRoute(builder: (_) => DzAlbumScreen(album: a, artist: artist)));
 }
 
 /// Альбом с Deezer: обложка и треки.
-class _AlbumScreen extends StatefulWidget {
-  const _AlbumScreen({required this.album, required this.artist});
+class DzAlbumScreen extends StatefulWidget {
+  const DzAlbumScreen({super.key, required this.album, required this.artist});
   final DzAlbum album;
   final String artist;
 
   @override
-  State<_AlbumScreen> createState() => _AlbumScreenState();
+  State<DzAlbumScreen> createState() => _DzAlbumScreenState();
 }
 
-class _AlbumScreenState extends State<_AlbumScreen> {
+class _DzAlbumScreenState extends State<DzAlbumScreen> {
   List<Track>? _tracks;
   bool _failed = false;
 
@@ -646,6 +670,75 @@ class _AlbumScreenState extends State<_AlbumScreen> {
               number: i + 1,
               onTap: () => player.playTracks(tracks, start: i),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Все треки исполнителя: из всех его альбомов и синглов на Deezer.
+class _AllTracksScreen extends StatefulWidget {
+  const _AllTracksScreen({required this.artistId, required this.name});
+  final int artistId;
+  final String name;
+
+  @override
+  State<_AllTracksScreen> createState() => _AllTracksScreenState();
+}
+
+class _AllTracksScreenState extends State<_AllTracksScreen> {
+  List<Track>? _tracks;
+  String _progress = 'Собираю треки…';
+
+  @override
+  void initState() {
+    super.initState();
+    deezerAllTracks(widget.artistId, progress: (d, t) {
+      if (mounted) setState(() => _progress = 'Собираю треки… альбомов $d из $t');
+    }).then((t) {
+      if (mounted) setState(() => _tracks = t);
+    }, onError: (_) {
+      if (mounted) setState(() => _tracks = const []);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.read<PlayerService>();
+    final store = context.watch<LibraryStore>();
+    final st = HutredStyle.of(context);
+    final k = Sk.of(context);
+    final tracks = _tracks;
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.name)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+        children: [
+          Text(st.sharp ? 'ВСЕ ТРЕКИ' : 'Все треки', style: st.display(30)),
+          const SizedBox(height: 4),
+          Text(tracks == null ? _progress : tracksWord(tracks.length), style: k.sub),
+          const SizedBox(height: 12),
+          if (tracks != null && tracks.isNotEmpty)
+            Wrap(spacing: 10, runSpacing: 10, children: [
+              SkButton('Играть', primary: true, height: 40, onTap: () => player.playAll(tracks)),
+              SkButton('Перемешать', height: 40, onTap: () => player.shufflePlay(tracks)),
+              SkButton('Добавить все в медиатеку', height: 40, onTap: () {
+                final n = store.addTracks(tracks);
+                AppActions.toast(context, n == 0 ? 'Всё уже в медиатеке' : 'Добавлено: ${tracksWord(n)}');
+              }),
+            ]),
+          const SizedBox(height: 12),
+          if (tracks == null)
+            const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+          if (tracks != null)
+            for (var i = 0; i < tracks.length; i++)
+              TrackTile(
+                key: ValueKey('all${tracks[i].uri}'),
+                track: tracks[i],
+                number: i + 1,
+                onTap: () => player.playTracks(tracks, start: i),
+              ),
         ],
       ),
     );
