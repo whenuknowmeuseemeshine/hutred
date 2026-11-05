@@ -127,6 +127,11 @@ class DiscordPresence {
           'start': now - pos,
           if (dur != null && dur > pos) 'end': now - pos + dur,
         },
+      // Название трека и обложка — ссылки: новые карточки профиля Discord
+      // не всегда рисуют кнопки, а кликабельный заголовок видно всегда.
+      if (settings.discordButton && (DeepLinks.pageFor(t) ?? _linkFor(t)) != null) ...{
+        'details_url': DeepLinks.pageFor(t) ?? _linkFor(t),
+      },
       if (settings.discordButton && (DeepLinks.pageFor(t) ?? _linkFor(t)) != null)
         'buttons': [
           {'label': 'Слушать трек', 'url': DeepLinks.pageFor(t) ?? _linkFor(t)},
@@ -138,6 +143,8 @@ class DiscordPresence {
         else if (_logoUrl != null)
           'large_image': _logoUrl,
         'large_text': cut(t.shownAlbum.isNotEmpty ? t.shownAlbum : t.title),
+        if (settings.discordButton && (DeepLinks.pageFor(t) ?? _linkFor(t)) != null)
+          'large_url': DeepLinks.pageFor(t) ?? _linkFor(t),
         if (_logoUrl != null && art != null && art.startsWith('http'))
           'small_image': _logoUrl,
         if (_logoUrl != null) 'small_text': 'Hutred',
@@ -181,6 +188,13 @@ class DiscordPresence {
           'nonce': '${DateTime.now().microsecondsSinceEpoch}${Random().nextInt(1 << 20)}',
         });
     var res = await go(activity);
+    if (res['evt'] == 'ERROR' && activity != null && activity.containsKey('details_url')) {
+      // Старый Discord не знает ссылок в названии — шлём без них.
+      activity = Map<String, dynamic>.of(activity)..remove('details_url');
+      final assets = activity['assets'];
+      if (assets is Map) activity['assets'] = Map.of(assets)..remove('large_url');
+      res = await go(activity);
+    }
     if (res['evt'] == 'ERROR' && activity != null) {
       // Discord не принял что-то из статуса (чаще всего картинку) —
       // пробуем проще, чтобы хотя бы трек и время показывались.
