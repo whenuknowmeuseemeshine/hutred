@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/account_service.dart';
 import '../theme.dart';
+import 'net_image.dart';
 
 /// Аватарка пользователя: картинка из профиля или первая буква логина/почты.
 class UserAvatar extends StatelessWidget {
@@ -39,7 +40,7 @@ class UserAvatar extends StatelessWidget {
       radius: radius,
       backgroundColor: scheme.primary,
       foregroundColor: scheme.onPrimary,
-      foregroundImage: url == null ? null : NetworkImage(url),
+      foregroundImage: url == null ? null : NetArt(url),
       onForegroundImageError: url == null ? null : (_, __) {},
       child: letter,
     );

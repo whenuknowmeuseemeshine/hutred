@@ -5,13 +5,20 @@ import 'package:flutter/material.dart';
 import '../../models/track.dart';
 import '../../services/offline_service.dart';
 import '../theme.dart';
+import 'net_image.dart';
+
+final _exists = <String, bool>{};
+
+bool _fileOk(String p) => _exists[p] ??= File(p).existsSync();
 
 /// Картинка по ссылке или по пути к файлу (своя обложка без облака).
 ImageProvider artworkProvider(String url) {
-  if (!url.startsWith('http')) return FileImage(File(url));
+  if (!url.startsWith('http')) return FileImage(File(OfflineService.fixPath(url)));
   // Скачанная обложка — чтобы была видна и без интернета.
+  // Если файла уже нет (переустановка, очистка) — берём из сети.
   final saved = OfflineService.instance?.coverForUrl(url);
-  return saved != null ? FileImage(File(saved)) : NetworkImage(url);
+  if (saved != null && _fileOk(saved)) return FileImage(File(saved));
+  return NetArt(url);
 }
 
 /// Обложка трека: картинка из источника или узор, сгенерированный по названию.

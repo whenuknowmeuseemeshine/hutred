@@ -12,6 +12,7 @@ import '../../services/player_service.dart';
 import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
+import '../widgets/net_image.dart';
 import '../widgets/track_tile.dart';
 import 'account_screen.dart';
 import '../icons.dart';
@@ -606,7 +607,7 @@ class _Avatar extends StatelessWidget {
       radius: radius,
       backgroundColor: scheme.primary,
       foregroundColor: scheme.onPrimary,
-      foregroundImage: url == null ? null : NetworkImage(url),
+      foregroundImage: url == null ? null : NetArt(url),
       onForegroundImageError: url == null ? null : (_, __) {},
       child: Text((info.username ?? '?')[0].toUpperCase(),
           style: const TextStyle(fontWeight: FontWeight.w800)),
