@@ -43,6 +43,7 @@ class WidgetSync {
   Timer? _debounce;
   Timer? _tick;
   String _lastJson = '';
+  String _lastKey = '';
   final _colors = <String, int>{};
 
   Future<void> start() async {
@@ -152,11 +153,17 @@ class WidgetSync {
       };
       final json = jsonEncode(data);
       if (json == _lastJson) return;
+      // На iPhone число перерисовок виджета ограничено системой — из-за
+      // одного прогресса не перерисовываем.
+      final key = jsonEncode({...data, 'progress': 0});
+      final onlyProgress = key == _lastKey;
       _lastJson = json;
+      _lastKey = key;
       final f = File('${dir.path}/widget.json');
       final tmp = File('${dir.path}/widget.json.part');
       await tmp.writeAsString(json, flush: true);
       await tmp.rename(f.path);
+      if (onlyProgress && Platform.isIOS) return;
       await _ch.invokeMethod('refresh');
     } catch (e) {
       debugPrint('[Виджет] $e');

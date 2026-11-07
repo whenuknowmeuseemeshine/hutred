@@ -82,12 +82,27 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      # Виджет на рабочий стол: добавляем его в Xcode-проект.
+      - name: Добавить виджет
+        run: |
+          gem install xcodeproj --no-document
+          ruby ios/scripts/add_widget.rb
       # Без подписи: подписывает SideStore/Sideloadly твоим Apple ID при установке.
       - run: flutter build ios --release --no-codesign --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} --dart-define=HUTRED_BUILD=${{ github.run_number }} --build-number=${{ github.run_number }} --build-name=1.4.${{ github.run_number }}
       - name: Собрать .ipa
         run: |
           mkdir -p Payload
           cp -R build/ios/iphoneos/Runner.app Payload/
+          # Подпись «для себя» (ad-hoc) — только чтобы внутри были права на
+          # общую папку приложения и виджета. SideStore потом подписывает заново.
+          APP=Payload/Runner.app
+          ls "$APP/PlugIns" || true
+          if [ -d "$APP/PlugIns/HutredWidget.appex" ]; then
+            codesign -f -s - --entitlements ios/HutredWidget/HutredWidget.entitlements "$APP/PlugIns/HutredWidget.appex"
+          fi
+          for f in "$APP"/Frameworks/*; do codesign -f -s - "$f"; done
+          codesign -f -s - --entitlements ios/Runner/Runner.entitlements "$APP"
+          codesign -d --entitlements - "$APP" || true
           zip -qr Hutred.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
