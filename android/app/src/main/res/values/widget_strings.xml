@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hutred_widget_small_desc">Что играет сейчас</string>
+    <string name="hutred_widget_wave_desc">Включить «Мою волну» одним нажатием</string>
+    <string name="hutred_widget_medium_desc">Трек, кнопки и быстрый доступ к плейлистам</string>
+    <string name="hutred_widget_large_desc">Трек, кнопки и недавние плейлисты</string>
+</resources>

@@ -161,6 +161,17 @@ class _LookSections extends StatelessWidget {
         ),
         SkToggle(value: s.tintFromCover, onChanged: (v) => s.tintFromCover = v),
       ])),
+      if (Platform.isAndroid || Platform.isIOS)
+        divided(Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Виджеты под цвет обложки', style: k.rowTitle),
+              Text(s.widgetCover ? 'Фон виджета — цвет трека' : 'Виджет в цветах стиля приложения',
+                  style: k.small),
+            ]),
+          ),
+          SkToggle(value: s.widgetCover, onChanged: (v) => s.widgetCover = v),
+        ])),
     ]);
 
     // ---------- Фон ----------

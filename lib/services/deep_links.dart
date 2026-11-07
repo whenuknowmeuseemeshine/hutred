@@ -77,12 +77,28 @@ class DeepLinks {
     return t.length > 200 ? t.substring(0, 200) : t;
   }
 
+  /// Команды с виджета на рабочем столе (hutred://widget/…).
+  static Future<void> Function(String cmd)? onWidget;
+
   static Future<void> start({required LibraryStore store, required PlayerService player}) async {
     await registerWindows();
     final links = AppLinks();
     Future<void> handle(Uri uri) async {
       // hutred://auth… — ссылки из писем (вход, сброс пароля), их
       // обрабатывает сам Supabase.
+      if (uri.scheme == 'hutred' && uri.host == 'widget') {
+        final w = onWidget;
+        if (w == null) return;
+        if (uri.path == '/open') {
+          final item = uri.queryParameters['item'] ?? '';
+          if (RegExp(r'^(fav|wave|downloads|now|pl:[A-Za-z0-9_.:-]{1,80})$').hasMatch(item)) {
+            await w('open:$item');
+          }
+        } else if (const {'/toggle', '/next', '/prev', '/like'}.contains(uri.path)) {
+          await w(uri.path.substring(1));
+        }
+        return;
+      }
       if (uri.scheme != 'hutred' || uri.host != 'play') return;
       final q = uri.queryParameters;
       final src = TrackSource.values.where((s) => s.name == q['s']).firstOrNull;
