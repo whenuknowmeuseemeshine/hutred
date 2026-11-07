@@ -150,7 +150,16 @@ class DpiBypass {
       final port = colon > 0 ? int.tryParse(hp.substring(colon + 1)) ?? 443 : 443;
 
       final address = await resolve(host);
-      remote = await Socket.connect(address, port, timeout: const Duration(seconds: 15));
+      Socket sock;
+      try {
+        sock = await Socket.connect(address, port, timeout: const Duration(seconds: 10));
+      } catch (_) {
+        // Адрес из DoH не открылся (например, сеть только IPv6 у мобильного
+        // оператора) — пробуем адрес от системы.
+        _dns.remove(host);
+        sock = await Socket.connect(host, port, timeout: const Duration(seconds: 10));
+      }
+      remote = sock;
       remote.setOption(SocketOption.tcpNoDelay, true);
       client.add(latin1.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
       await client.flush();
@@ -397,24 +406,30 @@ class DpiBypass {
 
   /// Адрес сайта через Cloudflare DoH (провайдер не подменит),
   /// при ошибке — обычным способом.
-  static Future<InternetAddress> resolve(String host) async {
+  static final _resolving = <String, Future<InternetAddress>>{};
+
+  /// Один запрос DoH на сайт, даже если картинок с него грузится сотня разом.
+  static Future<InternetAddress> resolve(String host) {
     final ip = InternetAddress.tryParse(host);
-    if (ip != null) return ip;
+    if (ip != null) return Future.value(ip);
     final cached = _dns[host];
-    if (cached != null && DateTime.now().isBefore(cached.until)) return cached.addr;
+    if (cached != null && DateTime.now().isBefore(cached.until)) return Future.value(cached.addr);
+    return _resolving[host] ??= _resolve(host).whenComplete(() => _resolving.remove(host));
+  }
+
+  static Future<InternetAddress> _resolve(String host) async {
     // Сначала Cloudflare (1.1.1.1), не ответил — Google (8.8.8.8).
     // Сами эти запросы идут напрямую (см. _proxyFor).
     for (final doh in [
       Uri.https(_dohHost, '/dns-query', {'name': host, 'type': 'A'}),
       Uri.https(_dohHost2, '/resolve', {'name': host, 'type': 'A'}),
     ]) {
+      final c = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       try {
-        final c = HttpClient()..connectionTimeout = const Duration(seconds: 5);
         final req = await c.getUrl(doh);
         req.headers.set('accept', 'application/dns-json');
         final res = await req.close().timeout(const Duration(seconds: 5));
-        final j = jsonDecode(await res.transform(utf8.decoder).join());
-        c.close();
+        final j = jsonDecode(await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 5)));
         for (final a in (j['Answer'] as List? ?? const [])) {
           if (a is Map && a['type'] == 1) {
             final addr = InternetAddress(a['data'] as String);
@@ -425,6 +440,8 @@ class DpiBypass {
         }
       } catch (e) {
         debugPrint('[Обход] DoH ${doh.host} для $host: $e');
+      } finally {
+        c.close(force: true);
       }
     }
     final list = await InternetAddress.lookup(host, type: InternetAddressType.IPv4);

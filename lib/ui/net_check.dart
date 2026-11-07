@@ -5,12 +5,15 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
 import '../config.dart';
+import '../services/account_service.dart';
 import '../services/dpi_bypass.dart';
+import '../services/library_store.dart';
 import '../services/settings_store.dart';
 import '../services/soundcloud_source.dart';
 import '../services/spotify_service.dart';
 import '../services/youtube_source.dart';
 import 'theme.dart';
+import 'widgets/net_image.dart';
 import 'icons.dart';
 
 /// «Проверка связи»: что из сервисов открывается, а что нет.
@@ -73,6 +76,10 @@ class _NetCheckDialogState extends State<_NetCheckDialog> {
             .timeout(const Duration(seconds: 15));
         return 'нашёл ${r.items.length}${SpotifyService.viaRelay ? ', через облако Hutred' : ''}';
       }),
+      for (final (name, url) in _pictures(context)) ...[
+        _Check('$name — обычным путём', () => ArtCache.probe(url, direct: false)),
+        _Check('$name — напрямую', () => ArtCache.probe(url, direct: true)),
+      ],
       _Check('YouTube — сайт', () => reach('https://www.youtube.com/')),
       _Check('YouTube — звук', () async {
         final r = await yt.search('lofi hip hop').timeout(const Duration(seconds: 20));
@@ -82,6 +89,20 @@ class _NetCheckDialogState extends State<_NetCheckDialog> {
       }),
     ];
     _runAll();
+  }
+
+  /// Примеры картинок: обложка из медиатеки и своя аватарка.
+  static List<(String, String)> _pictures(BuildContext context) {
+    final out = <(String, String)>[];
+    final store = context.read<LibraryStore>();
+    final cover = store.tracks
+        .map((t) => t.artworkUrl)
+        .whereType<String>()
+        .firstWhere((u) => u.startsWith('https://'), orElse: () => '');
+    if (cover.isNotEmpty) out.add(('Обложка (${Uri.parse(cover).host})', cover));
+    final avatar = context.read<AccountService>().avatarUrl;
+    if (avatar != null && avatar.startsWith('https://')) out.add(('Аватарка', avatar));
+    return out;
   }
 
   Future<void> _runAll() async {

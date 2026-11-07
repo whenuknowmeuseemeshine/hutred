@@ -159,6 +159,12 @@ class ArtCache {
     }
   }
 
+  /// Для «Проверки связи»: скачать картинку одним способом и описать итог.
+  static Future<String> probe(String url, {required bool direct}) async {
+    final b = await _fetch(Uri.parse(url), direct: direct).timeout(const Duration(seconds: 20));
+    return 'картинка ${(b.length / 1024).toStringAsFixed(0)} КБ';
+  }
+
   static Future<Uint8List> _fetch(Uri uri, {required bool direct}) async {
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     if (direct) c.findProxy = (_) => 'DIRECT';
@@ -179,6 +185,16 @@ class ArtCache {
 
   static Future<Uint8List> _download(String url) async {
     final uri = Uri.parse(url);
+    // Обход блокировок включён, а своего VPN нет — картинки сначала
+    // пробуем напрямую: сайты с обложками обычно не заблокированы,
+    // а через обход сотня картинок разом идёт тяжело.
+    if (DpiBypass.enabled && DpiBypass.mayGoDirect) {
+      try {
+        return await _fetch(uri, direct: true).timeout(const Duration(seconds: 10));
+      } catch (e) {
+        if (e is HttpException && e.message.startsWith('HTTP 4')) rethrow;
+      }
+    }
     try {
       // Обычным путём (через обход/VPN, если включены).
       return await _fetch(uri, direct: false).timeout(const Duration(seconds: 20));
