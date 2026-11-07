@@ -241,7 +241,7 @@ class _Members extends StatelessWidget {
         for (final m in members)
           Chip(
             avatar: CircleAvatar(
-              backgroundImage: m.avatar == null ? null : NetArt(m.avatar!),
+              backgroundImage: m.avatar == null ? null : netImage(m.avatar!),
               child: m.avatar == null ? Text(m.name.replaceFirst('@', '').characters.first) : null,
             ),
             label: Text(m.uid == host ? '${m.name} · ведущий' : m.name),
@@ -304,7 +304,7 @@ class _InviteList extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: CircleAvatar(
-            backgroundImage: fr.avatarUrl == null ? null : NetArt(fr.avatarUrl!),
+            backgroundImage: fr.avatarUrl == null ? null : netImage(fr.avatarUrl!),
             child: fr.avatarUrl == null ? Icon(Ic.person_outline, size: 18) : null,
           ),
           title: Text(fr.name),

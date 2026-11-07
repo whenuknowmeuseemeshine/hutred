@@ -18,7 +18,7 @@ ImageProvider artworkProvider(String url) {
   // Если файла уже нет (переустановка, очистка) — берём из сети.
   final saved = OfflineService.instance?.coverForUrl(url);
   if (saved != null && _fileOk(saved)) return FileImage(File(saved));
-  return NetArt(url);
+  return netImage(url);
 }
 
 /// Обложка трека: картинка из источника или узор, сгенерированный по названию.
