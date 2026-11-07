@@ -62,8 +62,8 @@ jobs:
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then echo "::error::Нет секрета SUPABASE_ACCESS_TOKEN"; exit 1; fi
           REF=$(echo "$SB_URL" | sed -E 's#https://([^.]+)\..*#\1#')
-          supabase functions deploy hutred --no-verify-jwt --project-ref "$REF"
-          supabase functions deploy spotify --no-verify-jwt --project-ref "$REF"
+          supabase functions deploy hutred --no-verify-jwt --project-ref "$REF" --yes
+          supabase functions deploy spotify --no-verify-jwt --project-ref "$REF" --yes
 
   check:
     needs: deploy
