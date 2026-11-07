@@ -2198,7 +2198,7 @@ class _AdminPageState extends State<_AdminPage> {
 
     bool shared(String key, String field) {
       final m = cfg[key];
-      return m is Map && '${m[field] ?? ''}'.isNotEmpty;
+      return m is Map && (m['enabled'] == true || '${m[field] ?? ''}'.isNotEmpty);
     }
 
     Future<void> push(String key, Map<String, dynamic> value, String done) async {

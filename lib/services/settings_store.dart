@@ -602,6 +602,11 @@ class SettingsStore extends ChangeNotifier {
     return g is Map ? '${g[key] ?? ''}'.trim() : '';
   }
 
+  bool _sharedBool(String group, String key) {
+    final g = _shared[group];
+    return g is Map && g[key] == true;
+  }
+
   bool get _ownAi => _aiKey.isNotEmpty && _aiBaseUrl.isNotEmpty;
 
   /// ИИ-распознавание речи (OpenAI-совместимый Whisper API).
@@ -611,7 +616,9 @@ class SettingsStore extends ChangeNotifier {
     final m = _ownAi ? _aiModel : _sharedStr('ai', 'model');
     return m.isEmpty ? 'whisper-large-v3' : m;
   }
-  bool get hasAi => aiKey.isNotEmpty && aiBaseUrl.isNotEmpty;
+  /// ИИ админа: ключ хранится на сервере, приложение ходит через функцию.
+  bool get cloudAi => _sharedBool('ai', 'enabled');
+  bool get hasAi => (aiKey.isNotEmpty && aiBaseUrl.isNotEmpty) || cloudAi;
 
   /// Свои значения (для админа — их он отправляет всем).
   String get ownAiBaseUrl => _aiBaseUrl;
@@ -632,7 +639,10 @@ class SettingsStore extends ChangeNotifier {
   String get spotifyId => _ownSpotify ? _spotifyId : _sharedStr('spotify', 'id');
   String get spotifySecret =>
       _ownSpotify ? _spotifySecret : _sharedStr('spotify', 'secret');
-  bool get hasSpotifyKeys => spotifyId.isNotEmpty && spotifySecret.isNotEmpty;
+  /// Spotify админа: секрет на сервере, токен выдаёт функция.
+  bool get cloudSpotify => _sharedBool('spotify', 'enabled');
+  bool get hasSpotifyKeys =>
+      (spotifyId.isNotEmpty && spotifySecret.isNotEmpty) || cloudSpotify;
 
   Future<void> load() async {
     try {

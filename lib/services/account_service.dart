@@ -7,6 +7,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
+import 'package:http/http.dart' as http;
+
+import 'hutred_server.dart';
 import 'relay.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
@@ -87,6 +90,7 @@ class AccountService extends ChangeNotifier {
     }
     await store.load(userId: user?.id);
     _authSub = _db.auth.onAuthStateChange.listen((s) async {
+      if (s.event == AuthChangeEvent.passwordRecovery) _recovery();
       final uid = s.session?.user.id;
       if (uid != store.userId) {
         await store.load(userId: uid);
@@ -205,12 +209,14 @@ class AccountService extends ChangeNotifier {
       if (await file.length() > 5 * 1024 * 1024) return 'Картинка больше 5 МБ';
       final dot = filePath.lastIndexOf('.');
       final ext = dot < 0 ? 'png' : filePath.substring(dot + 1).toLowerCase();
+      if (!const {'jpg', 'jpeg', 'png', 'webp', 'gif'}.contains(ext)) {
+        return 'Нужна картинка jpg, png, webp или gif';
+      }
       final path = '$uid/avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await _db.storage.from('avatars').uploadBinary(
             path,
             await file.readAsBytes(),
-            fileOptions: FileOptions(
-                upsert: true, contentType: ext == 'jpg' ? 'image/jpeg' : 'image/$ext'),
+            fileOptions: FileOptions(upsert: true, contentType: _imageType(ext)),
           );
       final url = _db.storage.from('avatars').getPublicUrl(path);
       await _db.from('profiles').update({
@@ -238,8 +244,7 @@ class AccountService extends ChangeNotifier {
         await _db.storage.from('avatars').uploadBinary(
               path,
               await File(filePath).readAsBytes(),
-              fileOptions: FileOptions(
-                  upsert: true, contentType: ext == 'jpg' ? 'image/jpeg' : 'image/$ext'),
+              fileOptions: FileOptions(upsert: true, contentType: _imageType(ext)),
             );
         return _db.storage.from('avatars').getPublicUrl(path);
       } catch (e) {
@@ -386,8 +391,9 @@ class AccountService extends ChangeNotifier {
   Future<void> shareAdminKeys() async {
     final s = settings;
     if (s == null || !enabled || !signedIn || !isAdmin) return;
+    await _loadSecrets();
     bool differs(String group, Map<String, dynamic> want) {
-      final have = _config[group];
+      final have = _secretKeys.contains(group) ? _secrets[group] : _config[group];
       if (have is! Map) return true;
       return want.entries.any((e) => '${have[e.key] ?? ''}' != '${e.value}');
     }
@@ -409,9 +415,38 @@ class AccountService extends ChangeNotifier {
     }
   }
 
+  /// Группы с секретами: они уходят в app_secrets (их видит только админ
+  /// и сервер), а всем остальным — только флажок «включено».
+  static const _secretKeys = {'ai', 'spotify'};
+  Map<String, dynamic> _secrets = const {};
+
+  Future<void> _loadSecrets() async {
+    if (!isAdmin) return;
+    try {
+      final rows = await _db.from('app_secrets').select('key, value');
+      _secrets = {for (final r in rows) '${r['key']}': r['value']};
+    } catch (e) {
+      debugPrint('[Секреты] $e');
+    }
+  }
+
   /// Админ: сохранить общую настройку для всех пользователей.
   Future<String?> pushConfig(String key, Map<String, dynamic> value) async {
     if (!isAdmin) return 'Это может только админ';
+    if (_secretKeys.contains(key)) {
+      final filled = value.values.any((v) => '$v'.trim().isNotEmpty);
+      try {
+        await _db.from('app_secrets').upsert({
+          'key': key,
+          'value': value,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        });
+        _secrets = {..._secrets, key: value};
+      } catch (e) {
+        return 'Не удалось сохранить ключ: ${_short(e)}. Выполни supabase/security.sql';
+      }
+      value = {'enabled': filled};
+    }
     try {
       await _db.from('app_config').upsert({
         'key': key,
@@ -430,8 +465,68 @@ class AccountService extends ChangeNotifier {
 
   // ---------- Вход ----------
 
-  Future<void> signIn(String email, String password) async {
-    await _db.auth.signInWithPassword(email: email.trim(), password: password);
+  /// Куда ведут ссылки из писем: приложение открывает их само.
+  static const authRedirect = 'hutred://auth';
+
+  /// Вход по почте или логину. Через сервер Hutred — там лимит попыток
+  /// и поиск почты по логину (почты других людей приложению не видны).
+  Future<void> signIn(String login, String password) async {
+    final l = login.trim();
+    http.Response? res;
+    try {
+      res = await http
+          .post(HutredServer.fn('login'),
+              headers: {'apikey': HutredConfig.supabaseAnonKey, 'Content-Type': 'application/json'},
+              body: jsonEncode({'login': l, 'password': password}))
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {
+      res = null;
+    }
+    if (res != null && res.statusCode == 200) {
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      await _db.auth.setSession(j['refresh_token'] as String);
+      return;
+    }
+    if (res != null && res.statusCode != 404) {
+      throw AuthException(HutredServer.errorOf(res.body, res.statusCode));
+    }
+    // Функция ещё не выложена или сервер недоступен — входим напрямую по почте.
+    if (!l.contains('@')) throw const AuthException('Войди по почте: вход по логину пока недоступен');
+    await _db.auth.signInWithPassword(email: l, password: password);
+  }
+
+  /// Новый пароль (после ссылки «сбросить пароль» или из аккаунта).
+  Future<void> changePassword(String password) async {
+    await _db.auth.updateUser(UserAttributes(password: password));
+  }
+
+  /// Пароль достаточно надёжный? null — да, иначе что не так.
+  static String? weakPassword(String p) {
+    if (p.length < 8) return 'Пароль — от 8 символов';
+    if (!RegExp(r'[A-Za-zА-Яа-яЁё]').hasMatch(p) || !RegExp(r'\d').hasMatch(p)) {
+      return 'В пароле нужны и буквы, и цифры';
+    }
+    return null;
+  }
+
+  /// Пришла ссылка «сбросить пароль» — показываем окно нового пароля.
+  void Function()? _onRecovery;
+  bool _recoveryPending = false;
+  set onPasswordRecovery(void Function()? f) {
+    _onRecovery = f;
+    if (f != null && _recoveryPending) {
+      _recoveryPending = false;
+      f();
+    }
+  }
+
+  void _recovery() {
+    final f = _onRecovery;
+    if (f == null) {
+      _recoveryPending = true;
+    } else {
+      f();
+    }
   }
 
   /// Возвращает true, если нужно подтвердить почту по письму.
@@ -439,13 +534,14 @@ class AccountService extends ChangeNotifier {
     final res = await _db.auth.signUp(
       email: email.trim(),
       password: password,
+      emailRedirectTo: authRedirect,
       data: {if (username != null && username.isNotEmpty) 'username': username},
     );
     return res.session == null;
   }
 
   Future<void> resetPassword(String email) =>
-      _db.auth.resetPasswordForEmail(email.trim());
+      _db.auth.resetPasswordForEmail(email.trim(), redirectTo: authRedirect);
 
   Future<void> signOut() async {
     await syncNow();
@@ -666,7 +762,7 @@ class AccountService extends ChangeNotifier {
           final path = '$uid/${t.id}.$ext';
           await _db.storage
               .from('tracks')
-              .upload(path, file, fileOptions: const FileOptions(upsert: true));
+              .upload(path, file, fileOptions: FileOptions(upsert: true, contentType: _audioType(ext)));
           final fresh = store.byId(t.id);
           if (fresh != null) store.updateTrack(fresh.copyWith(cloudPath: path));
         } catch (e) {
@@ -713,6 +809,26 @@ class AccountService extends ChangeNotifier {
     _db.storage.from('tracks').remove([path]).ignore();
   }
 
+  /// Облако принимает только картинки jpeg/png/webp/gif.
+  static String _imageType(String ext) => switch (ext) {
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        'gif' => 'image/gif',
+        _ => 'image/jpeg',
+      };
+
+  /// Облако принимает только звук.
+  static String _audioType(String ext) => switch (ext) {
+        'mp3' => 'audio/mpeg',
+        'm4a' || 'mp4' || 'aac' => 'audio/mp4',
+        'flac' => 'audio/flac',
+        'wav' => 'audio/wav',
+        'ogg' || 'opus' => 'audio/ogg',
+        'webm' || 'weba' => 'audio/webm',
+        _ => 'audio/mpeg',
+      };
+
   static String _short(Object e) {
     final s = e.toString();
     return s.length > 140 ? '${s.substring(0, 140)}…' : s;
@@ -721,12 +837,20 @@ class AccountService extends ChangeNotifier {
   /// Понятный текст ошибки входа.
   static String authError(Object e) {
     final s = e.toString().toLowerCase();
-    if (s.contains('invalid login')) return 'Неверная почта или пароль';
+    if (e is AuthException && !s.contains('invalid login') && !s.contains('email not confirmed')) {
+      final m = e.message;
+      if (RegExp(r'[А-Яа-яЁё]').hasMatch(m)) return m;
+    }
+    if (s.contains('invalid login')) return 'Неверный логин или пароль';
+    if (s.contains('same_password') || s.contains('different from the old')) {
+      return 'Новый пароль совпадает со старым';
+    }
+    if (s.contains('weak_password') || s.contains('weak password')) return 'Пароль слишком простой';
     if (s.contains('email not confirmed')) {
       return 'Почта не подтверждена. Открой письмо от Supabase и нажми ссылку';
     }
     if (s.contains('already registered')) return 'Такой аккаунт уже есть — войди';
-    if (s.contains('password should be')) return 'Пароль слишком короткий (нужно от 6 символов)';
+    if (s.contains('password should be')) return 'Пароль слишком короткий';
     if (s.contains('rate limit')) return 'Слишком много попыток, подожди минуту';
     if (s.contains('socket') || s.contains('host lookup')) {
       return 'Нет связи с сервером. Проверь интернет или VPN';

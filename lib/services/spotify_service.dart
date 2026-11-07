@@ -10,6 +10,7 @@ import '../config.dart';
 import '../models/remote.dart';
 import '../models/track.dart';
 import 'genius_service.dart';
+import 'hutred_server.dart';
 import 'meta_clean.dart';
 
 /// Поиск обложек через официальный Spotify Web API.
@@ -27,6 +28,8 @@ class SpotifyService {
   String? _tokenFor;
 
   Future<String?> _getToken(String id, String secret) async {
+    // Своих ключей нет — токен выдаёт сервер Hutred (секрет админа там).
+    if (id.isEmpty || secret.isEmpty) return _cloudToken();
     final key = '$id:$secret';
     if (_token != null && _tokenFor == key && DateTime.now().isBefore(_tokenExpires)) {
       return _token;
@@ -47,6 +50,25 @@ class SpotifyService {
     _tokenFor = key;
     final ttl = (j['expires_in'] as num?)?.toInt() ?? 3600;
     _tokenExpires = DateTime.now().add(Duration(seconds: ttl - 60));
+    return _token;
+  }
+
+  Future<String?> _cloudToken() async {
+    if (_token != null && _tokenFor == 'cloud' && DateTime.now().isBefore(_tokenExpires)) {
+      return _token;
+    }
+    if (HutredServer.userToken == null) return null;
+    final res = await http
+        .post(HutredServer.fn('spotify-token'), headers: HutredServer.headers())
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      throw Exception(HutredServer.errorOf(res.body, res.statusCode));
+    }
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    _token = j['access_token'] as String?;
+    _tokenFor = 'cloud';
+    final ttl = (j['expires_in'] as num?)?.toInt() ?? 3600;
+    _tokenExpires = DateTime.now().add(Duration(seconds: (ttl - 60).clamp(30, 3600)));
     return _token;
   }
 

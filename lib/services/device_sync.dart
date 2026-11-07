@@ -163,7 +163,7 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     if (uid == null) return;
     await _loadId();
-    final ch = _db.channel('devices-$uid', opts: const RealtimeChannelConfig(self: false));
+    final ch = _db.channel('devices-$uid', opts: const RealtimeChannelConfig(self: false, private: true));
     ch
         .onPresenceSync((_) {
           final now = DateTime.now();
