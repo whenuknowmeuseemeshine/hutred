@@ -984,6 +984,16 @@ class PlayerService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Убрать из очереди всё, что после текущего трека.
+  void clearUpcoming() {
+    if (_index + 1 >= _queue.length) return;
+    final gone = _queue.sublist(_index + 1).map((t) => t.id).toSet();
+    _queue.removeRange(_index + 1, _queue.length);
+    _unshuffled.removeWhere((t) => gone.contains(t.id));
+    notifyListeners();
+    unawaited(_saveState());
+  }
+
   void removeFromQueue(int i) {
     if (i < 0 || i >= _queue.length || i == _index) return;
     final removed = _queue.removeAt(i);

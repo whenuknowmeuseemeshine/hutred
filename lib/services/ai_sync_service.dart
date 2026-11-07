@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'cloud_relay.dart';
+import 'hutred_server.dart';
 
 import 'lyrics_service.dart';
 
@@ -31,6 +32,24 @@ class AiSyncService {
     final size = await audio.length();
     if (size > 25 * 1024 * 1024) {
       throw Exception('Файл больше 25 МБ — сервис ИИ его не примет');
+    }
+    // Своего ключа нет — распознаёт сервер Hutred ключом админа.
+    if (apiKey.isEmpty || baseUrl.isEmpty) {
+      if (HutredServer.userToken == null) throw Exception('Войди в аккаунт, чтобы пользоваться ИИ');
+      final req = http.MultipartRequest('POST', HutredServer.fn('ai'))
+        ..headers.addAll(HutredServer.headers())
+        ..fields.addAll({
+          if (prompt != null && prompt.isNotEmpty) 'prompt': prompt,
+          if (language != null) 'language': language,
+        })
+        ..files.add(await http.MultipartFile.fromPath('file', audio.path,
+            filename: 'track${_ext(audio.path)}'));
+      final streamed = await _client.send(req).timeout(const Duration(minutes: 3));
+      final body = await streamed.stream.bytesToString();
+      if (streamed.statusCode != 200) {
+        throw Exception(HutredServer.errorOf(body, streamed.statusCode));
+      }
+      return _parse(body);
     }
     final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
     // Запрос собираем функцией: если сервис не пустит напрямую (403 — например,
@@ -73,6 +92,10 @@ class AiSyncService {
       throw Exception('Сервис ИИ ответил ${streamed.statusCode}: '
           '${body.length > 200 ? body.substring(0, 200) : body}');
     }
+    return _parse(body);
+  }
+
+  static List<HeardWord> _parse(String body) {
     final j = jsonDecode(body);
     if (j is! Map) throw Exception('Непонятный ответ сервиса ИИ');
 

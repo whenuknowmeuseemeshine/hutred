@@ -45,24 +45,58 @@ class DeepLinks {
     }
   }
 
+  /// Ссылка пришла снаружи — пускаем только то, что похоже на настоящий трек.
+  static bool _validId(TrackSource src, String id) {
+    if (id.length > 300) return false;
+    switch (src) {
+      case TrackSource.youtube:
+        return RegExp(r'^[A-Za-z0-9_-]{6,20}$').hasMatch(id);
+      case TrackSource.soundcloud:
+        if (RegExp(r'^\d{1,20}$').hasMatch(id)) return true;
+        final u = Uri.tryParse(id);
+        return u != null &&
+            u.scheme == 'https' &&
+            (u.host == 'soundcloud.com' || u.host.endsWith('.soundcloud.com'));
+      case TrackSource.spotify:
+        return RegExp(r'^(deezer:\d{1,15}|[A-Za-z0-9]{10,40})$').hasMatch(id);
+      default:
+        return false;
+    }
+  }
+
+  static String? _https(String? url) {
+    if (url == null || url.length > 600) return null;
+    final u = Uri.tryParse(url);
+    return u != null && u.scheme == 'https' && u.host.isNotEmpty ? url : null;
+  }
+
+  static String? _text(String? v) {
+    if (v == null) return null;
+    final t = v.replaceAll(RegExp(r'[\u0000-\u001f]'), ' ').trim();
+    if (t.isEmpty) return null;
+    return t.length > 200 ? t.substring(0, 200) : t;
+  }
+
   static Future<void> start({required LibraryStore store, required PlayerService player}) async {
     await registerWindows();
     final links = AppLinks();
     Future<void> handle(Uri uri) async {
-      if (uri.scheme != 'hutred') return;
+      // hutred://auth… — ссылки из писем (вход, сброс пароля), их
+      // обрабатывает сам Supabase.
+      if (uri.scheme != 'hutred' || uri.host != 'play') return;
       final q = uri.queryParameters;
       final src = TrackSource.values.where((s) => s.name == q['s']).firstOrNull;
       final id = q['u'];
-      if (src == null || id == null || id.isEmpty || src == TrackSource.local) return;
+      if (src == null || id == null || !_validId(src, id)) return;
       final known = store.findBySource(src, id);
       final t = known ??
           Track(
             id: Track.newId(),
-            title: q['t'] ?? 'Трек',
-            artist: q['a'] ?? Track.unknownArtist,
+            title: _text(q['t']) ?? 'Трек',
+            artist: _text(q['a']) ?? Track.unknownArtist,
             source: src,
             uri: id,
-            artworkUrl: q['c'],
+            artworkUrl: _https(q['c']),
             addedAt: DateTime.now(),
           );
       await player.playTracks([t]);

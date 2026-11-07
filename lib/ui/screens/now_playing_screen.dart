@@ -8,6 +8,7 @@ import '../../services/player_service.dart';
 import '../../services/settings_store.dart';
 import '../../services/wave_service.dart';
 import 'artist_screen.dart';
+import 'queue_screen.dart';
 import '../widgets/artwork.dart';
 import '../widgets/controls.dart';
 import '../widgets/cover_color.dart';
@@ -327,12 +328,7 @@ class _UpNextCard extends StatelessWidget {
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                   const Spacer(),
                   TextButton(
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => Scaffold(
-                        appBar: AppBar(title: const Text('Очередь')),
-                        body: const QueueList(),
-                      ),
-                    )),
+                    onPressed: () => showQueue(context),
                     style: TextButton.styleFrom(foregroundColor: Colors.white),
                     child: const Text('Вся очередь'),
                   ),
@@ -861,6 +857,14 @@ class _GlassNarrowState extends State<_GlassNarrow> {
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
+        if (_tab == 1)
+          Center(
+            child: TextButton(
+              onPressed: () => showQueue(context),
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              child: const Text('Вся очередь'),
+            ),
+          ),
       ],
     );
   }

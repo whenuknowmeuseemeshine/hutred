@@ -159,7 +159,7 @@ class JamService extends ChangeNotifier {
       return;
     }
     final ch = _db.channel('hutred-online',
-        opts: const RealtimeChannelConfig(self: false));
+        opts: const RealtimeChannelConfig(self: false, private: true));
     ch
         .onPresenceSync((_) {
           _jamOf.clear();
@@ -330,7 +330,7 @@ class JamService extends ChangeNotifier {
   Future<void> _open(String host) async {
     final me = _me!;
     _host = host;
-    final ch = _db.channel('jam-$host', opts: const RealtimeChannelConfig(self: false));
+    final ch = _db.channel('jam-$host', opts: const RealtimeChannelConfig(self: false, private: true));
     ch
         .onPresenceSync((_) {
           final list = <JamMember>[];

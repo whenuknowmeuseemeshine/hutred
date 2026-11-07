@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'services/xray_vpn.dart';
+import 'ui/screens/account_screen.dart';
 import 'services/deep_links.dart';
 import 'services/device_sync.dart';
 import 'services/releases_service.dart';
@@ -164,6 +165,19 @@ Future<void> main(List<String> args) async {
   await wave.load();
   // Скрытые треки и чёрный список — через облако на все устройства.
   account.wave = wave;
+  // Ссылка «сбросить пароль» из письма — сразу просим новый пароль.
+  account.onPasswordRecovery = () {
+    Future<void> show([int tries = 0]) async {
+      final ctx = hutredNavigatorKey.currentContext;
+      if (ctx == null) {
+        if (tries < 20) Future.delayed(const Duration(milliseconds: 300), () => show(tries + 1));
+        return;
+      }
+      await showNewPasswordDialog(ctx, recovery: true);
+    }
+
+    unawaited(show());
+  };
   // Умное перемешивание берёт похожие треки из «Моей волны».
   player.recommend = (seeds, count) => wave.recommendFrom(seeds, size: count);
   // Скрытые треки и исполнители из чёрного списка не играют.

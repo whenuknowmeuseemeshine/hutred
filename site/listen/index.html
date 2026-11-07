@@ -2,6 +2,8 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; connect-src https://izkllkqilyspwxthssdc.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Слушать в Hutred</title>
 <link rel="icon" href="../logo.png">
@@ -67,9 +69,21 @@ const s = q.get('s'), u = q.get('u') || '', t = q.get('t') || 'Трек', a = q.
 document.getElementById('title').textContent = t;
 document.getElementById('artist').textContent = a;
 document.title = t + (a ? ' — ' + a : '') + ' · Hutred';
-if (c && c.startsWith('https://')) {
-  document.getElementById('cover').style.backgroundImage = 'url("' + c.replace(/"/g, '') + '")';
-  document.getElementById('bg').style.backgroundImage = 'url("' + c.replace(/"/g, '') + '")';
+// Ссылки из адреса страницы проверяем: обложка — только https-картинка,
+// «Слушать на …» — только настоящие сайты сервисов.
+function safeUrl(v, hosts) {
+  try {
+    const x = new URL(v);
+    if (x.protocol !== 'https:') return null;
+    if (hosts && !hosts.some(h => x.hostname === h || x.hostname.endsWith('.' + h))) return null;
+    return x.href;
+  } catch (e) { return null; }
+}
+const cover = c ? safeUrl(c) : null;
+if (cover) {
+  const css = 'url("' + encodeURI(cover).replace(/["\\()]/g, encodeURIComponent) + '")';
+  document.getElementById('cover').style.backgroundImage = css;
+  document.getElementById('bg').style.backgroundImage = css;
 }
 const app = 'hutred://play?' + q.toString();
 const open = document.getElementById('open');
@@ -77,10 +91,11 @@ open.href = app;
 
 // Ссылка на оригинал — если Hutred не стоит.
 let orig = null, label = '';
-if (s === 'youtube' && u) { orig = 'https://youtu.be/' + encodeURIComponent(u); label = 'Слушать на YouTube'; }
-else if (s === 'soundcloud' && u.startsWith('https://')) { orig = u; label = 'Слушать на SoundCloud'; }
-else if (s === 'spotify' && u.startsWith('deezer:')) { orig = 'https://www.deezer.com/track/' + u.slice(7); label = 'Слушать на Deezer'; }
-else if (s === 'spotify' && u) { orig = 'https://open.spotify.com/track/' + encodeURIComponent(u); label = 'Слушать на Spotify'; }
+if (s === 'youtube' && /^[A-Za-z0-9_-]{6,20}$/.test(u)) { orig = 'https://youtu.be/' + u; label = 'Слушать на YouTube'; }
+else if (s === 'soundcloud' && /^\d{1,20}$/.test(u)) { /* только номер трека — ссылки на сайт нет */ }
+else if (s === 'soundcloud' && safeUrl(u, ['soundcloud.com'])) { orig = safeUrl(u, ['soundcloud.com']); label = 'Слушать на SoundCloud'; }
+else if (s === 'spotify' && /^deezer:\d{1,15}$/.test(u)) { orig = 'https://www.deezer.com/track/' + u.slice(7); label = 'Слушать на Deezer'; }
+else if (s === 'spotify' && /^[A-Za-z0-9]{10,40}$/.test(u)) { orig = 'https://open.spotify.com/track/' + u; label = 'Слушать на Spotify'; }
 if (orig) { const o = document.getElementById('orig'); o.href = orig; o.textContent = label; o.hidden = false; }
 
 // Сразу пробуем открыть приложение; если страница осталась на месте — подсказка.

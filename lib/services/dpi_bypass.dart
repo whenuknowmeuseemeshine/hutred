@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import 'xray_vpn.dart';
 
@@ -59,14 +60,52 @@ class DpiBypass {
   static Future<void> install() async {
     if (kIsWeb) return;
     try {
-      _server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      _port = _server!.port;
-      _server!.listen(_handle, onError: (Object e) => debugPrint('[Обход] $e'));
+      await _bind();
       HttpOverrides.global = _Overrides();
+      // iOS закрывает слушающий сокет, пока приложение в фоне, —
+      // после возврата проверяем прокси и поднимаем заново.
+      WidgetsBinding.instance.addObserver(_Life());
     } catch (e) {
       debugPrint('[Обход] не удалось запустить: $e');
     }
   }
+
+  static Future<void> _bind() async {
+    _server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    _port = _server!.port;
+    _server!.listen(_handle, onError: (Object e) => debugPrint('[Обход] $e'), onDone: () => _port = null);
+  }
+
+  static Future<void>? _checking;
+
+  /// Жив ли локальный прокси; если нет — поднимает новый.
+  static Future<void> ensureAlive() => _checking ??= _ensureAlive().whenComplete(() => _checking = null);
+
+  static Future<void> _ensureAlive() async {
+    if (kIsWeb || _server == null) return;
+    final port = _port;
+    if (port != null) {
+      try {
+        final s = await Socket.connect(InternetAddress.loopbackIPv4, port,
+            timeout: const Duration(seconds: 2));
+        s.destroy();
+        return;
+      } catch (_) {}
+    }
+    debugPrint('[Обход] прокси не отвечает — перезапуск');
+    _port = null;
+    try {
+      await _server?.close();
+    } catch (_) {}
+    try {
+      await _bind();
+    } catch (e) {
+      debugPrint('[Обход] не удалось перезапустить: $e');
+    }
+  }
+
+  /// Можно ли пробовать запрос напрямую (без своего VPN-ключа).
+  static bool get mayGoDirect => !(XrayVpn.port != null && XrayVpn.active);
 
   static String _proxyFor(Uri uri) {
     // Свой VPN-ключ важнее обхода: весь трафик Hutred идёт через ядро Xray.
@@ -390,6 +429,13 @@ class DpiBypass {
     }
     final list = await InternetAddress.lookup(host, type: InternetAddressType.IPv4);
     return list.first;
+  }
+}
+
+class _Life with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(DpiBypass.ensureAlive());
   }
 }
 

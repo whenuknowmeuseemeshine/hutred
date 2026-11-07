@@ -74,8 +74,21 @@ class OfflineService extends ChangeNotifier {
 
   /// Путь к скачанному звуку или null.
   String? audioFor(Track t) {
-    final p = _files[keyOf(t)]?['audio'];
-    return p != null && File(p).existsSync() ? p : null;
+    final raw = _files[keyOf(t)]?['audio'];
+    if (raw == null) return null;
+    final p = fixPath(raw);
+    return File(p).existsSync() ? p : null;
+  }
+
+  /// На iPhone после переустановки/обновления (SideStore, iloader) папка
+  /// приложения получает новый адрес, и сохранённые полные пути
+  /// перестают работать. Переносим путь в текущую папку приложения.
+  static String fixPath(String p) {
+    if (kIsWeb || !Platform.isIOS) return p;
+    final m = RegExp(r'^.*?/Data/Application/[0-9A-Fa-f-]{36}').firstMatch(p);
+    final home = Platform.environment['HOME'];
+    if (m == null || home == null || p.startsWith(home)) return p;
+    return home + p.substring(m.end);
   }
 
   Map<String, String>? _covers;
@@ -84,7 +97,7 @@ class OfflineService extends ChangeNotifier {
   String? coverForUrl(String url) {
     _covers ??= {
       for (final f in _files.values)
-        if (f['coverUrl'] != null && f['cover'] != null) f['coverUrl']!: f['cover']!,
+        if (f['coverUrl'] != null && f['cover'] != null) f['coverUrl']!: fixPath(f['cover']!),
     };
     return _covers![url];
   }

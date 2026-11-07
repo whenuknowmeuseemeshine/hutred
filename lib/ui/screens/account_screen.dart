@@ -82,19 +82,19 @@ class SignInFormState extends State<SignInForm> {
   Future<void> _submit() async {
     final email = _email.text.trim();
     final password = _password.text;
-    if (!email.contains('@')) {
-      setState(() {
-        _message = 'Введи почту полностью, например name@mail.ru';
-        _messageIsError = true;
-      });
-      return;
+    void problem(String m) => setState(() {
+          _message = m;
+          _messageIsError = true;
+        });
+    if (_register && !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      return problem('Введи почту полностью, например name@mail.ru');
     }
-    if (password.length < 6) {
-      setState(() {
-        _message = 'Пароль должен быть не короче 6 символов';
-        _messageIsError = true;
-      });
-      return;
+    if (!_register && email.isEmpty) return problem('Введи почту или логин');
+    if (_register) {
+      final weak = AccountService.weakPassword(password);
+      if (weak != null) return problem(weak);
+    } else if (password.isEmpty) {
+      return problem('Введи пароль');
     }
     final acc = context.read<AccountService>();
     final username = _username.text.trim();
@@ -146,7 +146,8 @@ class SignInFormState extends State<SignInForm> {
     final email = _email.text.trim();
     if (!email.contains('@')) {
       setState(() {
-        _message = 'Сначала впиши почту, на неё придёт ссылка для сброса';
+        _message = 'Впиши почту (не логин) — на неё придёт ссылка для сброса. '
+            'Открой письмо на этом же устройстве';
         _messageIsError = true;
       });
       return;
@@ -154,7 +155,8 @@ class SignInFormState extends State<SignInForm> {
     try {
       await context.read<AccountService>().resetPassword(email);
       setState(() {
-        _message = 'Письмо для сброса пароля отправлено на $email';
+        _message = 'Письмо отправлено на $email. Открой ссылку на этом устройстве — '
+            'Hutred откроется и попросит новый пароль';
         _messageIsError = false;
       });
     } catch (e) {
@@ -188,9 +190,12 @@ class SignInFormState extends State<SignInForm> {
         TextField(
           controller: _email,
           keyboardType: TextInputType.emailAddress,
-          autofillHints: const [AutofillHints.email],
-          decoration: const InputDecoration(
-              labelText: 'Почта', border: OutlineInputBorder()),
+          autofillHints: _register
+              ? const [AutofillHints.email]
+              : const [AutofillHints.username, AutofillHints.email],
+          decoration: InputDecoration(
+              labelText: _register ? 'Почта' : 'Почта или логин',
+              border: const OutlineInputBorder()),
         ),
         if (_register) ...[
           const SizedBox(height: 12),
@@ -212,8 +217,10 @@ class SignInFormState extends State<SignInForm> {
             _register ? AutofillHints.newPassword : AutofillHints.password
           ],
           onSubmitted: (_) => _submit(),
-          decoration: const InputDecoration(
-              labelText: 'Пароль', border: OutlineInputBorder()),
+          decoration: InputDecoration(
+              labelText: 'Пароль',
+              helperText: _register ? 'От 8 символов, буквы и цифры' : null,
+              border: const OutlineInputBorder()),
         ),
         if (_message != null) ...[
           const SizedBox(height: 12),
@@ -433,6 +440,13 @@ class _Profile extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             StyleButton(
+              label: 'Сменить пароль',
+              icon: Ic.edit_outlined,
+              primary: false,
+              onPressed: () => showNewPasswordDialog(context),
+            ),
+            const SizedBox(height: 10),
+            StyleButton(
               label: 'Выйти из аккаунта',
               icon: Ic.logout,
               primary: false,
@@ -547,4 +561,98 @@ Future<void> _editUsername(BuildContext context) async {
       },
     ),
   );
+}
+
+
+/// Окно нового пароля: после ссылки «сбросить пароль» или из аккаунта.
+Future<void> showNewPasswordDialog(BuildContext context, {bool recovery = false}) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: !recovery,
+    builder: (_) => _NewPasswordDialog(recovery: recovery),
+  );
+}
+
+class _NewPasswordDialog extends StatefulWidget {
+  const _NewPasswordDialog({required this.recovery});
+  final bool recovery;
+
+  @override
+  State<_NewPasswordDialog> createState() => _NewPasswordDialogState();
+}
+
+class _NewPasswordDialogState extends State<_NewPasswordDialog> {
+  final _p1 = TextEditingController();
+  final _p2 = TextEditingController();
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _p1.dispose();
+    _p2.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final weak = AccountService.weakPassword(_p1.text);
+    if (weak != null) return setState(() => _error = weak);
+    if (_p1.text != _p2.text) return setState(() => _error = 'Пароли не совпадают');
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await context.read<AccountService>().changePassword(_p1.text);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      AppActions.toast(context, 'Пароль изменён');
+    } catch (e) {
+      if (mounted) setState(() => _error = AccountService.authError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.recovery ? 'Придумай новый пароль' : 'Сменить пароль'),
+      content: SizedBox(
+        width: 360,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: _p1,
+            obscureText: true,
+            autofocus: true,
+            autofillHints: const [AutofillHints.newPassword],
+            decoration: const InputDecoration(
+                labelText: 'Новый пароль',
+                helperText: 'От 8 символов, буквы и цифры',
+                border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _p2,
+            obscureText: true,
+            onSubmitted: (_) => _save(),
+            decoration: const InputDecoration(
+                labelText: 'Ещё раз', border: OutlineInputBorder()),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+        ]),
+      ),
+      actions: [
+        if (!widget.recovery)
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Отмена')),
+        FilledButton(
+          onPressed: _busy ? null : _save,
+          child: const Text('Сохранить'),
+        ),
+      ],
+    );
+  }
 }

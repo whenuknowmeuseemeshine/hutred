@@ -8,6 +8,7 @@ import '../../services/jam_service.dart';
 import '../actions.dart';
 import '../theme.dart';
 import '../widgets/artwork.dart';
+import '../widgets/net_image.dart';
 import 'account_screen.dart';
 import '../icons.dart';
 import '../widgets/style_bits.dart';
@@ -240,7 +241,7 @@ class _Members extends StatelessWidget {
         for (final m in members)
           Chip(
             avatar: CircleAvatar(
-              backgroundImage: m.avatar == null ? null : NetworkImage(m.avatar!),
+              backgroundImage: m.avatar == null ? null : NetArt(m.avatar!),
               child: m.avatar == null ? Text(m.name.replaceFirst('@', '').characters.first) : null,
             ),
             label: Text(m.uid == host ? '${m.name} · ведущий' : m.name),
@@ -303,7 +304,7 @@ class _InviteList extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: CircleAvatar(
-            backgroundImage: fr.avatarUrl == null ? null : NetworkImage(fr.avatarUrl!),
+            backgroundImage: fr.avatarUrl == null ? null : NetArt(fr.avatarUrl!),
             child: fr.avatarUrl == null ? Icon(Ic.person_outline, size: 18) : null,
           ),
           title: Text(fr.name),
