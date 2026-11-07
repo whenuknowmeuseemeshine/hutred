@@ -53,6 +53,31 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+        <!-- Виджеты на рабочем столе. -->
+        <receiver android:name=".HutredWidgetSmall" android:exported="false" android:label="Hutred · сейчас играет">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/hutred_widget_small" />
+        </receiver>
+        <receiver android:name=".HutredWidgetWave" android:exported="false" android:label="Hutred · Моя волна">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/hutred_widget_wave" />
+        </receiver>
+        <receiver android:name=".HutredWidgetMedium" android:exported="false" android:label="Hutred · плеер">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/hutred_widget_medium" />
+        </receiver>
+        <receiver android:name=".HutredWidgetLarge" android:exported="false" android:label="Hutred · плеер и плейлисты">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/hutred_widget_large" />
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

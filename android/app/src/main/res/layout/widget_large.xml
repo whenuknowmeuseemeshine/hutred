@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_bg" android:scaleType="fitXY"/>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="14dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <ImageView android:id="@+id/cover" android:layout_width="108dp" android:layout_height="108dp" android:scaleType="centerCrop"/>
+            <LinearLayout android:layout_width="0dp" android:layout_height="108dp" android:layout_weight="1" android:orientation="vertical" android:layout_marginLeft="12dp">
+                <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content"><ImageView android:id="@+id/logo" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="end|top" android:src="@drawable/w_logo"/></FrameLayout>
+                <TextView android:id="@+id/title" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="17sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" android:textColor="#FFFFFFFF"/>
+            <TextView android:id="@+id/artist" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" android:textColor="#C8FFFFFF"/>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="bottom|center_vertical">
+                    <ImageView android:id="@+id/prev" android:layout_width="32dp" android:layout_height="40dp" android:paddingLeft="6dp" android:paddingRight="6dp" android:paddingTop="10dp" android:paddingBottom="10dp" android:scaleType="fitCenter" android:src="@drawable/w_prev"/>
+                    <FrameLayout android:id="@+id/play" android:layout_width="44dp" android:layout_height="44dp">
+            <ImageView android:id="@+id/play_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_circle"/>
+            <ImageView android:id="@+id/play_icon" android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:src="@drawable/w_pause"/>
+        </FrameLayout>
+                    <ImageView android:id="@+id/next" android:layout_width="32dp" android:layout_height="40dp" android:paddingLeft="6dp" android:paddingRight="6dp" android:paddingTop="10dp" android:paddingBottom="10dp" android:scaleType="fitCenter" android:src="@drawable/w_next"/>
+                    <FrameLayout android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+                    <ImageView android:id="@+id/like" android:layout_width="36dp" android:layout_height="40dp" android:paddingLeft="8dp" android:paddingRight="8dp" android:paddingTop="10dp" android:paddingBottom="10dp" android:scaleType="fitCenter" android:src="@drawable/w_heart_line"/>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+        <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="12dp" android:layout_marginBottom="10dp" android:max="1000" android:progressDrawable="@drawable/w_progress"/>
+        <TextView android:id="@+id/recent" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="НЕДАВНЕЕ" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.06" android:textColor="#C8FFFFFF" android:layout_marginBottom="6dp"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <FrameLayout android:id="@+id/tile0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageView android:id="@+id/tile0_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile0_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile0_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+            <FrameLayout android:id="@+id/tile1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginLeft="8dp">
+                <ImageView android:id="@+id/tile1_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile1_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile1_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+            <FrameLayout android:id="@+id/tile2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginLeft="8dp">
+                <ImageView android:id="@+id/tile2_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile2_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile2_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+            <FrameLayout android:id="@+id/tile3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginLeft="8dp">
+                <ImageView android:id="@+id/tile3_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile3_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile3_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginTop="8dp">
+            <FrameLayout android:id="@+id/tile4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageView android:id="@+id/tile4_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile4_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile4_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+            <FrameLayout android:id="@+id/tile5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginLeft="8dp">
+                <ImageView android:id="@+id/tile5_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile5_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile5_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+            <FrameLayout android:id="@+id/tile6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginLeft="8dp">
+                <ImageView android:id="@+id/tile6_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile6_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile6_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+            <FrameLayout android:id="@+id/tile7" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginLeft="8dp">
+                <ImageView android:id="@+id/tile7_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_tile" android:scaleType="fitXY"/>
+                <ImageView android:id="@+id/tile7_img" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop"/>
+                <ImageView android:id="@+id/tile7_icon" android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center"/>
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

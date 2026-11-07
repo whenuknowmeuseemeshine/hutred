@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'services/widget_sync.dart';
 import 'services/xray_vpn.dart';
 import 'ui/screens/account_screen.dart';
 import 'services/deep_links.dart';
@@ -303,6 +304,10 @@ Future<void> main(List<String> args) async {
   final releases = ReleasesService(wave: wave);
   player.youtubeAllowed = () => settings.youtubeAuto;
   // Ссылки hutred:// с сайта открывают трек в приложении.
+  // Виджеты на рабочем столе телефона.
+  final widgets = WidgetSync(player: player, store: store, settings: settings, wave: wave);
+  DeepLinks.onWidget = widgets.command;
+  unawaited(widgets.start());
   unawaited(DeepLinks.start(store: store, player: player));
   // Статус «Слушает Hutred» в Discord (на компьютере).
   DiscordPresence(player: player, settings: settings);
