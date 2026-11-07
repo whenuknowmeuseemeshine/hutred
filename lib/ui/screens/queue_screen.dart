@@ -118,7 +118,9 @@ class _QueueSheetState extends State<QueueSheet> {
           ),
         );
 
-    Widget heading(String title, String? note, {IconData? icon}) => Padding(
+    // Заголовок раздела — это «сливер», иначе список падает (серый экран).
+    Widget heading(String title, String? note, {IconData? icon}) => SliverToBoxAdapter(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             if (icon != null) ...[Icon(icon, size: 16, color: k.ok), const SizedBox(width: 6)],
@@ -132,7 +134,7 @@ class _QueueSheetState extends State<QueueSheet> {
               ),
             ],
           ]),
-        );
+        ));
 
     Widget row(Track t, {required VoidCallback onTap, Widget? trailing, double opacity = 1}) =>
         TrackContextMenu(
