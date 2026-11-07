@@ -414,7 +414,10 @@ class DpiBypass {
     if (ip != null) return Future.value(ip);
     final cached = _dns[host];
     if (cached != null && DateTime.now().isBefore(cached.until)) return Future.value(cached.addr);
-    return _resolving[host] ??= _resolve(host).whenComplete(() => _resolving.remove(host));
+    return _resolving[host] ??= _resolve(host).whenComplete(() {
+      // Без «=>»: remove вернул бы этот же Future, и whenComplete ждал бы сам себя.
+      _resolving.remove(host);
+    });
   }
 
   static Future<InternetAddress> _resolve(String host) async {

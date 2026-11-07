@@ -108,7 +108,10 @@ class ArtCache {
   }
 
   static Future<({Uint8List bytes, bool fromDisk})> get(String url) =>
-      _inflight[url] ??= _get(url).whenComplete(() => _inflight.remove(url));
+      _inflight[url] ??= _get(url).whenComplete(() {
+        // Без «=>»: remove вернул бы этот же Future, и whenComplete ждал бы сам себя.
+        _inflight.remove(url);
+      });
 
   static Future<({Uint8List bytes, bool fromDisk})> _get(String url) async {
     final file = await _file(url);
