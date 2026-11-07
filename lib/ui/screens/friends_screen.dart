@@ -607,7 +607,7 @@ class _Avatar extends StatelessWidget {
       radius: radius,
       backgroundColor: scheme.primary,
       foregroundColor: scheme.onPrimary,
-      foregroundImage: url == null ? null : NetArt(url),
+      foregroundImage: url == null ? null : netImage(url),
       onForegroundImageError: url == null ? null : (_, __) {},
       child: Text((info.username ?? '?')[0].toUpperCase(),
           style: const TextStyle(fontWeight: FontWeight.w800)),
