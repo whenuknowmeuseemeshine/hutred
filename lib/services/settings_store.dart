@@ -65,6 +65,7 @@ class SettingsStore extends ChangeNotifier {
   /// Брать треки с YouTube автоматически (поиск, волна, «где играть»). По умолчанию — нет: долго грузятся.
   bool _youtubeAuto = false;
   bool _widgetCover = true;
+  bool _autoplayRecs = true;
   bool _geniusLyrics = true;
   bool _geniusCovers = true;
   bool _replaceYoutubeCovers = true;
@@ -309,6 +310,9 @@ class SettingsStore extends ChangeNotifier {
 
   /// Виджеты на рабочем столе: цвет под обложку (иначе — как стиль приложения).
   bool get widgetCover => _widgetCover;
+
+  /// Плейлист закончился — включать похожие треки (как в Spotify).
+  bool get autoplayRecs => _autoplayRecs;
   bool get geniusLyrics => _geniusLyrics;
   bool get geniusCovers => _geniusCovers;
 
@@ -665,6 +669,7 @@ class SettingsStore extends ChangeNotifier {
       _youtubeLyrics = j['youtubeLyrics'] as bool? ?? true;
       _youtubeAuto = j['youtubeAuto'] as bool? ?? false;
       _widgetCover = j['widgetCover'] as bool? ?? true;
+      _autoplayRecs = j['autoplayRecs'] as bool? ?? true;
       _geniusLyrics = j['geniusLyrics'] as bool? ?? true;
       _geniusCovers = j['geniusCovers'] as bool? ?? true;
       _replaceYoutubeCovers = j['replaceYoutubeCovers'] as bool? ?? true;
@@ -767,6 +772,7 @@ class SettingsStore extends ChangeNotifier {
         'youtubeLyrics': _youtubeLyrics,
         'youtubeAuto': _youtubeAuto,
         'widgetCover': _widgetCover,
+        'autoplayRecs': _autoplayRecs,
         'geniusLyrics': _geniusLyrics,
         'geniusCovers': _geniusCovers,
         'replaceYoutubeCovers': _replaceYoutubeCovers,
@@ -848,6 +854,11 @@ class SettingsStore extends ChangeNotifier {
 
   set widgetCover(bool v) {
     _widgetCover = v;
+    _save();
+  }
+
+  set autoplayRecs(bool v) {
+    _autoplayRecs = v;
     _save();
   }
 
