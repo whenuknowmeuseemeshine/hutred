@@ -303,6 +303,8 @@ Future<void> main(List<String> args) async {
   // «Что нового»: релизы исполнителей, на которых подписан.
   final releases = ReleasesService(wave: wave);
   player.youtubeAllowed = () => settings.youtubeAuto;
+  player.autoplayAllowed = () => settings.autoplayRecs;
+  player.isWaveQueue = () => wave.isWaveTrack(player.current);
   // Ссылки hutred:// с сайта открывают трек в приложении.
   // Виджеты на рабочем столе телефона.
   final widgets = WidgetSync(player: player, store: store, settings: settings, wave: wave);

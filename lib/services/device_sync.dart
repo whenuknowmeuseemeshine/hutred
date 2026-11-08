@@ -350,7 +350,9 @@ class DeviceSync extends ChangeNotifier with WidgetsBindingObserver {
     final i = player.index;
     if (q.isEmpty || i < 0) return;
     final from = max(0, i - 5);
-    final to = min(q.length, i + 60);
+    // Очередь передаём почти целиком (раньше — 60 треков, и на другом
+    // устройстве часть медиатеки пропадала).
+    final to = min(q.length, i + 800);
     await _send('take', {
       'to': target,
       'queue': [for (final t in q.sublist(from, to)) _compact(t)],

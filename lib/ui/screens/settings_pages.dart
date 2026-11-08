@@ -919,6 +919,13 @@ class _PlayPage extends StatelessWidget {
 
     return SkGap(gap: 20, children: [
       SkCols(equal: true, children: [crossfade, fade]),
+      SkCard(
+        child: SkHead(
+          title: 'Похожее после плейлиста',
+          sub: 'Когда плейлист или альбом закончился, дальше играют подобранные треки — как в Spotify',
+          trailing: SkToggle(value: s.autoplayRecs, onChanged: (v) => s.autoplayRecs = v),
+        ),
+      ),
       if (Platform.isIOS || Platform.isMacOS)
         SkCard(
           child: SkHead(

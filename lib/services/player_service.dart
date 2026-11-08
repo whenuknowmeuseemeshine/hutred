@@ -148,9 +148,10 @@ class PlayerService extends ChangeNotifier {
       } catch (_) {}
       return;
     }
-    // Длинную очередь храним вокруг текущего трека, чтобы файл был маленьким.
-    final from = max(0, _index - 50);
-    final to = min(_queue.length, _index + 150);
+    // Очередь храним целиком (раньше — только 150 треков вперёд, и после
+    // перезапуска часть медиатеки пропадала из перемешивания).
+    final from = max(0, _index - 200);
+    final to = min(_queue.length, _index + 3000);
     try {
       await f.writeAsString(jsonEncode({
         'queue': [for (final t in _queue.sublist(from, to)) t.toJson()],
@@ -327,6 +328,7 @@ class PlayerService extends ChangeNotifier {
       onStarted?.call(next);
       notifyListeners();
       if (_smart) unawaited(_ensureRecsAhead());
+      if (_queue.length - _index <= 3) unawaited(_autoplayFill());
       _prefetchNext();
       final low = onQueueLow;
       if (low != null && _queue.length - _index <= 6) unawaited(low());
@@ -524,6 +526,8 @@ class PlayerService extends ChangeNotifier {
       onStarted?.call(t);
       // Умное перемешивание: держим рекомендации на несколько треков вперёд.
       if (_smart) unawaited(_ensureRecsAhead());
+      // Подходит конец очереди — заранее подбираем похожее.
+      if (_queue.length - _index <= 3) unawaited(_autoplayFill());
       _prefetchNext();
       final low = onQueueLow;
       if (low != null && _queue.length - _index <= 6) unawaited(low());
@@ -702,6 +706,9 @@ class PlayerService extends ChangeNotifier {
       _index++;
     } else if (_repeat == RepeatSetting.all) {
       _index = 0;
+    } else if (await _autoplayFill()) {
+      // Как в Spotify: плейлист кончился — играем похожее.
+      _index++;
     } else {
       await _player.pause();
       await _player.seek(Duration.zero);
@@ -839,6 +846,60 @@ class PlayerService extends ChangeNotifier {
       }
     }
     return spots;
+  }
+
+  /// Можно ли после конца плейлиста включать похожие треки (настройка).
+  bool Function() autoplayAllowed = () => true;
+
+  /// Сейчас играет «Моя волна» — она докладывает треки сама.
+  bool Function()? isWaveQueue;
+
+  Future<bool>? _autoplayRun;
+
+  /// Очередь кончается — добавляем в конец похожие треки (рекомендации).
+  /// true — что-то добавили.
+  Future<bool> _autoplayFill() => _autoplayRun ??= () async {
+        try {
+          return await _autoplayFillNow();
+        } finally {
+          _autoplayRun = null;
+        }
+      }();
+
+  Future<bool> _autoplayFillNow() async {
+    final rec = recommend;
+    if (rec == null || _queue.isEmpty || !autoplayAllowed()) return false;
+    if (_repeat != RepeatSetting.off) return false;
+    if (isWaveQueue?.call() == true) return false;
+    if (_queue.length - _index > 3) return false;
+    try {
+      // Похожее — по последним своим трекам очереди.
+      final own = _queue.reversed.where((t) => !_recommended.contains(t.id)).take(12).toList()
+        ..shuffle(_rand);
+      final seeds = own.isEmpty ? _queue.reversed.take(5).toList() : own.take(5).toList();
+      final found = await rec(seeds, 20).timeout(const Duration(seconds: 20));
+      final known = {for (final t in _queue) '${t.source.name}:${t.uri}'};
+      final artists = <String, int>{};
+      final fresh = <Track>[];
+      for (final t in found) {
+        if (!known.add('${t.source.name}:${t.uri}')) continue;
+        if (isBlocked?.call(t) == true || isDuplicate?.call(t) == true) continue;
+        // Не больше двух треков одного исполнителя в пачке.
+        final k = _artistKey(t);
+        if ((artists[k] = (artists[k] ?? 0) + 1) > 2) continue;
+        fresh.add(t);
+      }
+      if (fresh.isEmpty) return false;
+      _queue.addAll(fresh);
+      _unshuffled.addAll(fresh);
+      _recommended.addAll(fresh.map((t) => t.id));
+      notifyListeners();
+      unawaited(_saveState());
+      return true;
+    } catch (e) {
+      debugPrint('[Похожее после плейлиста] $e');
+      return false;
+    }
   }
 
   /// Как в Spotify: после каждых двух своих треков — одна рекомендация из
