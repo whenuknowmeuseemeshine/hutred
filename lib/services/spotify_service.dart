@@ -374,6 +374,90 @@ extension SpotifyImport on SpotifyService {
     return (out, total);
   }
 
+  // ---------- Релизы исполнителя ----------
+
+  static final _albumsCache = <String, (DateTime, List<SpAlbum>)>{};
+
+  Future<dynamic> _apiGet(String path, Map<String, String> q,
+      {required String id, required String secret}) async {
+    final token = await _getToken(id, secret);
+    if (token == null) throw Exception('Spotify недоступен');
+    final res = await _client
+        .get(Uri.https('api.spotify.com', path, q), headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) throw Exception('Spotify ответил ${res.statusCode}');
+    return jsonDecode(utf8.decode(res.bodyBytes));
+  }
+
+  static String _plain(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-zа-яё0-9]'), '');
+
+  /// Альбомы и синглы исполнителя в Spotify (свежие первыми). Deezer
+  /// иногда отстаёт на месяцы — новые релизы берём отсюда.
+  Future<List<SpAlbum>> artistAlbums(String name, {required String id, required String secret}) async {
+    final key = _plain(name);
+    if (key.isEmpty) return const [];
+    final hit = _albumsCache[key];
+    if (hit != null && DateTime.now().difference(hit.$1) < const Duration(hours: 6)) return hit.$2;
+    final found = await _apiGet('/v1/search', {'q': name, 'type': 'artist', 'limit': '5'},
+        id: id, secret: secret);
+    final artists = ((found is Map ? found['artists'] : null) is Map ? found['artists']['items'] : null)
+            as List? ??
+        const [];
+    // Только точное совпадение имени (иначе это чужой исполнитель).
+    final match = artists.whereType<Map>().where((a) => _plain('${a['name']}') == key).toList()
+      ..sort((a, b) => (((b['followers'] as Map?)?['total'] as num?) ?? 0)
+          .compareTo(((a['followers'] as Map?)?['total'] as num?) ?? 0));
+    if (match.isEmpty) {
+      _albumsCache[key] = (DateTime.now(), const []);
+      return const [];
+    }
+    final j = await _apiGet('/v1/artists/${match.first['id']}/albums',
+        {'include_groups': 'album,single', 'limit': '50', 'market': 'US'},
+        id: id, secret: secret);
+    final out = <SpAlbum>[];
+    for (final a in ((j is Map ? j['items'] : null) as List? ?? const []).whereType<Map>()) {
+      final images = a['images'] as List? ?? const [];
+      final date = '${a['release_date'] ?? ''}';
+      out.add(SpAlbum(
+        id: '${a['id']}',
+        title: '${a['name'] ?? ''}',
+        type: '${a['album_type'] ?? 'album'}',
+        released: DateTime.tryParse(date.length == 4 ? '$date-01-01' : date.length == 7 ? '$date-01' : date),
+        cover: images.isEmpty ? null : (images.first as Map)['url'] as String?,
+        tracks: (a['total_tracks'] as num?)?.toInt() ?? 0,
+      ));
+    }
+    _albumsCache[key] = (DateTime.now(), out);
+    return out;
+  }
+
+  /// Треки альбома Spotify.
+  Future<List<Track>> albumTracks(String albumId,
+      {required String id, required String secret, String? cover, String album = ''}) async {
+    final j = await _apiGet('/v1/albums/$albumId/tracks', {'limit': '50', 'market': 'US'},
+        id: id, secret: secret);
+    return [
+      for (final it in ((j is Map ? j['items'] : null) as List? ?? const []).whereType<Map>())
+        if (it['id'] is String && it['name'] is String)
+          Track(
+            id: Track.newId(),
+            title: it['name'] as String,
+            artist: (it['artists'] as List? ?? const [])
+                .whereType<Map>()
+                .map((a) => '${a['name'] ?? ''}')
+                .where((a) => a.isNotEmpty)
+                .join(', '),
+            album: album,
+            source: TrackSource.spotify,
+            uri: it['id'] as String,
+            durationMs: (it['duration_ms'] as num?)?.toInt(),
+            artworkUrl: cover,
+            coverChecked: true,
+            addedAt: DateTime.now(),
+          ),
+    ];
+  }
+
   /// Без ключей: читаем открытую страницу-виджет Spotify (embed) —
   /// там есть название, исполнители и длительность каждого трека.
   Future<({String name, List<({String artist, String title, int? durationMs})> tracks})>
@@ -634,4 +718,23 @@ class _PacedClient extends http.BaseClient {
     }
     return res;
   }
+}
+
+
+/// Релиз исполнителя в Spotify.
+class SpAlbum {
+  const SpAlbum({
+    required this.id,
+    required this.title,
+    required this.type,
+    this.released,
+    this.cover,
+    this.tracks = 0,
+  });
+  final String id;
+  final String title;
+  final String type;
+  final DateTime? released;
+  final String? cover;
+  final int tracks;
 }

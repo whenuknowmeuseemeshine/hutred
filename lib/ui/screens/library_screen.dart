@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -705,19 +706,36 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
 
-    final top = <Widget>[
-      SliverToBoxAdapter(child: header),
-      if (search != null) SliverToBoxAdapter(child: search),
-      SliverToBoxAdapter(child: chips),
-      const SliverToBoxAdapter(child: SizedBox(height: 12)),
-    ];
+    // Шапка (аватар, «Медиатека», фильтры, сортировка) закреплена сверху
+    // и не уезжает при прокрутке.
+    List<Widget> top([Widget? extra]) {
+      final bar = Column(mainAxisSize: MainAxisSize.min, children: [
+        header,
+        if (search != null) search,
+        chips,
+        const SizedBox(height: 12),
+        if (extra != null) extra,
+      ]);
+      return [
+        PinnedHeaderSliver(
+          child: k.glass
+              ? ClipRect(
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: ColoredBox(color: const Color(0x8C071C22), child: bar),
+                  ),
+                )
+              : ColoredBox(color: Theme.of(context).scaffoldBackgroundColor, child: bar),
+        ),
+      ];
+    }
 
     // ---------- Плейлисты: любимые и скачанные первыми ----------
     if (_tab == _Tab.playlists) {
       final q = _q.toLowerCase();
       final lists = store.playlists.where((p) => q.isEmpty || p.name.toLowerCase().contains(q));
       return [
-        ...top,
+        ...top(),
         SliverToBoxAdapter(
           child: Column(children: [
             _PhoneListRow(
@@ -761,7 +779,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (_tab == _Tab.artists || _tab == _Tab.albums) {
       final q = _q.toLowerCase();
       return [
-        ...top,
+        ...top(),
         SliverToBoxAdapter(
           child: _tab == _Tab.artists
               ? gridOf([
@@ -832,8 +850,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ]),
     );
     return [
-      ...top,
-      SliverToBoxAdapter(child: sortRow),
+      ...top(sortRow),
       if (tracks.isEmpty)
         SliverFillRemaining(
           hasScrollBody: false,

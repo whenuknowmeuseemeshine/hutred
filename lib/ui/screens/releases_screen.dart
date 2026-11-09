@@ -159,7 +159,7 @@ class _ReleasesScreenState extends State<ReleasesScreen> {
               tooltip: 'Добавить в медиатеку',
               onPressed: () async {
                 final store = context.read<LibraryStore>();
-                final tracks = await DeezerCatalog.albumTracks(a.id).catchError((_) => <Track>[]);
+                final tracks = await DeezerCatalog.tracksOf(a).catchError((_) => <Track>[]);
                 if (!context.mounted) return;
                 final n = store.addTracks(tracks);
                 AppActions.toast(context, n == 0 ? 'Уже в медиатеке' : 'Добавлено: ${tracksWord(n)}');
@@ -170,7 +170,7 @@ class _ReleasesScreenState extends State<ReleasesScreen> {
               tooltip: 'Слушать',
               onPressed: () async {
                 final player = context.read<PlayerService>();
-                final tracks = await DeezerCatalog.albumTracks(a.id).catchError((_) => <Track>[]);
+                final tracks = await DeezerCatalog.tracksOf(a).catchError((_) => <Track>[]);
                 if (tracks.isNotEmpty) await player.playAll(tracks);
               },
               icon: Icon(Icons.play_circle_fill_rounded, size: 34, color: k.text),

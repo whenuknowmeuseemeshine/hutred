@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'services/deezer_catalog.dart';
 import 'services/widget_sync.dart';
 import 'services/xray_vpn.dart';
 import 'ui/screens/account_screen.dart';
@@ -304,6 +305,26 @@ Future<void> main(List<String> args) async {
   final releases = ReleasesService(wave: wave);
   player.youtubeAllowed = () => settings.youtubeAuto;
   player.autoplayAllowed = () => settings.autoplayRecs;
+  // Новые релизы исполнителей: Deezer иногда отстаёт — добираем из Spotify.
+  DeezerCatalog.extraAlbums = (artist) async {
+    if (!settings.hasSpotifyKeys) return const [];
+    final list = await spotify.artistAlbums(artist, id: settings.spotifyId, secret: settings.spotifySecret);
+    return [
+      for (final a in list)
+        DzAlbum(
+          id: -(a.id.hashCode.abs() + 1),
+          title: a.title,
+          cover: a.cover,
+          released: a.released,
+          type: a.type == 'single' ? (a.tracks > 1 ? 'ep' : 'single') : a.type,
+          tracks: a.tracks,
+          artist: artist,
+          spotifyId: a.id,
+        ),
+    ];
+  };
+  DeezerCatalog.extraTracks = (a) => spotify.albumTracks(a.spotifyId!,
+      id: settings.spotifyId, secret: settings.spotifySecret, cover: a.cover, album: a.title);
   player.isWaveQueue = () => wave.isWaveTrack(player.current);
   // Ссылки hutred:// с сайта открывают трек в приложении.
   // Виджеты на рабочем столе телефона.

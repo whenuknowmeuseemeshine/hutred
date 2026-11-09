@@ -630,7 +630,13 @@ class _KaraokeViewState extends State<KaraokeView> {
   final _scroll = ScrollController();
   late List<GlobalKey> _keys;
   int _current = -2;
-  DateTime _userScrolledAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _detached = false;
+
+  /// Вернуться к строке, которую поют сейчас.
+  void _resync() {
+    setState(() => _detached = false);
+    _follow(_current < 0 ? 0 : _current);
+  }
 
   @override
   void initState() {
@@ -644,6 +650,7 @@ class _KaraokeViewState extends State<KaraokeView> {
     if (old.lyrics != widget.lyrics) {
       _keys = List.generate(widget.lyrics.lines.length, (_) => GlobalKey());
       _current = -2;
+      _detached = false;
     }
   }
 
@@ -655,11 +662,9 @@ class _KaraokeViewState extends State<KaraokeView> {
 
   void _follow(int index, {bool animate = true}) {
     if (index < 0 || index >= _keys.length) return;
-    // Если пользователь сам листал текст — не дёргаем его 4 секунды.
-    if (DateTime.now().difference(_userScrolledAt) <
-        const Duration(seconds: 4)) {
-      return;
-    }
+    // Пользователь сам листал текст — не дёргаем, пока не нажмёт
+    // «К текущей строке» (или не нажмёт на строку).
+    if (_detached) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _keys[index].currentContext;
       if (ctx == null || !mounted || !_scroll.hasClients) return;
@@ -729,8 +734,10 @@ class _KaraokeViewState extends State<KaraokeView> {
     }
 
     return NotificationListener<UserScrollNotification>(
-      onNotification: (_) {
-        _userScrolledAt = DateTime.now();
+      onNotification: (n) {
+        if (n.direction != ScrollDirection.idle && !_detached) {
+          setState(() => _detached = true);
+        }
         return false;
       },
       child: StreamBuilder<Duration>(
@@ -812,6 +819,7 @@ class _KaraokeViewState extends State<KaraokeView> {
                       onTap: () {
                         final t = lyrics.lines[i].time - widget.offset;
                         widget.onSeek(t.isNegative ? Duration.zero : t);
+                        if (_detached) setState(() => _detached = false);
                       },
                     ),
                   ],
@@ -819,6 +827,40 @@ class _KaraokeViewState extends State<KaraokeView> {
               ),
             ),
           )),
+              // Как в Spotify: отлистал текст — кнопка возвращает к песне.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 24,
+                child: IgnorePointer(
+                  ignoring: !_detached,
+                  child: AnimatedOpacity(
+                    opacity: _detached ? 1 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Center(
+                      child: Material(
+                        color: Colors.white,
+                        shape: const StadiumBorder(),
+                        elevation: 6,
+                        child: InkWell(
+                          customBorder: const StadiumBorder(),
+                          onTap: _resync,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.my_location_rounded, size: 18, color: Colors.black),
+                              SizedBox(width: 8),
+                              Text('К текущей строке',
+                                  style: TextStyle(
+                                      color: Colors.black, fontWeight: FontWeight.w700, fontSize: 14)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           );
         },

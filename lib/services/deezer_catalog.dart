@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/track.dart';
@@ -23,7 +24,11 @@ class DzAlbum {
     this.tracks = 0,
     this.artist = '',
     this.artistId,
+    this.spotifyId,
   });
+
+  /// Релиз из Spotify (в Deezer его ещё нет).
+  final String? spotifyId;
   final String artist;
   final String? artistId;
   final int id;
@@ -127,6 +132,19 @@ class DeezerCatalog {
           type: '${a['record_type'] ?? 'album'}',
         ),
     ];
+    // Deezer бывает отстаёт на месяцы — добавляем релизы из Spotify.
+    final extra = extraAlbums;
+    if (extra != null && artist.isNotEmpty) {
+      try {
+        final have = {for (final a in out) _norm(a.title)};
+        for (final a in await extra(artist)) {
+          if (have.contains(_norm(a.title))) continue;
+          out.add(a);
+        }
+      } catch (e) {
+        debugPrint('[Релизы Spotify] $e');
+      }
+    }
     // Свежие сверху; повторы (переиздания с тем же названием) убираем.
     out.sort((a, b) => (b.released ?? DateTime(1900)).compareTo(a.released ?? DateTime(1900)));
     final seen = <String>{};
@@ -134,6 +152,19 @@ class DeezerCatalog {
       for (final a in out)
         if (seen.add('${_norm(a.title)}|${a.type}')) a,
     ];
+  }
+
+  /// Релизы исполнителя из Spotify (подключается в main.dart).
+  static Future<List<DzAlbum>> Function(String artist)? extraAlbums;
+
+  /// Треки релиза из Spotify.
+  static Future<List<Track>> Function(DzAlbum album)? extraTracks;
+
+  /// Треки релиза — из Deezer или из Spotify.
+  static Future<List<Track>> tracksOf(DzAlbum a) {
+    final x = extraTracks;
+    if (a.spotifyId != null && x != null) return x(a);
+    return albumTracks(a.id);
   }
 
   static Future<List<DzArtist>> related(int artistId) async => [
@@ -161,7 +192,7 @@ Future<List<Track>> deezerAllTracks(int artistId, {void Function(int done, int t
   var done = 0;
   for (var i = 0; i < albums.length; i += 4) {
     final chunk = albums.skip(i).take(4).toList();
-    final lists = await Future.wait(chunk.map((a) => DeezerCatalog.albumTracks(a.id).catchError((_) => <Track>[])));
+    final lists = await Future.wait(chunk.map((a) => DeezerCatalog.tracksOf(a).catchError((_) => <Track>[])));
     for (final l in lists) {
       for (final t in l) {
         if (seen.add(norm(t.title))) out.add(t);
