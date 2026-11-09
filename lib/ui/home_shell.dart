@@ -23,6 +23,7 @@ import 'screens/wave_screen.dart';
 import 'widgets/update_toast.dart';
 import 'widgets/blurred_background.dart';
 import 'widgets/mini_player.dart';
+import '../main.dart' show hutredNavigatorKey;
 import 'shell_nav.dart';
 import 'theme.dart';
 import 'icons.dart';
@@ -30,6 +31,20 @@ import 'icons.dart';
 /// Каркас приложения: на широком экране боковая панель, на телефоне — нижняя.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
+
+  static _HomeShellState? _active;
+
+  /// Открыть экран внутри текущей вкладки — так нижний бар с плеером
+  /// остаётся видно. false — оболочки нет (тогда открывайте как обычно).
+  static bool push(Route<void> route) {
+    final shell = _active;
+    final nav = shell?._navKeys[shell._current]?.currentState;
+    if (shell == null || !shell.mounted || nav == null) return false;
+    // Сверху открыт экран «Сейчас играет» или другой поверх вкладок — закрываем.
+    hutredNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    nav.push(route);
+    return true;
+  }
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -61,6 +76,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    HomeShell._active = this;
     // Новая заявка в друзья — всплывающим сообщением с кнопкой «Принять».
     _requestSub = context.read<FriendsService>().newRequests.listen((f) {
       if (!mounted) return;
@@ -94,6 +110,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    if (HomeShell._active == this) HomeShell._active = null;
     _requestSub?.cancel();
     _inviteSub?.cancel();
     super.dispose();

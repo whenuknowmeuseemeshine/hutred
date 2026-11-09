@@ -2,6 +2,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
@@ -211,7 +212,7 @@ class TrackTile extends StatelessWidget {
       );
     }
 
-    return TrackContextMenu(
+    final tile = TrackContextMenu(
       track: track,
       compact: desktop,
       inFavorites: inFavorites,
@@ -303,6 +304,8 @@ class TrackTile extends StatelessWidget {
     ),
       )),
     );
+    // На телефоне: смахни трек вправо — он заиграет следующим (как в Spotify).
+    return desktop ? tile : SwipeToPlayNext(track: track, child: tile);
   }
 }
 
@@ -719,5 +722,93 @@ class _DownloadMark extends StatelessWidget {
       );
     }
     return const SizedBox.shrink();
+  }
+}
+
+
+/// Смахивание строки трека вправо: появляется «Играть следующим».
+class SwipeToPlayNext extends StatefulWidget {
+  const SwipeToPlayNext({super.key, required this.track, required this.child});
+  final Track track;
+  final Widget child;
+
+  @override
+  State<SwipeToPlayNext> createState() => _SwipeToPlayNextState();
+}
+
+class _SwipeToPlayNextState extends State<SwipeToPlayNext> with SingleTickerProviderStateMixin {
+  static const _trigger = 84.0;
+  double _dx = 0;
+  bool _armed = false;
+  late final AnimationController _back = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  )..addListener(() => setState(() => _dx = _from * (1 - Curves.easeOut.transform(_back.value))));
+  double _from = 0;
+
+  @override
+  void dispose() {
+    _back.dispose();
+    super.dispose();
+  }
+
+  void _update(DragUpdateDetails d) {
+    _back.stop();
+    setState(() => _dx = (_dx + d.delta.dx).clamp(0.0, 140.0));
+    final armed = _dx >= _trigger;
+    if (armed != _armed) {
+      _armed = armed;
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  Future<void> _end(DragEndDetails _) async {
+    if (_armed) {
+      final player = context.read<PlayerService>();
+      await player.playNext(widget.track);
+      if (mounted) AppActions.toast(context, 'Заиграет следующим: ${widget.track.title}');
+    }
+    _armed = false;
+    _from = _dx;
+    _back.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragUpdate: _update,
+      onHorizontalDragEnd: _end,
+      onHorizontalDragCancel: () => _end(DragEndDetails()),
+      child: Stack(children: [
+        if (_dx > 0)
+          Positioned.fill(
+            child: Container(
+              color: _armed ? scheme.primary : scheme.primary.withValues(alpha: 0.45),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 22),
+              child: Opacity(
+                opacity: (_dx / _trigger).clamp(0.0, 1.0),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Ic.queue_play_next, color: scheme.onPrimary),
+                  if (_dx > 110) ...[
+                    const SizedBox(width: 8),
+                    Text('Следующим',
+                        style: TextStyle(color: scheme.onPrimary, fontWeight: FontWeight.w700)),
+                  ],
+                ]),
+              ),
+            ),
+          ),
+        Transform.translate(
+          offset: Offset(_dx, 0),
+          child: ColoredBox(
+            color: _dx > 0 ? Theme.of(context).scaffoldBackgroundColor : Colors.transparent,
+            child: widget.child,
+          ),
+        ),
+      ]),
+    );
   }
 }

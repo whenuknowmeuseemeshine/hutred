@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
@@ -37,6 +38,12 @@ class QueueSheet extends StatefulWidget {
 
 class _QueueSheetState extends State<QueueSheet> {
   bool _history = false;
+
+  // Перетаскивание в очереди: вибрация при захвате и на каждом треке,
+  // мимо которого проносим (как в Spotify).
+  bool _dragging = false;
+  double _dragDy = 0;
+  static const _rowH = 60.0;
   List<Track> _picks = const [];
   bool _picking = false;
 
@@ -284,6 +291,33 @@ class _QueueSheetState extends State<QueueSheet> {
       SliverReorderableList(
         itemCount: upCount,
         onReorder: (o, n) => player.reorderQueue(o + upStart, n + upStart),
+        onReorderStart: (_) {
+          HapticFeedback.mediumImpact();
+          _dragging = true;
+          _dragDy = 0;
+        },
+        onReorderEnd: (_) {
+          HapticFeedback.lightImpact();
+          _dragging = false;
+        },
+        // Схваченный трек «приподнимается»: тень, подсветка, чуть крупнее.
+        proxyDecorator: (child, index, anim) => AnimatedBuilder(
+          animation: anim,
+          builder: (context, child) {
+            final v = Curves.easeOut.transform(anim.value);
+            return Transform.scale(
+              scale: 1 + 0.03 * v,
+              child: Material(
+                elevation: 10 * v,
+                color: Color.lerp(Colors.transparent, k.card, v),
+                shadowColor: Colors.black,
+                borderRadius: BorderRadius.circular(k.sharp ? 0 : 12),
+                child: child,
+              ),
+            );
+          },
+          child: child,
+        ),
         itemBuilder: (context, j) {
           final i = j + upStart;
           final t = queue[i];
@@ -347,7 +381,19 @@ class _QueueSheetState extends State<QueueSheet> {
     ];
 
     return Column(children: [
-      Expanded(child: CustomScrollView(slivers: slivers)),
+      Expanded(
+        child: Listener(
+          onPointerMove: (e) {
+            if (!_dragging) return;
+            _dragDy += e.delta.dy;
+            if (_dragDy.abs() >= _rowH) {
+              _dragDy -= _rowH * _dragDy.sign;
+              HapticFeedback.selectionClick();
+            }
+          },
+          child: CustomScrollView(slivers: slivers),
+        ),
+      ),
       _Transport(k: k),
     ]);
   }

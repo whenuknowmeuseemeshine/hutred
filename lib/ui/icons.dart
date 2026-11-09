@@ -587,6 +587,12 @@ class Ic {
         _ => LucideIcons.globe,
       };
 
+  static IconData get queue_play_next => switch (style) {
+        'glass' => Icons.queue_play_next_rounded,
+        'sharp' => Icons.queue_play_next_sharp,
+        _ => LucideIcons.listStart,
+      };
+
   static IconData get queue_music => switch (style) {
         'glass' => Icons.queue_music_rounded,
         'sharp' => Icons.queue_music_sharp,

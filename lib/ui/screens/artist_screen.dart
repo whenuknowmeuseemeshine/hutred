@@ -12,6 +12,7 @@ import '../../services/soundcloud_source.dart';
 import '../../services/wave_service.dart';
 import '../actions.dart';
 import '../theme.dart';
+import '../home_shell.dart';
 import '../widgets/artwork.dart';
 import '../widgets/track_tile.dart';
 import '../icons.dart';
@@ -64,9 +65,10 @@ Future<void> openArtist(BuildContext context, String artistField) async {
     name = picked;
   }
   if (!context.mounted) return;
-  await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => ArtistScreen(name: name)),
-  );
+  final route = MaterialPageRoute<void>(builder: (_) => ArtistScreen(name: name));
+  // Внутри вкладки — чтобы нижний бар с плеером не пропадал.
+  if (HomeShell.push(route)) return;
+  await Navigator.of(context).push(route);
 }
 
 /// Карточка исполнителя: фото, популярное, последний релиз, альбомы и
@@ -605,7 +607,7 @@ class _DzAlbumScreenState extends State<DzAlbumScreen> {
   @override
   void initState() {
     super.initState();
-    DeezerCatalog.albumTracks(widget.album.id).then((t) {
+    DeezerCatalog.tracksOf(widget.album).then((t) {
       if (mounted) setState(() => _tracks = t);
     }, onError: (_) {
       if (mounted) setState(() => _failed = true);
