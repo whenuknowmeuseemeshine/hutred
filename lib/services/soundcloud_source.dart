@@ -220,21 +220,61 @@ class SoundcloudSource {
   }
 
   /// Находит трек на SoundCloud по исполнителю и названию.
-  Future<Track?> match(String artist, String title) async {
+  Future<Track?> match(String artist, String title, {int? durationMs}) async =>
+      (await matchAll(artist, title, durationMs: durationMs)).firstOrNull;
+
+  /// Все подходящие треки, лучшие первыми. Ищем несколькими запросами:
+  /// «исполнитель название», с русскими буквами вместо украинских/латинских
+  /// (у Spotify «Інструменталы», на SoundCloud «Инструменталы»), одно
+  /// название и, наконец, все треки исполнителя.
+  Future<List<Track>> matchAll(String artist, String title, {int? durationMs}) async {
     final hasArtist = artist.isNotEmpty && artist != Track.unknownArtist;
-    final found = await search(hasArtist ? '$artist $title' : title, limit: 8);
-    Track? best;
-    var bestScore = 0.0;
-    for (final t in found) {
-      final score = _similar(title, t.title) * 2 +
-          (hasArtist ? _similar(artist, '${t.artist} ${t.title}') : 1);
-      if (score > bestScore) {
-        bestScore = score;
-        best = t;
+    final ruTitle = _ruLetters(title);
+    final queries = <String>{
+      hasArtist ? '$artist $title' : title,
+      if (ruTitle != title) hasArtist ? '$artist $ruTitle' : ruTitle,
+      if (hasArtist) title,
+      if (hasArtist && ruTitle != title) ruTitle,
+      if (hasArtist) artist,
+    };
+    final scored = <String, (double, Track)>{};
+    for (final q in queries) {
+      List<Track> found;
+      try {
+        found = await search(q, limit: q == artist ? 40 : 10);
+      } catch (_) {
+        continue;
       }
+      for (final t in found) {
+        // 30-секундные превью и заметно другие по длине — мимо.
+        if (t.durationMs != null && t.durationMs! < 60000) continue;
+        if (durationMs != null && t.durationMs != null &&
+            (durationMs - t.durationMs!).abs() > 20000) {
+          continue;
+        }
+        final score = _similar(title, t.title) * 2 +
+            (hasArtist ? _similar(artist, '${t.artist} ${t.title}') : 1);
+        if (score < 2.2) continue;
+        final prev = scored[t.uri];
+        if (prev == null || prev.$1 < score) scored[t.uri] = (score, t);
+      }
+      // Нашли уверенное совпадение — дальше не ищем.
+      if (scored.values.any((e) => e.$1 >= 2.8)) break;
     }
-    return bestScore >= 2.2 ? best : null;
+    final list = scored.values.toList()..sort((a, b) => b.$1.compareTo(a.$1));
+    return [for (final e in list) e.$2];
   }
+
+  /// Украинские буквы — в русские (для поиска).
+  static String _ruLetters(String s) => s
+      .replaceAll('і', 'и')
+      .replaceAll('І', 'И')
+      .replaceAll('ї', 'и')
+      .replaceAll('Ї', 'И')
+      .replaceAll('є', 'е')
+      .replaceAll('Є', 'Е')
+      .replaceAll('ґ', 'г')
+      .replaceAll('Ґ', 'Г');
 
   Future<File> _idFile() async {
     final dir = await getApplicationSupportDirectory();
@@ -586,11 +626,28 @@ class SoundcloudSource {
     );
   }
 
-  static String _norm(String s) => s
+  static String _norm(String s) => _ruLetters(s)
       .toLowerCase()
       .replaceAll('ё', 'е')
       .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
+      .split(' ')
+      .map(_unmix)
+      .join(' ')
       .trim();
+
+  // Латиница, похожая на кириллицу (и наоборот), внутри одного слова:
+  // «Kиш» → «киш». Такие «смешанные» слова любят стилизованные названия.
+  static const _lookalike = {
+    'a': 'а', 'b': 'в', 'c': 'с', 'e': 'е', 'h': 'н', 'k': 'к', 'm': 'м',
+    'o': 'о', 'p': 'р', 't': 'т', 'x': 'х', 'y': 'у', 'i': 'и',
+  };
+
+  static String _unmix(String w) {
+    final cyr = RegExp(r'[а-я]').hasMatch(w);
+    final lat = RegExp(r'[a-z]').hasMatch(w);
+    if (!(cyr && lat)) return w;
+    return w.split('').map((c) => _lookalike[c] ?? c).join();
+  }
 
   static double _similar(String a, String b) {
     final wa = _norm(a).split(' ').where((w) => w.isNotEmpty).toSet();

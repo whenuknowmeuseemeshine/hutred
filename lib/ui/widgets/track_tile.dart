@@ -1,6 +1,7 @@
 
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -519,6 +520,7 @@ class TrackContextMenu extends StatelessWidget {
     this.onRemoveFromPlaylist,
     this.compact = false,
     this.inFavorites = false,
+    this.longPress = kLongPressTimeout,
   });
 
   final Track track;
@@ -527,19 +529,31 @@ class TrackContextMenu extends StatelessWidget {
   final bool compact;
   final bool inFavorites;
 
+  /// Сколько держать палец, чтобы открылось меню.
+  final Duration longPress;
+
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    void show(Offset at) => showTrackMenuAt(context, track, at,
+        onRemoveFromPlaylist: onRemoveFromPlaylist, compact: compact, inFavorites: inFavorites);
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(duration: longPress),
+          (r) => r.onLongPressStart = (d) {
+            HapticFeedback.mediumImpact();
+            show(d.globalPosition);
+          },
+        ),
+      },
+      child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onSecondaryTapUp: (d) => showTrackMenuAt(context, track, d.globalPosition,
-            onRemoveFromPlaylist: onRemoveFromPlaylist,
-            compact: compact,
-            inFavorites: inFavorites),
-        onLongPressStart: (d) => showTrackMenuAt(context, track, d.globalPosition,
-            onRemoveFromPlaylist: onRemoveFromPlaylist,
-            compact: compact,
-            inFavorites: inFavorites),
+        onSecondaryTapUp: (d) => show(d.globalPosition),
         child: child,
-      );
+      ),
+    );
+  }
 }
 
 class TrackMenuButton extends StatelessWidget {
