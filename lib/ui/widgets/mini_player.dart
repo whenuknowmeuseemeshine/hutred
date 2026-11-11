@@ -102,8 +102,9 @@ class MiniPlayer extends StatelessWidget {
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 2),
+                        // На телефоне нажатие на исполнителя открывает плеер,
+                        // а не карточку исполнителя.
                         GestureDetector(
-                          onTap: player.error != null ? null : () => openArtist(context, track.artist),
                           child: Text(
                           player.error ?? track.artist,
                           maxLines: 1,
