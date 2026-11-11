@@ -146,6 +146,9 @@ class _QueueSheetState extends State<QueueSheet> {
     Widget row(Track t, {required VoidCallback onTap, Widget? trailing, double opacity = 1}) =>
         TrackContextMenu(
           track: t,
+          // В очереди меню — только если подержать подольше: так его не
+          // открыть случайно, когда хочешь перетащить трек.
+          longPress: const Duration(milliseconds: 900),
           child: InkWell(
             onTap: onTap,
             child: Opacity(

@@ -254,7 +254,10 @@ class PlayerBar extends StatelessWidget {
                           MouseRegion(
                             cursor: player.error == null ? SystemMouseCursors.click : MouseCursor.defer,
                             child: GestureDetector(
-                              onTap: player.error != null ? null : () => openArtist(context, track.artist),
+                              // На телефоне нажатие на бар открывает плеер, а не исполнителя.
+                              onTap: player.error != null || !HutredTheme.desktop
+                                  ? null
+                                  : () => openArtist(context, track.artist),
                               child: Text(player.error ?? track.artist,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
