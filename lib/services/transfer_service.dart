@@ -433,14 +433,9 @@ class TransferService extends ChangeNotifier {
     );
   }
 
-  Future<Track?> _matchSoundcloud(TransferItem item) async {
-    final t = await soundcloud.match(item.artist, item.title);
-    if (t == null) return null;
-    // Пропускаем 30-секундные превью.
-    if (t.durationMs != null && t.durationMs! < 60000) return null;
-    if (!_durationOk(item, t)) return null;
-    return t;
-  }
+  Future<Track?> _matchSoundcloud(TransferItem item) =>
+      // Превью и треки другой длины отсеивает сам поиск.
+      soundcloud.match(item.artist, item.title, durationMs: item.durationMs);
 
   Future<Track?> _matchYoutube(TransferItem item) async {
     final q = item.artist.isEmpty ? item.title : '${item.artist} - ${item.title}';
@@ -478,8 +473,12 @@ class TransferService extends ChangeNotifier {
   }
 
   /// Где играть трек из Spotify: ищем на SoundCloud/YouTube один раз и запоминаем.
-  Future<Track?> resolveSpotify(Track t) =>
-      _resolving.putIfAbsent(t.uri, () => _resolveOnce(t));
+  Future<Track?> resolveSpotify(Track t) => _resolving.putIfAbsent(t.uri, () async {
+        final r = await _resolveOnce(t);
+        // Не нашли — не запоминаем: в следующий раз ищем снова.
+        if (r == null) _resolving.remove(t.uri);
+        return r;
+      });
 
   Future<Track?> _resolveOnce(Track t) async {
     try {
