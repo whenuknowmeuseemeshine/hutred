@@ -795,12 +795,27 @@ class AccountService extends ChangeNotifier {
       final local = File('${folder.path}$sep${path.split('/').last}');
       if (await local.exists() && await local.length() > 0) return local.path;
       final bytes = await _db.storage.from('tracks').download(path);
-      await local.writeAsBytes(bytes, flush: true);
+      // Сначала во временный файл: недокачанный файл не должен выглядеть готовым.
+      final part = File('${local.path}.part');
+      await part.writeAsBytes(bytes, flush: true);
+      await part.rename(local.path);
       return local.path;
     } catch (e) {
       debugPrint('[Облако файлов] $e');
       return null;
     }
+  }
+
+  /// Удалить скачанную из облака копию (она оказалась битой).
+  Future<void> forgetCloudFile(Track t) async {
+    final path = t.cloudPath;
+    if (path == null) return;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final sep = Platform.pathSeparator;
+      final f = File('${dir.path}${sep}cloud_tracks$sep${path.split('/').last}');
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   void _onTrackRemoved(Track t) {

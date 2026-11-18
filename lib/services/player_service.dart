@@ -58,7 +58,20 @@ class PlayerService extends ChangeNotifier {
       }));
       _subs.add(p.playbackEventStream.listen((_) {}, onError: (Object e) {
         if (p != _player) return;
-        _error = 'Ошибка воспроизведения: $e';
+        // Файл открылся, но не играет (битый или формат, который iPhone
+        // не понимает, например .ogg/.opus) — выбрасываем копию и пробуем
+        // ещё раз: из облака заново или такой же трек с SoundCloud.
+        final t = current;
+        if (t != null && _playedFromFile && _fileRetryFor != t.id) {
+          _fileRetryFor = t.id;
+          unawaited(() async {
+            await forgetFile?.call(t);
+            _preferOnline = true;
+            await _loadCurrent();
+          }());
+          return;
+        }
+        _error = 'Ошибка воспроизведения: ${_shortError(e)}';
         notifyListeners();
       }));
       _subs.add(p.positionStream.listen((d) {
@@ -587,9 +600,38 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
+  /// Трек сейчас играет из файла (скачанный, свой, из облака).
+  bool _playedFromFile = false;
+
+  /// Для этого трека файл уже пересоздавали — второй раз не пробуем.
+  String? _fileRetryFor;
+
+  /// Следующая загрузка — сразу онлайн-копия (файл не заиграл).
+  bool _preferOnline = false;
+
+  /// Убрать скачанную/облачную копию трека (она не играет).
+  Future<void> Function(Track t)? forgetFile;
+
+  /// Такой же трек на SoundCloud/YouTube — для своих файлов, которые не играют.
+  Future<Track?> Function(Track t)? findOnline;
+
+  static const _iosUnplayable = {'ogg', 'opus', 'oga', 'webm', 'weba', 'wma', 'ape', 'mka'};
+
   Future<AudioSource> _sourceFor(Track t) async {
-    final downloaded = offlineAudio?.call(t);
-    if (downloaded != null) return AudioSource.file(downloaded);
+    final s = await _sourceForInner(t);
+    _playedFromFile = s is UriAudioSource && s.uri.scheme == 'file';
+    return s;
+  }
+
+  Future<AudioSource> _sourceForInner(Track t) async {
+    final online = _preferOnline;
+    _preferOnline = false;
+    if (online && t.source == TrackSource.local) {
+      final found = await findOnline?.call(t).catchError((_) => null);
+      if (found != null && found.source != TrackSource.local) return _sourceForInner(found);
+    }
+    final downloaded = online ? null : offlineAudio?.call(t);
+    if (downloaded != null && !_unplayableHere(downloaded)) return AudioSource.file(downloaded);
     if (isOffline?.call() == true &&
         !(t.source == TrackSource.local && File(t.uri).existsSync())) {
       throw Exception('нет интернета, а трек не скачан');
@@ -599,7 +641,14 @@ class PlayerService extends ChangeNotifier {
         if (File(t.uri).existsSync()) return AudioSource.file(t.uri);
         // Файла на этом устройстве нет — берём копию из облака.
         final fromCloud = await cloudFile?.call(t);
-        if (fromCloud != null) return AudioSource.file(fromCloud);
+        if (fromCloud != null && !_unplayableHere(fromCloud)) return AudioSource.file(fromCloud);
+        if (fromCloud != null) {
+          // Формат, который iPhone не играет — ищем такой же трек онлайн.
+          final found = await findOnline?.call(t).catchError((_) => null);
+          if (found != null && found.source != TrackSource.local) return _sourceForInner(found);
+          throw Exception('iPhone не играет файлы .${fromCloud.split('.').last}, '
+              'а онлайн этот трек не нашёлся');
+        }
         if (t.cloudPath == null) onMissingFile?.call(t);
         throw Exception(t.cloudPath == null
             ? 'файл не найден: ${t.uri}'
@@ -620,6 +669,13 @@ class PlayerService extends ChangeNotifier {
         }
         return _sourceFor(found);
     }
+  }
+
+  static bool _unplayableHere(String path) {
+    if (!Platform.isIOS && !Platform.isMacOS) return false;
+    final dot = path.lastIndexOf('.');
+    if (dot < 0 || dot < path.lastIndexOf(Platform.pathSeparator)) return false;
+    return _iosUnplayable.contains(path.substring(dot + 1).toLowerCase());
   }
 
   // ---------- Управление ----------
