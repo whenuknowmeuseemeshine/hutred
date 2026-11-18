@@ -269,6 +269,12 @@ Future<void> main(List<String> args) async {
     }());
   });
   player.offlineAudio = offline.audioFor;
+  // Свой файл не заиграл — убираем копии и пробуем снова (или онлайн).
+  player.forgetFile = (t) async {
+    if (offline.audioFor(t) != null) await offline.remove(t);
+    await account.forgetCloudFile(t);
+  };
+  player.findOnline = transfer.findPlayable;
   player.isOffline = () => !offline.online;
   // Новые треки с YouTube/SoundCloud сверяем со Spotify (с вопросом).
   // Трей: крестик прячет окно, при автозапуске окно вообще не показываем.
