@@ -271,29 +271,27 @@ class YoutubeSource {
     // Библиотека уже подводила, а yt-dlp справился — сразу идём к нему,
     // не тратя по полминуты на заведомо сломанные способы.
     if (_preferYtDlp) {
+      final fast = await _viaYtDlpStream(videoId, pathFor);
+      if (fast != null) return fast;
       final quick = await YtDlp.download(
           'https://www.youtube.com/watch?v=$videoId', dir, videoId,
           cookiesBrowser: cookiesBrowser?.call() ?? '');
       if (quick != null) return quick;
     }
-    // Сначала тот способ, что сработал в прошлый раз: обычно он и сейчас работает.
-    final order = [
-      if (_goodClient != null) _goodClient!,
-      ..._clients.where((c) => c != _goodClient),
-    ];
-    for (final client in order) {
+    // Спрашиваем всех «клиентов» YouTube сразу и берём первый ответ —
+    // раньше перебирали по очереди, и на неудачных уходило до минуты.
+    final got = await _firstManifest(videoId);
+    if (got != null) {
       try {
-        final manifest = await _yt.videos.streams
-            .getManifest(videoId, ytClients: [client])
-            .timeout(const Duration(seconds: 12));
-        final file = await _saveBest(videoId, manifest, _yt, pathFor);
-        _goodClient = client;
+        final file = await _saveBest(videoId, got.$1, _yt, pathFor);
+        _goodClient = got.$2;
         return file;
       } catch (e) {
         lastError = e;
-        debugPrint('[YouTube] $videoId, клиент '
-            '${client.payload['context']['client']['clientName']}: $e');
+        debugPrint('[YouTube] $videoId: $e');
       }
+    } else {
+      lastError = _manifestError;
     }
     // Последняя попытка: решатель JS-проверок YouTube через Deno (только ПК,
     // если Deno установлен: https://deno.com).
@@ -306,6 +304,13 @@ class YoutubeSource {
         lastError = e;
         debugPrint('[YouTube] $videoId, Deno: $e');
       }
+    }
+    // На ПК — yt-dlp. Сначала просим у него только ссылку и качаем сами
+    // кусками: играть начинает сразу, а не после загрузки всего файла.
+    final streamed = await _viaYtDlpStream(videoId, pathFor);
+    if (streamed != null) {
+      _preferYtDlp = true;
+      return streamed;
     }
     // Самый надёжный вариант на ПК: yt-dlp, если он установлен.
     final viaYtDlp = _preferYtDlp
@@ -325,6 +330,36 @@ class YoutubeSource {
   }
 
   YoutubeApiClient? _goodClient;
+  Object? _manifestError;
+
+  /// Первый успешный ответ от любого клиента (тот, что сработал в прошлый
+  /// раз, получает полсекунды форы — обычно он и сейчас самый быстрый).
+  Future<(StreamManifest, YoutubeApiClient)?> _firstManifest(String videoId) async {
+    final done = Completer<(StreamManifest, YoutubeApiClient)?>();
+    var left = _clients.length;
+    _manifestError = null;
+    for (final client in _clients) {
+      () async {
+        try {
+          if (_goodClient != null && client != _goodClient) {
+            await Future<void>.delayed(const Duration(milliseconds: 500));
+            if (done.isCompleted) return;
+          }
+          final m = await _yt.videos.streams
+              .getManifest(videoId, ytClients: [client])
+              .timeout(const Duration(seconds: 12));
+          if (m.audioOnly.isEmpty) throw Exception('нет аудио');
+          if (!done.isCompleted) done.complete((m, client));
+        } catch (e) {
+          _manifestError ??= e;
+        } finally {
+          left--;
+          if (left == 0 && !done.isCompleted) done.complete(null);
+        }
+      }();
+    }
+    return done.future;
+  }
 
   /// Библиотека не справилась, а yt-dlp — да: до перезапуска качаем через него.
   bool _preferYtDlp = false;
@@ -440,6 +475,42 @@ class YoutubeSource {
     return file;
   }
 
+  Future<File?> _viaYtDlpStream(String videoId, String Function(String ext) pathFor) async {
+    final info = await YtDlp.streamInfo('https://www.youtube.com/watch?v=$videoId',
+        cookiesBrowser: cookiesBrowser?.call() ?? '');
+    if (info == null || info.size <= 0) return null;
+    final ext = info.ext == 'm4a' || info.ext == 'mp4' ? 'm4a' : info.ext;
+    final file = File(pathFor(ext));
+    final part = File('${file.path}.part');
+    final live = LiveDownload(
+      file: part,
+      totalBytes: info.size,
+      contentType: ext == 'm4a' ? 'audio/mp4' : (ext == 'mp3' ? 'audio/mpeg' : 'audio/webm'),
+    );
+    _live[videoId] = live;
+    final sink = part.openWrite();
+    try {
+      await _parallelGet(info.url, info.size, sink, _Written(), headers: info.headers);
+    } catch (e) {
+      debugPrint('[YouTube] yt-dlp-ссылка $videoId: $e');
+      live.fail(e);
+      _live.remove(videoId);
+      await sink.close();
+      try {
+        await part.delete();
+      } catch (_) {}
+      return null;
+    }
+    await sink.close();
+    await part.copy(file.path);
+    live.finish();
+    _live.remove(videoId);
+    try {
+      await part.delete();
+    } catch (_) {}
+    return file;
+  }
+
   /// Загрузка файла в несколько потоков; куски пишутся строго по порядку.
   /// Свежая ссылка на поток [tag] этого видео (старая могла протухнуть).
   Future<Uri?> _freshUrl(String videoId, int tag) async {
@@ -460,7 +531,8 @@ class YoutubeSource {
     return null;
   }
 
-  Future<void> _parallelGet(Uri url, int total, IOSink sink, _Written pos) async {
+  Future<void> _parallelGet(Uri url, int total, IOSink sink, _Written pos,
+      {Map<String, String>? headers}) async {
     const chunk = 512 * 1024;
     const workers = 4;
     final base = pos.bytes;
@@ -478,7 +550,7 @@ class YoutubeSource {
         final from = base + i * chunk;
         final to = min(total, from + chunk) - 1;
         try {
-          results[i].complete(await _range(url, from, to));
+          results[i].complete(await _range(url, from, to, headers: headers));
         } catch (e) {
           failed = true;
           results[i].completeError(e);
@@ -497,11 +569,16 @@ class YoutubeSource {
     await Future.wait(running);
   }
 
-  Future<Uint8List> _range(Uri url, int from, int to) async {
+  Future<Uint8List> _range(Uri url, int from, int to, {Map<String, String>? headers}) async {
     for (var attempt = 0;; attempt++) {
       try {
         final http.Request req;
-        if (url.queryParameters['c'] == 'ANDROID') {
+        if (headers != null) {
+          // Ссылка от yt-dlp: его заголовки и обычный Range.
+          req = http.Request('GET', url)
+            ..headers.addAll(headers)
+            ..headers['Range'] = 'bytes=$from-$to';
+        } else if (url.queryParameters['c'] == 'ANDROID') {
           req = http.Request('GET', url)..headers['Range'] = 'bytes=$from-$to';
         } else {
           req = http.Request(

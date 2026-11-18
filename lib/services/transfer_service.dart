@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/track.dart';
+import 'audius_source.dart';
 import 'genius_service.dart';
 import 'import_service.dart';
 import 'library_store.dart';
@@ -50,13 +51,15 @@ class TransferService extends ChangeNotifier {
     required this.youtube,
     required this.soundcloud,
     required this.spotify,
-  });
+    AudiusSource? audius,
+  }) : audius = audius ?? AudiusSource();
 
   final LibraryStore store;
   final SettingsStore settings;
   final YoutubeSource youtube;
   final SoundcloudSource soundcloud;
   final SpotifyService spotify;
+  final AudiusSource audius;
   final _http = http.Client();
 
   TransferStage stage = TransferStage.idle;
@@ -407,6 +410,16 @@ class TransferService extends ChangeNotifier {
     // YouTube — только если включён в настройках (там треки грузятся долго)
     // или его явно выбрали первым в переносе.
     final yt = settings.youtubeAuto;
+    if (playable && searchFirst != 'youtube') {
+      // Ищем везде сразу, а берём по порядку: SoundCloud, Audius, YouTube.
+      // Так YouTube не ждёт, пока переберутся все запросы SoundCloud.
+      Future<Track?> safe(Future<Track?> Function(TransferItem) f) =>
+          f(item).timeout(const Duration(seconds: 25)).catchError((_) => null);
+      final sc = safe(_matchSoundcloud);
+      final au = safe(_matchAudius);
+      final ytf = yt ? safe(_matchYoutube) : null;
+      return await sc ?? await au ?? (ytf == null ? null : await ytf);
+    }
     final order = switch (searchFirst) {
       'spotify' when !playable => [_matchSpotify, _matchSoundcloud, if (yt) _matchYoutube],
       'youtube' when !playable || yt => [_matchYoutube, _matchSoundcloud],
@@ -436,6 +449,9 @@ class TransferService extends ChangeNotifier {
   Future<Track?> _matchSoundcloud(TransferItem item) =>
       // Превью и треки другой длины отсеивает сам поиск.
       soundcloud.match(item.artist, item.title, durationMs: item.durationMs);
+
+  Future<Track?> _matchAudius(TransferItem item) =>
+      audius.match(item.artist, item.title, durationMs: item.durationMs);
 
   Future<Track?> _matchYoutube(TransferItem item) async {
     final q = item.artist.isEmpty ? item.title : '${item.artist} - ${item.title}';

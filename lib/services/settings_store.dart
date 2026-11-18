@@ -85,7 +85,7 @@ class SettingsStore extends ChangeNotifier {
   static bool get _phone => Platform.isAndroid || Platform.isIOS;
   static const _phoneHidden = {'search', 'friends', 'transfer', 'playlists'};
   String? _waveBackground;
-  Set<String> _searchSources = {'library', 'spotify', 'soundcloud', 'youtube'};
+  Set<String> _searchSources = {'library', 'spotify', 'soundcloud', 'audius', 'youtube'};
   final List<String> _searchHistory = [];
   String _aiBaseUrl = 'https://api.groq.com/openai/v1';
   String _aiKey = '';
@@ -702,6 +702,8 @@ class SettingsStore extends ChangeNotifier {
       if (src != null && src.isNotEmpty) _searchSources = src;
       // Spotify в поиске появился позже — включаем его один раз у всех.
       if (j['searchSpotifyAdded'] != true) _searchSources.add('spotify');
+      // Audius появился позже — тоже включаем один раз.
+      if (j['searchAudiusAdded'] != true) _searchSources.add('audius');
       _searchHistory
         ..clear()
         ..addAll((j['searchHistory'] as List? ?? const []).map((e) => '$e'));
@@ -825,6 +827,7 @@ class SettingsStore extends ChangeNotifier {
         if (_hiddenTabs != null) 'hiddenTabs': _hiddenTabs!.toList(),
         'searchSources': _searchSources.toList(),
         'searchSpotifyAdded': true,
+        'searchAudiusAdded': true,
         'searchHistory': _searchHistory,
         'aiBaseUrl': _aiBaseUrl,
         'aiKey': _aiKey,

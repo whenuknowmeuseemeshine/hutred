@@ -596,6 +596,19 @@ class PlayerService extends ChangeNotifier {
         youtube.cachedAudio(next.uri).ignore();
       } else if (next.source == TrackSource.soundcloud) {
         soundcloud.prefetch(next.uri);
+      } else if (next.source == TrackSource.spotify && i == _index + 1) {
+        // Трек из Spotify: заранее находим его копию и начинаем грузить —
+        // особенно важно, если она окажется на YouTube.
+        unawaited(() async {
+          try {
+            final found = await resolveSpotify?.call(next);
+            if (found?.source == TrackSource.youtube) {
+              youtube.cachedAudio(found!.uri).ignore();
+            } else if (found?.source == TrackSource.soundcloud) {
+              soundcloud.prefetch(found!.uri);
+            }
+          } catch (_) {}
+        }());
       }
     }
   }

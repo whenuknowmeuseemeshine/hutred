@@ -10,6 +10,7 @@ import '../../services/player_service.dart';
 import '../../services/settings_store.dart';
 import '../../services/soundcloud_source.dart';
 import '../../services/spotify_service.dart';
+import '../../services/transfer_service.dart';
 import '../../services/youtube_source.dart';
 import '../actions.dart';
 import '../theme.dart';
@@ -52,24 +53,27 @@ class _SearchScreenState extends State<SearchScreen> {
   final Map<String, _Results> _results = {
     'spotify': _Results(),
     'soundcloud': _Results(),
+    'audius': _Results(),
     'youtube': _Results(),
   };
 
   /// Онлайн-источники: Spotify — только если есть ключи (свои или от админа).
   List<String> _online(SettingsStore s) =>
-      [if (s.hasSpotifyKeys) 'spotify', 'soundcloud', if (s.youtubeAuto) 'youtube'];
+      [if (s.hasSpotifyKeys) 'spotify', 'soundcloud', 'audius', if (s.youtubeAuto) 'youtube'];
   bool _libraryCollapsed = false;
 
   static const _labels = {
     'library': 'Медиатека',
     'spotify': 'Spotify',
     'soundcloud': 'SoundCloud',
+    'audius': 'Audius',
     'youtube': 'YouTube',
   };
   static final _icons = {
     'library': Ic.library_music_outlined,
     'spotify': Ic.graphic_eq,
     'soundcloud': Ic.cloud_outlined,
+    'audius': Ic.graphic_eq,
     'youtube': Ic.smart_display_outlined,
   };
 
@@ -132,6 +136,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final spotify = context.read<SpotifyService>();
     final sc = context.read<SoundcloudSource>();
     final yt = context.read<YoutubeSource>();
+    final au = context.read<TransferService>().audius;
 
     Future<void> run(String key) async {
       final r = _results.putIfAbsent(key, _Results.new);
@@ -145,6 +150,7 @@ class _SearchScreenState extends State<SearchScreen> {
             'spotify' => await spotify.searchTracks(
                 id: settings.spotifyId, secret: settings.spotifySecret, query: q),
             'soundcloud' => await sc.searchPaged(q),
+            'audius' => await au.searchPaged(q),
             _ => await yt.searchPaged(q),
           };
           if (!mounted || token != _token) return;
@@ -153,7 +159,7 @@ class _SearchScreenState extends State<SearchScreen> {
             r.more = page.next;
             r.playlists = [];
           });
-        } else if (key == 'spotify') {
+        } else if (key == 'spotify' || key == 'audius') {
           // Плейлисты Spotify добавляются ссылкой (вкладка «Перенос»).
           setState(() {
             r.playlists = [];
