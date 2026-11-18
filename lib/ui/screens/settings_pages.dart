@@ -817,7 +817,7 @@ class _PlayPage extends StatelessWidget {
       child: SkGap(gap: 16, children: [
         SkHead(
           title: 'Плавный переход',
-          sub: 'Конец трека перетекает в начало следующего',
+          sub: 'Трек доигрывает до конца, а следующий мягко вступает поверх',
           trailing: SkToggle(value: s.crossfade, onChanged: (v) => s.crossfade = v),
         ),
         // Два трека «наплывают» друг на друга — тем сильнее, чем дольше переход.
@@ -842,7 +842,7 @@ class _PlayPage extends StatelessWidget {
                             begin: left ? Alignment.centerLeft : Alignment.centerRight,
                             end: left ? Alignment.centerRight : Alignment.centerLeft,
                             colors: left
-                                ? [k.dim, k.dim, k.dim.withValues(alpha: 0)]
+                                ? [k.dim, k.dim, k.dim]
                                 : [k.btn, k.btn, k.btn.withValues(alpha: 0)],
                             stops: const [0, 0.7, 1],
                           ),
