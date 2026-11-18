@@ -1557,6 +1557,25 @@ class _SpotifyKeysDialogState extends State<_SpotifyKeysDialog> {
     final s = context.read<SettingsStore>();
     _id = TextEditingController(text: s.ownSpotifyId);
     _secret = TextEditingController(text: s.ownSpotifySecret);
+    // Своих ключей на этом устройстве нет — показываем те, что на сервере
+    // (у всех пользователей сейчас работают они).
+    if (s.ownSpotifyId.isEmpty) unawaited(_fromServer());
+  }
+
+  Future<void> _fromServer() async {
+    final acc = context.read<AccountService>();
+    if (!acc.isAdmin) return;
+    final v = await acc.adminSecret('spotify');
+    if (!mounted || v == null) return;
+    final id = '${v['id'] ?? ''}', secret = '${v['secret'] ?? ''}';
+    if (id.isEmpty || _id.text.isNotEmpty) return;
+    setState(() {
+      _id.text = id;
+      _secret.text = secret;
+      _ok = true;
+      _status = 'Это ключи с сервера — сейчас ими пользуются все. '
+          'Если сохранить, они будут работать и на этом устройстве напрямую.';
+    });
   }
 
   Future<void> _save() async {

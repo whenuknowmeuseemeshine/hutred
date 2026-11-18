@@ -430,6 +430,13 @@ class AccountService extends ChangeNotifier {
     }
   }
 
+  /// Админ: ключи, которые сейчас лежат на сервере (их видит только админ).
+  Future<Map<String, dynamic>?> adminSecret(String key) async {
+    await _loadSecrets();
+    final v = _secrets[key];
+    return v is Map ? Map<String, dynamic>.from(v) : null;
+  }
+
   /// Админ: сохранить общую настройку для всех пользователей.
   Future<String?> pushConfig(String key, Map<String, dynamic> value) async {
     if (!isAdmin) return 'Это может только админ';

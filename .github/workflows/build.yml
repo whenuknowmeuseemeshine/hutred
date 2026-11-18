@@ -73,8 +73,8 @@ jobs:
   # выкладке. Вручную (проверка) — только с галочкой.
   ios:
     if: github.event_name != 'workflow_dispatch' || inputs.ios
-    # arm64-машины Mac у GitHub часто заняты — берём Intel.
-    runs-on: macos-15-intel
+    # Mac у GitHub: последняя версия (старые образы GitHub отключает).
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2

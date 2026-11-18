@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -51,6 +52,57 @@ class YtDlp {
     } catch (e) {
       debugPrint('[yt-dlp] не удалось обновить: $e');
     }
+  }
+
+  /// Прямая ссылка на звук без скачивания — чтобы Hutred сам качал её
+  /// кусками и начинал играть сразу (yt-dlp целиком качает долго).
+  static Future<({Uri url, int size, String ext, Map<String, String> headers})?> streamInfo(
+    String url, {
+    String cookiesBrowser = '',
+  }) async {
+    if (!_desktop || _available == false) return null;
+    for (final exe in _candidates()) {
+      if (exe != 'yt-dlp' && !File(exe).existsSync()) continue;
+      try {
+        final r = await Process.run(exe, [
+          if (cookiesBrowser.isNotEmpty) ...['--cookies-from-browser', cookiesBrowser],
+          if (XrayVpn.active && XrayVpn.port != null) ...['--proxy', 'http://127.0.0.1:${XrayVpn.port}'],
+          '--no-playlist',
+          '-f', 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
+          '-j',
+          url,
+        ], stdoutEncoding: utf8).timeout(const Duration(seconds: 40));
+        _available = true;
+        if (r.exitCode != 0) return null;
+        final j = jsonDecode('${r.stdout}'.trim().split('\n').last);
+        if (j is! Map) return null;
+        final direct = j['url'];
+        final size = (j['filesize'] ?? j['filesize_approx']) as num?;
+        final proto = '${j['protocol'] ?? 'https'}';
+        if (direct is! String || size == null || size <= 0 || !proto.startsWith('http')) return null;
+        final h = j['http_headers'];
+        return (
+          url: Uri.parse(direct),
+          // Приблизительный размер не годится: файл бы обрезался.
+          size: j['filesize'] == null ? 0 : size.toInt(),
+          ext: '${j['ext'] ?? 'm4a'}',
+          headers: h is Map
+              ? {
+                  for (final e in h.entries)
+                    // Сжатие не просим: иначе куски файла не сойдутся по размеру.
+                    if ('${e.key}'.toLowerCase() != 'accept-encoding') '${e.key}': '${e.value}',
+                }
+              : <String, String>{},
+        );
+      } on ProcessException {
+        continue;
+      } catch (e) {
+        debugPrint('[yt-dlp] ссылка $url: $e');
+        return null;
+      }
+    }
+    _available = false;
+    return null;
   }
 
   /// Скачивает звук по ссылке в [dir] под именем [baseName].<расширение>.

@@ -66,6 +66,7 @@ class SettingsStore extends ChangeNotifier {
   bool _youtubeAuto = false;
   bool _widgetCover = true;
   bool _autoplayRecs = true;
+  bool _startInTray = false;
   bool _geniusLyrics = true;
   bool _geniusCovers = true;
   bool _replaceYoutubeCovers = true;
@@ -85,7 +86,7 @@ class SettingsStore extends ChangeNotifier {
   static bool get _phone => Platform.isAndroid || Platform.isIOS;
   static const _phoneHidden = {'search', 'friends', 'transfer', 'playlists'};
   String? _waveBackground;
-  Set<String> _searchSources = {'library', 'spotify', 'soundcloud', 'youtube'};
+  Set<String> _searchSources = {'library', 'spotify', 'soundcloud', 'audius', 'youtube'};
   final List<String> _searchHistory = [];
   String _aiBaseUrl = 'https://api.groq.com/openai/v1';
   String _aiKey = '';
@@ -313,6 +314,9 @@ class SettingsStore extends ChangeNotifier {
 
   /// Плейлист закончился — включать похожие треки (как в Spotify).
   bool get autoplayRecs => _autoplayRecs;
+
+  /// Компьютер: при запуске окно не показывать, только значок в трее.
+  bool get startInTray => _startInTray;
   bool get geniusLyrics => _geniusLyrics;
   bool get geniusCovers => _geniusCovers;
 
@@ -670,6 +674,7 @@ class SettingsStore extends ChangeNotifier {
       _youtubeAuto = j['youtubeAuto'] as bool? ?? false;
       _widgetCover = j['widgetCover'] as bool? ?? true;
       _autoplayRecs = j['autoplayRecs'] as bool? ?? true;
+      _startInTray = j['startInTray'] as bool? ?? false;
       _geniusLyrics = j['geniusLyrics'] as bool? ?? true;
       _geniusCovers = j['geniusCovers'] as bool? ?? true;
       _replaceYoutubeCovers = j['replaceYoutubeCovers'] as bool? ?? true;
@@ -702,6 +707,8 @@ class SettingsStore extends ChangeNotifier {
       if (src != null && src.isNotEmpty) _searchSources = src;
       // Spotify в поиске появился позже — включаем его один раз у всех.
       if (j['searchSpotifyAdded'] != true) _searchSources.add('spotify');
+      // Audius появился позже — тоже включаем один раз.
+      if (j['searchAudiusAdded'] != true) _searchSources.add('audius');
       _searchHistory
         ..clear()
         ..addAll((j['searchHistory'] as List? ?? const []).map((e) => '$e'));
@@ -773,6 +780,7 @@ class SettingsStore extends ChangeNotifier {
         'youtubeAuto': _youtubeAuto,
         'widgetCover': _widgetCover,
         'autoplayRecs': _autoplayRecs,
+        'startInTray': _startInTray,
         'geniusLyrics': _geniusLyrics,
         'geniusCovers': _geniusCovers,
         'replaceYoutubeCovers': _replaceYoutubeCovers,
@@ -825,6 +833,7 @@ class SettingsStore extends ChangeNotifier {
         if (_hiddenTabs != null) 'hiddenTabs': _hiddenTabs!.toList(),
         'searchSources': _searchSources.toList(),
         'searchSpotifyAdded': true,
+        'searchAudiusAdded': true,
         'searchHistory': _searchHistory,
         'aiBaseUrl': _aiBaseUrl,
         'aiKey': _aiKey,
@@ -859,6 +868,11 @@ class SettingsStore extends ChangeNotifier {
 
   set autoplayRecs(bool v) {
     _autoplayRecs = v;
+    _save();
+  }
+
+  set startInTray(bool v) {
+    _startInTray = v;
     _save();
   }
 
