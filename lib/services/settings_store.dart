@@ -66,6 +66,7 @@ class SettingsStore extends ChangeNotifier {
   bool _youtubeAuto = false;
   bool _widgetCover = true;
   bool _autoplayRecs = true;
+  bool _startInTray = false;
   bool _geniusLyrics = true;
   bool _geniusCovers = true;
   bool _replaceYoutubeCovers = true;
@@ -313,6 +314,9 @@ class SettingsStore extends ChangeNotifier {
 
   /// Плейлист закончился — включать похожие треки (как в Spotify).
   bool get autoplayRecs => _autoplayRecs;
+
+  /// Компьютер: при запуске окно не показывать, только значок в трее.
+  bool get startInTray => _startInTray;
   bool get geniusLyrics => _geniusLyrics;
   bool get geniusCovers => _geniusCovers;
 
@@ -670,6 +674,7 @@ class SettingsStore extends ChangeNotifier {
       _youtubeAuto = j['youtubeAuto'] as bool? ?? false;
       _widgetCover = j['widgetCover'] as bool? ?? true;
       _autoplayRecs = j['autoplayRecs'] as bool? ?? true;
+      _startInTray = j['startInTray'] as bool? ?? false;
       _geniusLyrics = j['geniusLyrics'] as bool? ?? true;
       _geniusCovers = j['geniusCovers'] as bool? ?? true;
       _replaceYoutubeCovers = j['replaceYoutubeCovers'] as bool? ?? true;
@@ -775,6 +780,7 @@ class SettingsStore extends ChangeNotifier {
         'youtubeAuto': _youtubeAuto,
         'widgetCover': _widgetCover,
         'autoplayRecs': _autoplayRecs,
+        'startInTray': _startInTray,
         'geniusLyrics': _geniusLyrics,
         'geniusCovers': _geniusCovers,
         'replaceYoutubeCovers': _replaceYoutubeCovers,
@@ -862,6 +868,11 @@ class SettingsStore extends ChangeNotifier {
 
   set autoplayRecs(bool v) {
     _autoplayRecs = v;
+    _save();
+  }
+
+  set startInTray(bool v) {
+    _startInTray = v;
     _save();
   }
 

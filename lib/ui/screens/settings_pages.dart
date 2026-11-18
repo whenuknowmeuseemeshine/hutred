@@ -2170,6 +2170,15 @@ class _DesktopOptsState extends State<_DesktopOpts> {
           sub: 'Музыка играет дальше. Выйти — правой кнопкой по значку',
           trailing: SkToggle(value: s.closeToTray, onChanged: (v) => s.closeToTray = v),
         ),
+        SkRow(
+          filled: false,
+          divider: true,
+          title: 'Запускать в трее',
+          sub: s.startInTray
+              ? 'Hutred открывается свёрнутым — окно по нажатию на значок'
+              : 'Hutred открывается обычным окном',
+          trailing: SkToggle(value: s.startInTray, onChanged: (v) => s.startInTray = v),
+        ),
         if (WindowsAutostart.supported)
           SkRow(
             filled: false,
