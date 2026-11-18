@@ -285,6 +285,18 @@ class PlayerService extends ChangeNotifier {
     return t == _fadeToken;
   }
 
+  /// Новый трек при переходе: громкость растёт по синусу — быстро
+  /// становится слышно начало песни, а к концу перехода выходит ровно.
+  Future<bool> _fadeIn(AudioPlayer p, double to, Duration d, int token) async {
+    const steps = 30;
+    for (var i = 1; i <= steps; i++) {
+      if (token != _fadeToken) return false;
+      await p.setVolume((to * sin(i / steps * pi / 2)).clamp(0.0, 1.0));
+      await Future<void>.delayed(d ~/ steps);
+    }
+    return token == _fadeToken;
+  }
+
   /// Глушит второй (затихающий) плеер — например, если переключили трек.
   Future<void> _killOther() async {
     final o = _other;
@@ -345,10 +357,15 @@ class PlayerService extends ChangeNotifier {
       _prefetchNext();
       final low = onQueueLow;
       if (low != null && _queue.length - _index <= 6) unawaited(low());
+      // Старый трек не трогаем: он доигрывает до самого конца на своей
+      // громкости, а новый мягко вступает поверх него. Раньше конец
+      // старого трека заглушался, и казалось, что у песни отрезали кусок.
       final t = ++_fadeToken;
       await Future.wait([
-        _ramp(incoming, 0, _userVolume, fadeLen, token: t),
-        _ramp(outgoing, _userVolume, 0, fadeLen, token: t),
+        _fadeIn(incoming, _userVolume, fadeLen, t),
+        outgoing.processingStateStream
+            .firstWhere((s) => s == ProcessingState.completed || s == ProcessingState.idle)
+            .timeout(fadeLen + const Duration(seconds: 3), onTimeout: () => ProcessingState.idle),
       ]);
       await outgoing.stop();
       await outgoing.setVolume(_userVolume);

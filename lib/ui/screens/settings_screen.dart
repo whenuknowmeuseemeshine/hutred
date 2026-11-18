@@ -277,7 +277,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             secondary: Icon(Ic.swap_horiz_rounded),
             title: const Text('Плавный переход между треками'),
             subtitle: Text(s.crossfade
-                ? 'Конец трека затихает, следующий нарастает: ${s.crossfadeSec} с'
+                ? 'Следующий трек вступает за ${s.crossfadeSec} с до конца'
                 : 'Как в Spotify: треки перетекают друг в друга без тишины'),
             value: s.crossfade,
             onChanged: (v) => s.crossfade = v,
