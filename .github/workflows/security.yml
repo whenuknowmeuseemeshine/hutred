@@ -18,6 +18,10 @@ on:
         description: 'Обновить зависимости (pubspec.lock) в ветке'
         type: boolean
         default: false
+      spotify:
+        description: 'Проверить связь со Spotify'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ['supabase/functions/**']
@@ -136,3 +140,51 @@ jobs:
 
           echo
           [ $fails -eq 0 ] && echo "Всё закрыто" || { echo "Проблем: $fails"; exit 1; }
+
+  spotify:
+    if: github.event_name == 'workflow_dispatch' && inputs.spotify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Связь со Spotify
+        env:
+          U: ${{ secrets.SUPABASE_URL }}
+          K: ${{ secrets.SUPABASE_KEY }}
+          S: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          set +e
+          ok()  { echo "✅ $1"; }
+          bad() { echo "❌ $1"; fails=$((fails+1)); }
+          fails=0
+          # 1. Функция сервера на месте и без входа ключ не отдаёт.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "apikey: $K" "$U/functions/v1/hutred/spotify-token")
+          [ "$code" = "401" ] && ok "функция spotify-token выложена (без входа → 401)" || bad "spotify-token ответила $code"
+          # 2. Ключи Spotify сохранены на сервере (значения не печатаем).
+          j=$(curl -s -H "apikey: $S" -H "Authorization: Bearer $S" "$U/rest/v1/app_secrets?key=eq.spotify&select=value")
+          id=$(echo "$j" | jq -r '.[0].value.id // empty')
+          sec=$(echo "$j" | jq -r '.[0].value.secret // empty')
+          echo "::add-mask::$id"; echo "::add-mask::$sec"
+          if [ -z "$id" ] || [ -z "$sec" ]; then
+            bad "ключей Spotify на сервере нет (Настройки → Админ)"
+          else
+            ok "ключи Spotify на сервере есть"
+            # 3. Spotify принимает ключи и отдаёт токен.
+            r=$(curl -s -u "$id:$sec" -d grant_type=client_credentials https://accounts.spotify.com/api/token)
+            tok=$(echo "$r" | jq -r '.access_token // empty')
+            echo "::add-mask::$tok"
+            if [ -n "$tok" ]; then
+              ok "Spotify принял ключи и выдал токен"
+              # 4. Поиск в каталоге работает.
+              n=$(curl -s -H "Authorization: Bearer $tok" "https://api.spotify.com/v1/search?q=Joji&type=track&limit=5" | jq '.tracks.items | length')
+              [ "${n:-0}" -gt 0 ] && ok "поиск Spotify работает (нашёл $n)" || bad "поиск Spotify ничего не вернул"
+              # 5. Релизы исполнителя (для «Последнего релиза»).
+              n=$(curl -s -H "Authorization: Bearer $tok" "https://api.spotify.com/v1/search?q=IVOXYGEN&type=artist&limit=1" | jq '.artists.items | length')
+              [ "${n:-0}" -gt 0 ] && ok "поиск исполнителей работает" || bad "исполнители не ищутся"
+            else
+              bad "Spotify не принял ключи: $(echo "$r" | jq -r '.error_description // .error // "нет ответа"')"
+            fi
+          fi
+          # 6. Ретранслятор (для стран, где Spotify закрыт) отвечает.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "apikey: $K" "$U/functions/v1/spotify?u=https%3A%2F%2Fopen.spotify.com%2F")
+          [ "$code" != "000" ] && [ "$code" != "404" ] && ok "ретранслятор Spotify отвечает ($code)" || bad "ретранслятор Spotify: $code"
+          echo
+          [ $fails -eq 0 ] && echo "Связь со Spotify в порядке" || { echo "Проблем: $fails"; exit 1; }
