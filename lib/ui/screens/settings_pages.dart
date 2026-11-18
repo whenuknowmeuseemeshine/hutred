@@ -1512,12 +1512,15 @@ class _HostCheckCardState extends State<_HostCheckCard> {
     ('googlevideo.com', 'https://redirector.googlevideo.com/generate_204'),
     ('soundcloud.com', 'https://soundcloud.com/'),
     ('api.deezer.com', 'https://api.deezer.com/'),
-    ('spotify.com', 'https://open.spotify.com/'),
+    // Spotify проверяем так, как им пользуется приложение: поиском через
+    // свои ключи или через сервер Hutred (сайт open.spotify.com не нужен).
+    ('spotify', ''),
     ('lrclib.net', 'https://lrclib.net/'),
   ];
 
   /// null — проверяется; -1 — нет связи; иначе мс.
   final Map<String, int?> _ms = {};
+  final Map<String, String> _err = {};
   bool _running = false;
 
   @override
@@ -1528,18 +1531,29 @@ class _HostCheckCardState extends State<_HostCheckCard> {
 
   Future<void> _run() async {
     if (_running) return;
+    final settings = context.read<SettingsStore>();
+    final sp = context.read<SpotifyService>();
     setState(() {
       _running = true;
       _ms.clear();
+      _err.clear();
     });
     await Future.wait(_hosts.map((h) async {
       final sw = Stopwatch()..start();
       int v;
       try {
-        await http.get(Uri.parse(h.$2)).timeout(const Duration(seconds: 8));
+        if (h.$1 == 'spotify') {
+          if (!settings.hasSpotifyKeys) throw Exception('нет ключей и не выполнен вход в аккаунт');
+          await sp
+              .searchTracks(id: settings.spotifyId, secret: settings.spotifySecret, query: 'test')
+              .timeout(const Duration(seconds: 15));
+        } else {
+          await http.get(Uri.parse(h.$2)).timeout(const Duration(seconds: 8));
+        }
         v = sw.elapsedMilliseconds;
-      } catch (_) {
+      } catch (e) {
         v = -1;
+        _err[h.$1] = '$e'.replaceFirst('Exception: ', '');
       }
       if (mounted) setState(() => _ms[h.$1] = v);
     }));
@@ -1595,6 +1609,10 @@ class _HostCheckCardState extends State<_HostCheckCard> {
                   style: mono.copyWith(color: k.muted, letterSpacing: 0)),
             ]),
           ),
+        // Почему нет связи — коротко, чтобы было что прислать.
+        for (final e in _err.entries)
+          Text('${e.key}: ${e.value.length > 160 ? '${e.value.substring(0, 160)}…' : e.value}',
+              style: TextStyle(fontSize: 12, color: k.bad)),
         const SizedBox(height: 4),
         SkRow(
           title: 'Брать треки с YouTube',
