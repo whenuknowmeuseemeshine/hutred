@@ -716,16 +716,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
         const SizedBox(height: 12),
         if (extra != null) extra,
       ]);
+      // Со своей картинкой фона страница прозрачная — тогда шапку не
+      // заливаем цветом страницы (иначе сквозь неё видно треки), а
+      // размываем, как в стеклянном стиле.
+      final pageBg = Theme.of(context).scaffoldBackgroundColor;
+      final blurred = k.glass || pageBg.a < 0.9;
       return [
         PinnedHeaderSliver(
-          child: k.glass
+          child: blurred
               ? ClipRect(
                   child: BackdropFilter(
                     filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                    child: ColoredBox(color: const Color(0x8C071C22), child: bar),
+                    child: ColoredBox(
+                        color: k.glass ? const Color(0x8C071C22) : const Color(0xB3000000),
+                        child: bar),
                   ),
                 )
-              : ColoredBox(color: Theme.of(context).scaffoldBackgroundColor, child: bar),
+              : ColoredBox(color: pageBg, child: bar),
         ),
       ];
     }

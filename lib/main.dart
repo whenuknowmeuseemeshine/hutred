@@ -283,8 +283,10 @@ Future<void> main(List<String> args) async {
   await DesktopTray.init(
     player: player,
     settings: settings,
-    // Запуск вместе с Windows или включено «Запускать в трее».
-    startHidden: args.contains('--minimized') || settings.startInTray,
+    // Только по настройке «Запускать в трее». Автозапуск с Windows сам
+    // окно не показывает (--minimized) — тогда его покажем мы, если
+    // настройка выключена.
+    startHidden: settings.startInTray,
   );
   // Медиаклавиши Windows (Fn+F9 и т.п.) работают и при свёрнутом окне.
   if (!kIsWeb && Platform.isWindows) {

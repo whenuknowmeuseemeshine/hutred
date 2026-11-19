@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -43,7 +45,20 @@ class DesktopTray with TrayListener, WindowListener {
       trayManager.addListener(tray);
       await tray._updateMenu();
       player.addListener(tray._onPlayer);
-      if (startHidden) await windowManager.hide();
+      // Окно показывает сам Windows-запускатель после первого кадра —
+      // поэтому решаем «в трей или нет» и сразу, и ещё раз после него.
+      Future<void> apply() async {
+        if (startHidden) {
+          await windowManager.hide();
+        } else if (!await windowManager.isVisible()) {
+          await windowManager.show();
+        }
+      }
+
+      await apply();
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => Future<void>.delayed(const Duration(milliseconds: 150), apply));
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 1500), apply));
     } catch (e) {
       debugPrint('[Трей] $e');
     }
