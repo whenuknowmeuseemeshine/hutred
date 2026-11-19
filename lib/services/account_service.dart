@@ -69,6 +69,17 @@ class AccountService extends ChangeNotifier {
 
   SupabaseClient get _db => Supabase.instance.client;
 
+  Timer? _initRetry;
+
+  static bool _clientExists() {
+    try {
+      Supabase.instance.client.auth;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Запуск: подключаемся к облаку и открываем медиатеку нужного пользователя.
   Future<void> init() async {
     if (!enabled) {
@@ -80,14 +91,25 @@ class AccountService extends ChangeNotifier {
         url: HutredConfig.supabaseUrl,
         anonKey: HutredConfig.supabaseAnonKey,
       );
-      _ready = true;
-      store.onTrackRemoved = _onTrackRemoved;
-      store.addListener(_scheduleUpload);
     } catch (e) {
-      debugPrint('Облако недоступно: $e');
+      // Ошибка бывает и после того, как клиент уже создан (например, не
+      // удалось обновить старую сессию без интернета при автозапуске).
+      // Раньше из-за неё облако считалось выключенным навсегда: вход
+      // «проходил», но приложение так и оставалось без аккаунта.
+      debugPrint('Облако: $e');
+    }
+    if (!_clientExists()) {
       await store.load();
+      // Сети ещё нет — попробуем подключиться позже.
+      _initRetry ??= Timer(const Duration(seconds: 20), () {
+        _initRetry = null;
+        if (!_ready) unawaited(init());
+      });
       return;
     }
+    _ready = true;
+    store.onTrackRemoved = _onTrackRemoved;
+    store.addListener(_scheduleUpload);
     await store.load(userId: user?.id);
     _authSub = _db.auth.onAuthStateChange.listen((s) async {
       if (s.event == AuthChangeEvent.passwordRecovery) _recovery();
@@ -478,6 +500,10 @@ class AccountService extends ChangeNotifier {
   /// Вход по почте или логину. Через сервер Hutred — там лимит попыток
   /// и поиск почты по логину (почты других людей приложению не видны).
   Future<void> signIn(String login, String password) async {
+    if (!_ready) {
+      await init();
+      if (!_ready) throw const AuthException('Нет связи с сервером Hutred. Проверь интернет и попробуй ещё раз');
+    }
     final l = login.trim();
     http.Response? res;
     try {
