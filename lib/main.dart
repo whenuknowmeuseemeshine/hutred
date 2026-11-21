@@ -276,6 +276,10 @@ Future<void> main(List<String> args) async {
   };
   player.findOnline = transfer.findPlayable;
   player.isOffline = () => !offline.online;
+  // Интернет вернулся, а аккаунт потерялся (запуск без сети) — восстанавливаем.
+  offline.addListener(() {
+    if (offline.online && !account.signedIn) unawaited(account.recoverSession());
+  });
   // Новые треки с YouTube/SoundCloud сверяем со Spotify (с вопросом).
   // Трей: крестик прячет окно, при автозапуске окно вообще не показываем.
   // Свой yt-dlp (Windows) раз в сутки обновляется в фоне.

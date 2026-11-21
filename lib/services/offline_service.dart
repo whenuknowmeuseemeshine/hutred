@@ -4,11 +4,13 @@ import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/track.dart';
 import 'library_store.dart';
+import 'dpi_bypass.dart';
 import 'soundcloud_source.dart';
 import 'youtube_source.dart';
 
@@ -129,7 +131,23 @@ class OfflineService extends ChangeNotifier {
     unawaited(checkOnline());
     // Раз в 30 секунд проверяем, появился ли / пропал ли интернет.
     _probe = Timer.periodic(const Duration(seconds: 30), (_) => checkOnline());
+    // Сеть сменилась (Wi-Fi ↔ мобильная, пропала и вернулась) или
+    // приложение вернулось из фона — проверяем сразу, не ждём 30 секунд.
+    _changeSub ??= Connectivity().onConnectivityChanged.listen((_) => _netChanged());
+    WidgetsBinding.instance.addObserver(_LifeWatch(this));
     _onLibraryChanged();
+  }
+
+  StreamSubscription<List<ConnectivityResult>>? _changeSub;
+  Timer? _settle;
+
+  void _netChanged() {
+    // Сети нужна секунда-другая, чтобы заработать по-настоящему.
+    _settle?.cancel();
+    _settle = Timer(const Duration(seconds: 2), () async {
+      await DpiBypass.ensureAlive();
+      await checkOnline();
+    });
   }
 
   Future<void> _save() async {
@@ -140,18 +158,37 @@ class OfflineService extends ChangeNotifier {
 
   /// Быстрая проверка связи (без лишних пакетов).
   Future<bool> checkOnline() async {
+    // Интернет есть, если удался хоть один способ: DNS или просто TCP до
+    // Cloudflare/Google (DNS у оператора может висеть после смены сети).
+    Future<bool> dns() async {
+      final r = await InternetAddress.lookup('api.soundcloud.com');
+      return r.isNotEmpty && r.first.rawAddress.isNotEmpty;
+    }
+
+    Future<bool> tcp(String ip) async {
+      final s = await Socket.connect(ip, 443, timeout: const Duration(seconds: 4));
+      s.destroy();
+      return true;
+    }
+
     var ok = false;
     try {
-      final r = await InternetAddress.lookup('api.soundcloud.com')
-          .timeout(const Duration(seconds: 4));
-      ok = r.isNotEmpty && r.first.rawAddress.isNotEmpty;
+      ok = await Future.any([
+        for (final f in [dns(), tcp('1.1.1.1'), tcp('8.8.8.8')])
+          f.then((v) => v ? true : Future<bool>.delayed(const Duration(seconds: 5), () => false),
+              onError: (_) => Future<bool>.delayed(const Duration(seconds: 5), () => false)),
+      ]).timeout(const Duration(seconds: 5));
     } catch (_) {
       ok = false;
     }
     if (ok != _online) {
       _online = ok;
+      debugPrint('[Сеть] ${ok ? 'есть' : 'нет'} интернета');
       notifyListeners();
-      if (ok) _pump();
+      if (ok) {
+        unawaited(DpiBypass.ensureAlive());
+        _pump();
+      }
     }
     return ok;
   }
@@ -375,6 +412,18 @@ class OfflineService extends ChangeNotifier {
   @override
   void dispose() {
     _probe?.cancel();
+    _settle?.cancel();
+    _changeSub?.cancel();
     super.dispose();
+  }
+}
+
+/// Приложение вернулось на экран — сразу проверяем связь.
+class _LifeWatch with WidgetsBindingObserver {
+  _LifeWatch(this.off);
+  final OfflineService off;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) off._netChanged();
   }
 }
