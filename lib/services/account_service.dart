@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
@@ -144,6 +145,51 @@ class AccountService extends ChangeNotifier {
     if (signedIn) {
       unawaited(syncNow());
       unawaited(refreshProfile());
+    }
+    if (!signedIn) _scheduleRecover();
+  }
+
+  // ---------- Сессия после запуска без интернета ----------
+
+  Timer? _recoverTimer;
+  int _recoverTries = 0;
+
+  /// Hutred запускается вместе с Windows раньше, чем появляется сеть:
+  /// сохранённая сессия не обновляется, и до перезапуска приложение
+  /// выглядит вышедшим из аккаунта. Пробуем восстановить её сами:
+  /// первые 5 минут каждые 15 секунд, потом раз в 2 минуты (до часа).
+  void _scheduleRecover() {
+    _recoverTimer?.cancel();
+    if (signedIn || _recoverTries >= 50) return;
+    final wait = _recoverTries < 20 ? const Duration(seconds: 15) : const Duration(minutes: 2);
+    _recoverTimer = Timer(wait, () async {
+      _recoverTries++;
+      if (await recoverSession()) return;
+      _scheduleRecover();
+    });
+  }
+
+  /// Восстанавливает сохранённую сессию, если приложение её потеряло.
+  /// true — восстанавливать нечего или уже вошли.
+  Future<bool> recoverSession() async {
+    if (!_ready) return false;
+    if (signedIn) return true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = prefs
+          .getKeys()
+          .where((k) => k.startsWith('sb-') && k.endsWith('-auth-token'))
+          .firstOrNull;
+      final json = key == null ? null : prefs.getString(key);
+      if (json == null || json.isEmpty) return true;
+      await _db.auth.recoverSession(json);
+      debugPrint('[Аккаунт] сессия восстановлена');
+      return signedIn;
+    } catch (e) {
+      debugPrint('[Аккаунт] сессия пока не восстановилась: $e');
+      // Сессия протухла совсем — библиотека сама выходит из аккаунта,
+      // ключ исчезает, и следующая попытка это увидит.
+      return false;
     }
   }
 
@@ -500,6 +546,7 @@ class AccountService extends ChangeNotifier {
   /// Вход по почте или логину. Через сервер Hutred — там лимит попыток
   /// и поиск почты по логину (почты других людей приложению не видны).
   Future<void> signIn(String login, String password) async {
+    _recoverTimer?.cancel();
     if (!_ready) {
       await init();
       if (!_ready) throw const AuthException('Нет связи с сервером Hutred. Проверь интернет и попробуй ещё раз');
