@@ -171,13 +171,15 @@ class OfflineService extends ChangeNotifier {
       return true;
     }
 
+    // Неудача одного способа не должна «победить» в гонке — её задерживаем.
+    Future<bool> late() => Future<bool>.delayed(const Duration(seconds: 5), () => false);
+    Future<bool> race(Future<bool> f) =>
+        f.then<bool>((v) => v ? Future<bool>.value(true) : late(), onError: (_) => late());
+
     var ok = false;
     try {
-      ok = await Future.any([
-        for (final f in [dns(), tcp('1.1.1.1'), tcp('8.8.8.8')])
-          f.then((v) => v ? true : Future<bool>.delayed(const Duration(seconds: 5), () => false),
-              onError: (_) => Future<bool>.delayed(const Duration(seconds: 5), () => false)),
-      ]).timeout(const Duration(seconds: 5));
+      ok = await Future.any<bool>([race(dns()), race(tcp('1.1.1.1')), race(tcp('8.8.8.8'))])
+          .timeout(const Duration(seconds: 5));
     } catch (_) {
       ok = false;
     }
