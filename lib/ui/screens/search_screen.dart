@@ -50,17 +50,11 @@ class _SearchScreenState extends State<SearchScreen> {
   String _query = '';
   _Mode _mode = _Mode.tracks;
   int _token = 0;
-  final Map<String, _Results> _results = {
-    'spotify': _Results(),
-    'soundcloud': _Results(),
-    'audius': _Results(),
-    'youtube': _Results(),
-  };
+  final Map<String, _Results> _results = {};
 
   /// Онлайн-источники: Spotify — только если есть ключи (свои или от админа).
   List<String> _online(SettingsStore s) =>
       [if (s.hasSpotifyKeys) 'spotify', 'soundcloud', 'audius', if (s.youtubeAuto) 'youtube'];
-  bool _libraryCollapsed = false;
 
   static const _labels = {
     'library': 'Медиатека',
@@ -91,22 +85,13 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _onChanged(String v) {
-    setState(() => _query = v);
     _debounce?.cancel();
-    if (v.trim().length < 2 || _isUrl) {
-      _token++;
-      setState(() {
-        for (final r in _results.values) {
-          r
-            ..tracks = []
-            ..playlists = []
-            ..more = null
-            ..loading = false
-            ..error = null;
-        }
-      });
-      return;
-    }
+    _token++;
+    setState(() {
+      _query = v;
+      _results.clear();
+    });
+    if (v.trim().length < 2 || _isUrl) return;
     _debounce = Timer(const Duration(milliseconds: 600), _searchOnline);
   }
 
@@ -131,6 +116,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final q = _query.trim();
     if (q.length < 2 || _isUrl) return;
     final token = ++_token;
+    final mode = _mode;
     final settings = context.read<SettingsStore>();
     final enabled = settings.searchSources;
     final spotify = context.read<SpotifyService>();
@@ -142,10 +128,11 @@ class _SearchScreenState extends State<SearchScreen> {
       final r = _results.putIfAbsent(key, _Results.new);
       setState(() {
         r.loading = true;
+        r.loadingMore = false;
         r.error = null;
       });
       try {
-        if (_mode == _Mode.tracks) {
+        if (mode == _Mode.tracks) {
           final page = switch (key) {
             'spotify' => await spotify.searchTracks(
                 id: settings.spotifyId, secret: settings.spotifySecret, query: q),
@@ -209,9 +196,11 @@ class _SearchScreenState extends State<SearchScreen> {
         r.more = page?.next;
       });
     } catch (_) {
-      if (mounted) AppActions.toast(context, 'Не удалось загрузить ещё');
+      if (mounted && token == _token) {
+        AppActions.toast(context, 'Не удалось загрузить ещё');
+      }
     } finally {
-      if (mounted) setState(() => r.loadingMore = false);
+      if (mounted && token == _token) setState(() => r.loadingMore = false);
     }
   }
 
@@ -276,14 +265,17 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
     );
 
-    // Всё найденное подряд: для «лучшего результата» и списка исполнителей.
-    final combined = <(String, Track)>[
-      for (final t in local) ('library', t),
-      for (final key in _online(settings))
-        if (enabled.contains(key))
-          for (final t in _results[key]?.tracks ?? const <Track>[]) (key, t),
-    ];
-    final showHero = q.length >= 2 && !_isUrl && _mode == _Mode.tracks && combined.isNotEmpty;
+    final onlineKeys = _online(settings).where(enabled.contains).toList();
+    final groups = _mode == _Mode.tracks
+        ? _groupTracks([
+            for (final t in local) ('library', t),
+            if (q.length >= 2 && !_isUrl)
+              for (final key in onlineKeys)
+                for (final t in _results[key]?.tracks ?? const <Track>[])
+                  (key, t),
+          ], q)
+        : <List<(String, Track)>>[];
+    final showHero = q.length >= 2 && !_isUrl && groups.isNotEmpty;
 
     return Scaffold(
       body: CustomScrollView(
@@ -327,7 +319,11 @@ class _SearchScreenState extends State<SearchScreen> {
                         label: 'Треки',
                         selected: _mode == _Mode.tracks,
                         onTap: () {
-                          setState(() => _mode = _Mode.tracks);
+                          if (_mode == _Mode.tracks) return;
+                          setState(() {
+                            _mode = _Mode.tracks;
+                            _results.clear();
+                          });
                           _searchOnline();
                         },
                       ),
@@ -335,7 +331,11 @@ class _SearchScreenState extends State<SearchScreen> {
                         label: 'Плейлисты',
                         selected: _mode == _Mode.playlists,
                         onTap: () {
-                          setState(() => _mode = _Mode.playlists);
+                          if (_mode == _Mode.playlists) return;
+                          setState(() {
+                            _mode = _Mode.playlists;
+                            _results.clear();
+                          });
                           _searchOnline();
                         },
                       ),
@@ -366,26 +366,17 @@ class _SearchScreenState extends State<SearchScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(pad.left, 8, pad.right, 8),
-                child: _SearchHero(results: combined, labels: _labels),
-              ),
-            ),
-          if (local.isNotEmpty) ...[
-            _header('library', local.length,
-                collapsed: _libraryCollapsed,
-                onToggle: () => setState(() => _libraryCollapsed = !_libraryCollapsed)),
-            if (!_libraryCollapsed)
-              SliverList.builder(
-                itemCount: local.length,
-                itemBuilder: (_, i) => TrackTile(
-                  track: local[i],
-                  onTap: () => player.playTracks(local, start: i),
+                child: _SearchHero(
+                  results: groups.map((group) => group.first).toList(),
+                  labels: _labels,
                 ),
               ),
-          ],
-          if (q.length >= 2 && !_isUrl)
-            for (final key in _online(settings))
-              if (enabled.contains(key) && !(key == 'spotify' && _mode != _Mode.tracks))
-                ..._section(key, store, player),
+            ),
+          if (_mode == _Mode.tracks && q.isNotEmpty && !_isUrl)
+            ..._unifiedTracks(groups, q.length >= 2 ? onlineKeys : [], store, player)
+          else if (q.length >= 2 && !_isUrl)
+            for (final key in onlineKeys)
+              if (key == 'soundcloud' || key == 'youtube') ..._playlistSection(key),
           const SliverToBoxAdapter(child: SizedBox(height: 96)),
         ],
       ),
@@ -435,9 +426,10 @@ class _SearchScreenState extends State<SearchScreen> {
     ];
   }
 
-  List<Widget> _section(String key, LibraryStore store, PlayerService player) {
-    final r = _results.putIfAbsent(key, _Results.new);
-    final count = _mode == _Mode.tracks ? r.tracks.length : r.playlists.length;
+  List<Widget> _playlistSection(String key) {
+    final r = _results[key];
+    if (r == null) return [];
+    final count = r.playlists.length;
     return [
       _header(key, count,
           busy: r.loading,
@@ -465,59 +457,183 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Text('Ничего не нашлось', style: TextStyle(color: HutredTheme.muted)),
             ),
           ),
-        if (_mode == _Mode.tracks)
-          _trackList(r.tracks, store, player)
-        else
-          SliverList.builder(
-            itemCount: r.playlists.length,
-            itemBuilder: (_, i) => _PlaylistTile(playlist: r.playlists[i]),
-          ),
-        if (_mode == _Mode.tracks && r.more != null && count > 0)
-          SliverToBoxAdapter(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: r.loadingMore
-                    ? const SizedBox.square(
-                        dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                    : TextButton.icon(
-                        onPressed: () => _loadMore(key),
-                        icon: Icon(Ic.expand_more),
-                        label: const Text('Показать ещё'),
-                      ),
-              ),
-            ),
-          ),
+        SliverList.builder(
+          itemCount: r.playlists.length,
+          itemBuilder: (_, i) => _PlaylistTile(playlist: r.playlists[i]),
+        ),
       ],
     ];
   }
 
-  Widget _trackList(List<Track> list, LibraryStore store, PlayerService player) {
-    return SliverList.builder(
-      itemCount: list.length,
-      itemBuilder: (_, i) {
-        final t = list[i];
-        final saved = store.findBySource(t.source, t.uri);
-        return TrackTile(
-          track: saved ?? t,
-          onTap: () => player.playTracks(
-            list.map((o) => store.findBySource(o.source, o.uri) ?? o).toList(),
-            start: i,
-          ),
-          trailingAction: IconButton(
-            tooltip: saved == null ? 'В медиатеку' : 'Уже в медиатеке',
-            onPressed: saved == null
-                ? () {
-                    AppActions.ensureInLibrary(context, t);
-                    AppActions.toast(context, 'Добавлено: «${t.title}»');
-                  }
-                : null,
-            icon: Icon(saved == null ? Ic.add_circle_outline : Ic.check_circle,
-                color: saved == null ? null : Theme.of(context).colorScheme.primary),
+  static String _normalize(String text) => text
+      .toLowerCase()
+      .replaceAll('ё', 'е')
+      .replaceAll(RegExp(r"['’]"), '')
+      .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
+      .trim();
+
+  List<List<(String, Track)>> _groupTracks(
+      List<(String, Track)> results, String query) {
+    final buckets = <(String, String), List<List<(String, Track)>>>{};
+    final identities = <(TrackSource, String)>{};
+    final unknownArtist = _normalize(Track.unknownArtist);
+    for (final result in results) {
+      final track = result.$2;
+      if (!identities.add((track.source, track.uri))) continue;
+      final artist = _normalize(track.artist);
+      final title = _normalize(track.title);
+      final duration = track.durationMs;
+      final matches = buckets.putIfAbsent((artist, title), () => []);
+      List<(String, Track)>? same;
+      for (final group in matches) {
+        final first = group.first.$2;
+        if (first.source == track.source && first.uri == track.uri ||
+            artist.isNotEmpty && artist != unknownArtist &&
+                title.isNotEmpty && duration != null &&
+                first.durationMs != null &&
+                (duration - first.durationMs!).abs() <= 3000) {
+          same = group;
+          break;
+        }
+      }
+      if (same == null) {
+        matches.add([result]);
+      } else {
+        same.add(result);
+      }
+    }
+
+    final words = _normalize(query);
+    int rank(Track track) {
+      final title = _normalize(track.title);
+      final artist = _normalize(track.artist);
+      if (words.isEmpty) return 0;
+      if (words == title || words == '$artist $title' || words == '$title $artist') return 0;
+      if (title.startsWith(words) || '$artist $title'.startsWith(words)) return 1;
+      if ('$title $artist'.contains(words)) return 2;
+      return 3;
+    }
+
+    final groups = buckets.values.expand((groups) => groups).toList();
+    final sorted = groups.indexed.toList()
+      ..sort((a, b) {
+        final byMatch = rank(a.$2.first.$2).compareTo(rank(b.$2.first.$2));
+        return byMatch != 0 ? byMatch : a.$1.compareTo(b.$1);
+      });
+    return sorted.map((entry) => entry.$2).toList();
+  }
+
+  List<Widget> _unifiedTracks(
+    List<List<(String, Track)>> groups,
+    List<String> keys,
+    LibraryStore store,
+    PlayerService player,
+  ) {
+    final results = [
+      for (final key in keys)
+        if (_results[key] case final _Results result) (key, result),
+    ];
+    final busy = results.any((entry) => entry.$2.loading);
+    final loadingMore = results.any((entry) => entry.$2.loadingMore);
+    final more = results.where((entry) => entry.$2.more != null);
+    final rows = groups.map((group) {
+      Track? saved;
+      Track? playable;
+      for (final (key, track) in group) {
+        final inLibrary = key == 'library'
+            ? track
+            : store.findBySource(track.source, track.uri);
+        saved ??= inLibrary;
+        if (track.source != TrackSource.spotify) playable ??= inLibrary ?? track;
+      }
+      final display = saved ?? playable ?? group.first.$2;
+      return (group: group, display: display, saved: saved != null);
+    }).toList();
+    final queue = rows.map((row) => row.display).toList();
+
+    Widget status(Widget child) => SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: child,
           ),
         );
-      },
-    );
+
+    return [
+      if (rows.isNotEmpty)
+        status(Row(children: [
+          StyleCaption('Треки · ${rows.length}'),
+          if (busy) ...[
+            const SizedBox(width: 10),
+            const SizedBox.square(
+              dimension: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ],
+        ])),
+      if (rows.isEmpty && busy)
+        status(const Center(child: CircularProgressIndicator())),
+      if (rows.isEmpty && !busy && results.isNotEmpty)
+        status(const Text('Ничего не нашлось')),
+      for (final (key, result) in results)
+        if (result.error case final String error)
+          status(Text('${_labels[key]} · $error',
+              style: const TextStyle(color: HutredTheme.muted))),
+      SliverList.builder(
+        itemCount: rows.length,
+        itemBuilder: (_, i) {
+          final row = rows[i];
+          return TrackTile(
+            track: row.display,
+            onTap: () => player.playTracks(queue, start: i),
+            trailingAction: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (row.group.length > 1)
+                PopupMenuButton<Track>(
+                  tooltip: 'Версии трека',
+                  icon: Icon(Ic.expand_more),
+                  onSelected: (track) => player.playTracks(
+                    [...queue.take(i), track, ...queue.skip(i + 1)],
+                    start: i,
+                  ),
+                  itemBuilder: (_) => [
+                    for (final (key, track) in row.group)
+                      PopupMenuItem(
+                        value: track,
+                        child: Text(
+                          [_labels[key]!, if (track.album.isNotEmpty) track.album]
+                              .join(' · '),
+                        ),
+                      ),
+                  ],
+                ),
+              IconButton(
+                tooltip: row.saved ? 'Уже в медиатеке' : 'В медиатеку',
+                onPressed: row.saved
+                    ? null
+                    : () {
+                        AppActions.ensureInLibrary(context, row.display);
+                        AppActions.toast(context, 'Добавлено: «${row.display.title}»');
+                      },
+                icon: Icon(row.saved ? Ic.check_circle : Ic.add_circle_outline,
+                    color: row.saved ? Theme.of(context).colorScheme.primary : null),
+              ),
+            ]),
+          );
+        },
+      ),
+      if (more.isNotEmpty || loadingMore)
+        status(Center(
+          child: loadingMore
+              ? const SizedBox.square(
+                  dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
+              : TextButton.icon(
+                  onPressed: () => Future.wait([
+                    for (final (key, _) in more) _loadMore(key),
+                  ]),
+                  icon: Icon(Ic.expand_more),
+                  label: const Text('Показать ещё'),
+                ),
+        )),
+    ];
   }
 
   Widget _header(String key, int count,
