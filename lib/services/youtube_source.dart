@@ -225,12 +225,17 @@ class YoutubeSource {
   /// Источник для плеера: готовый файл из кэша или «растущий» файл,
   /// который играет, пока докачивается (YouTube отдаёт звук медленно).
   Future<AudioSource> playableSource(String videoId) async {
+    final elapsed = Stopwatch()..start();
     final dir = await cacheDir();
     final cached = await YtDlp.findCached(dir, videoId);
-    if (cached != null) return AudioSource.file(cached.path);
+    if (cached != null) {
+      debugPrint('[Playback] youtube cache ready after ${elapsed.elapsedMilliseconds} ms');
+      return AudioSource.file(cached.path);
+    }
 
     final done = cachedAudio(videoId);
     var finished = false;
+    var firstBytesLogged = false;
     Object? error;
     File? result;
     done.then((f) {
@@ -244,12 +249,23 @@ class YoutubeSource {
     while (true) {
       if (finished) {
         if (error != null) throw error!;
+        debugPrint('[Playback] youtube file ready after ${elapsed.elapsedMilliseconds} ms');
         return AudioSource.file(result!.path);
       }
       final live = _live[videoId];
-      // Ждём первые ~256 КБ, этого хватает плееру на старт.
-      if (live != null && await live.downloaded() >= 256 * 1024) {
-        return GrowingFileAudioSource(live);
+      if (live != null) {
+        final bytes = await live.downloaded();
+        if (bytes > 0 && !firstBytesLogged) {
+          firstBytesLogged = true;
+          debugPrint('[Playback] youtube first bytes after '
+              '${elapsed.elapsedMilliseconds} ms');
+        }
+        // Ждём первые ~256 КБ, этого хватает плееру на старт.
+        if (bytes >= 256 * 1024) {
+          debugPrint('[Playback] youtube initial buffer ready after '
+              '${elapsed.elapsedMilliseconds} ms');
+          return GrowingFileAudioSource(live);
+        }
       }
       await Future.delayed(const Duration(milliseconds: 150));
     }
@@ -334,10 +350,13 @@ class YoutubeSource {
 
   /// Первый успешный ответ от любого клиента (тот, что сработал в прошлый
   /// раз, получает полсекунды форы — обычно он и сейчас самый быстрый).
-  Future<(StreamManifest, YoutubeApiClient)?> _firstManifest(String videoId) async {
+  Future<(StreamManifest, YoutubeApiClient)?> _firstManifest(
+    String videoId, {
+    bool Function(StreamManifest)? accept,
+  }) async {
     final done = Completer<(StreamManifest, YoutubeApiClient)?>();
     var left = _clients.length;
-    _manifestError = null;
+    if (accept == null) _manifestError = null;
     for (final client in _clients) {
       () async {
         try {
@@ -349,9 +368,11 @@ class YoutubeSource {
               .getManifest(videoId, ytClients: [client])
               .timeout(const Duration(seconds: 12));
           if (m.audioOnly.isEmpty) throw Exception('нет аудио');
-          if (!done.isCompleted) done.complete((m, client));
+          if (!done.isCompleted && (accept == null || accept(m))) {
+            done.complete((m, client));
+          }
         } catch (e) {
-          _manifestError ??= e;
+          if (accept == null) _manifestError ??= e;
         } finally {
           left--;
           if (left == 0 && !done.isCompleted) done.complete(null);
@@ -444,7 +465,7 @@ class YoutubeSource {
               throw Exception('YouTube оборвал загрузку трека, попробуй ещё раз');
             }
             await Future<void>.delayed(Duration(seconds: 1 + attempt));
-            final fresh = await _freshUrl(videoId, info.tag);
+            final fresh = await _freshUrl(videoId, info);
             if (fresh != null) src = fresh;
           }
         }
@@ -468,7 +489,7 @@ class YoutubeSource {
     }
     // Не переименовываем: .part может быть открыт плеером (Windows не даст).
     await part.copy(file.path);
-    live.finish();
+    live.finish(file);
     _live.remove(videoId);
     try {
       await part.delete();
@@ -506,7 +527,7 @@ class YoutubeSource {
     }
     await sink.close();
     await part.copy(file.path);
-    live.finish();
+    live.finish(file);
     _live.remove(videoId);
     try {
       await part.delete();
@@ -514,26 +535,22 @@ class YoutubeSource {
     return file;
   }
 
-  /// Загрузка файла в несколько потоков; куски пишутся строго по порядку.
-  /// Свежая ссылка на поток [tag] этого видео (старая могла протухнуть).
-  Future<Uri?> _freshUrl(String videoId, int tag) async {
-    final order = [
-      if (_goodClient != null) _goodClient!,
-      ..._clients.where((c) => c != _goodClient),
-    ];
-    for (final client in order) {
-      try {
-        final m = await _yt.videos.streams
-            .getManifest(videoId, ytClients: [client])
-            .timeout(const Duration(seconds: 12));
-        for (final st in m.audioOnly) {
-          if (st.tag == tag) return st.url;
-        }
-      } catch (_) {}
-    }
-    return null;
+  /// Свежая ссылка на то же аудио, чтобы продолжить с записанного байта.
+  Future<Uri?> _freshUrl(String videoId, AudioOnlyStreamInfo original) async {
+    bool sameStream(AudioOnlyStreamInfo stream) =>
+        stream.tag == original.tag &&
+        stream.container == original.container &&
+        stream.size.totalBytes == original.size.totalBytes;
+
+    final found = await _firstManifest(
+      videoId,
+      accept: (manifest) => manifest.audioOnly.any(sameStream),
+    );
+    if (found == null) return null;
+    return found.$1.audioOnly.firstWhere(sameStream).url;
   }
 
+  /// Загрузка файла в несколько потоков; куски пишутся строго по порядку.
   Future<void> _parallelGet(Uri url, int total, IOSink sink, _Written pos,
       {Map<String, String>? headers}) async {
     const chunk = 512 * 1024;
@@ -786,6 +803,18 @@ class LiveDownload {
   final String contentType;
   bool done = false;
   Object? error;
+  File? _completedFile;
+
+  Future<RandomAccessFile> open() async {
+    try {
+      return await (_completedFile ?? file).open();
+    } on FileSystemException {
+      // Пока открывали .part, он мог уже смениться готовым файлом.
+      final completed = _completedFile;
+      if (completed == null) rethrow;
+      return completed.open();
+    }
+  }
 
   Future<int> downloaded() async {
     try {
@@ -795,7 +824,10 @@ class LiveDownload {
     }
   }
 
-  void finish() => done = true;
+  void finish(File completedFile) {
+    _completedFile = completedFile;
+    done = true;
+  }
 
   void fail(Object e) {
     error = e;
@@ -826,7 +858,7 @@ class GrowingFileAudioSource extends StreamAudioSource {
   }
 
   Stream<List<int>> _read(int start, int end) async* {
-    final raf = await live.file.open();
+    final raf = await live.open();
     try {
       var pos = start;
       await raf.setPosition(pos);
