@@ -306,7 +306,7 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     final hideMiniPlayer =
-        style.mono && !HutredTheme.desktop && MediaQuery.viewInsetsOf(context).bottom > 0;
+        !HutredTheme.desktop && MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       body: Column(
         children: [
