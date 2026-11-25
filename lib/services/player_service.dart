@@ -8,10 +8,13 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import '../models/track.dart';
+import 'playback_sources.dart';
 import 'soundcloud_source.dart';
 import 'youtube_source.dart';
 
 enum RepeatSetting { off, all, one }
+
+typedef _PlaybackSource = ({AudioSource audio, Track? online});
 
 /// Очередь воспроизведения и управление плеером.
 class PlayerService extends ChangeNotifier {
@@ -23,6 +26,7 @@ class PlayerService extends ChangeNotifier {
 
   /// Находит, где играть трек из Spotify (SoundCloud или YouTube).
   Future<Track?> Function(Track track)? resolveSpotify;
+  PlaybackSources? playbackSources;
 
   /// Включён ли YouTube как запасной источник (для текста ошибки).
   bool Function() youtubeAllowed = () => true;
@@ -62,6 +66,8 @@ class PlayerService extends ChangeNotifier {
         // не понимает, например .ogg/.opus) — выбрасываем копию и пробуем
         // ещё раз: из облака заново или такой же трек с SoundCloud.
         final t = current;
+        final source = _playingSource;
+        if (t != null && source != null) playbackSources?.failed(t, source);
         if (t != null && _playedFromFile && _fileRetryFor != t.id) {
           _fileRetryFor = t.id;
           unawaited(() async {
@@ -334,11 +340,14 @@ class PlayerService extends ChangeNotifier {
     final next = _queue[j];
     try {
       // Следующий трек заранее скачан (_prefetchNext), обычно это мгновенно.
-      final source = await _sourceFor(next).timeout(const Duration(seconds: 2));
+      final candidate = _candidates(next).first;
+      final resolved = await _sourceFor(next, candidate: candidate)
+          .timeout(const Duration(seconds: 2));
       if (token != _loadToken || !_player.playing) return;
       final incoming = _other;
       await incoming.setVolume(0);
-      await incoming.setAudioSource(source).timeout(const Duration(seconds: 4));
+      await incoming.setAudioSource(resolved.audio)
+          .timeout(const Duration(seconds: 4));
       if (token != _loadToken) {
         await incoming.stop();
         return;
@@ -349,6 +358,7 @@ class PlayerService extends ChangeNotifier {
       _player = incoming;
       _index = j;
       ++_loadToken;
+      _rememberOpened(next, resolved);
       unawaited(incoming.play());
       onStarted?.call(next);
       notifyListeners();
@@ -424,7 +434,10 @@ class PlayerService extends ChangeNotifier {
 
   // ---------- Запуск ----------
 
-  Future<void> playTracks(List<Track> tracks, {int start = 0}) async {
+  Future<void> playTracks(List<Track> tracks, {
+    int start = 0,
+    bool exactSource = false,
+  }) async {
     if (tracks.isEmpty) return;
     _resumeAt = null;
     _recommended.clear();
@@ -435,7 +448,7 @@ class PlayerService extends ChangeNotifier {
     _allowId = _queue[_index].id;
     // Режим перемешивания действует при любом запуске, в том числе по нажатию на трек.
     if (_shuffle) _shuffleRest();
-    final load = _loadCurrent();
+    final load = _loadCurrent(exactSource: exactSource);
     if (_smart) unawaited(_ensureRecsAhead());
     await load;
   }
@@ -485,7 +498,10 @@ class PlayerService extends ChangeNotifier {
   String? Function(Track track)? blockedArtist;
   String? _allowId;
 
-  Future<void> _loadCurrent({bool autoplay = true}) async {
+  Future<void> _loadCurrent({
+    bool autoplay = true,
+    bool exactSource = false,
+  }) async {
     var t = current;
     if (t == null) return;
     if (autoplay) _noteRecent(t);
@@ -518,6 +534,8 @@ class PlayerService extends ChangeNotifier {
     _allowId = null;
     final token = ++_loadToken;
     _loading = true;
+    _playedFromFile = false;
+    _playingSource = null;
     _pauseRequested = false;
     _error = null;
     notifyListeners();
@@ -533,23 +551,65 @@ class PlayerService extends ChangeNotifier {
     if (token != _loadToken) return;
     final elapsed = Stopwatch()..start();
     var stage = 'source';
-    try {
-      final source = await _sourceFor(t)
-          .timeout(const Duration(minutes: 2), onTimeout: () {
-        throw Exception('источник не ответил за 2 минуты');
-      });
-      if (token != _loadToken) return;
-      debugPrint('[Playback] ${t.source.name} source ready in '
-          '${elapsed.elapsedMilliseconds} ms (${source.runtimeType})');
-      stage = 'open';
+    final selected = t;
+    final candidates = exactSource ? [selected] : _candidates(selected);
+    final hasFallback = candidates.length > 1;
+    final retryOnline = _preferOnline;
+    _preferOnline = false;
+
+    Future<bool> open(Track candidate, {required bool first}) async {
+      stage = 'source';
       elapsed.reset();
-      if (eqSupported && _eqOn) unawaited(_applyEq());
-      await _player.setAudioSource(source).timeout(
-          const Duration(seconds: 12), onTimeout: () {
-        throw Exception('плеер не смог открыть поток');
+      final budget = hasFallback
+          ? Duration(seconds: first ? 8 : 12)
+          : const Duration(minutes: 2);
+      final resolved = await _sourceFor(
+        selected,
+        candidate: candidate,
+        skipOffline: retryOnline || !first,
+      ).timeout(budget, onTimeout: () {
+        throw Exception('источник не ответил за ${budget.inSeconds} с');
       });
-      if (token != _loadToken) return;
+      if (token != _loadToken) return false;
+      try {
+        debugPrint('[Playback] ${(resolved.online ?? candidate).source.name} '
+            'source ready in ${elapsed.elapsedMilliseconds} ms (${resolved.audio.runtimeType})');
+        stage = 'open';
+        elapsed.reset();
+        if (eqSupported && _eqOn) unawaited(_applyEq());
+        await _player.setAudioSource(resolved.audio).timeout(
+          hasFallback && first
+              ? const Duration(seconds: 5)
+              : const Duration(seconds: 12),
+          onTimeout: () => throw Exception('плеер не смог открыть поток'),
+        );
+      } catch (_) {
+        final source = resolved.online;
+        if (token == _loadToken && source != null) {
+          playbackSources?.failed(selected, source);
+        }
+        rethrow;
+      }
+      if (token != _loadToken) return false;
+      _rememberOpened(selected, resolved);
       debugPrint('[Playback] player opened source in ${elapsed.elapsedMilliseconds} ms');
+      return true;
+    }
+
+    try {
+      try {
+        if (!await open(candidates.first, first: true)) return;
+      } on PlayerInterruptedException {
+        rethrow;
+      } catch (_) {
+        if (token != _loadToken || !hasFallback) rethrow;
+        playbackSources?.failed(selected, candidates.first);
+        debugPrint('[Playback] trying another source after $stage failed');
+        try {
+          await _player.stop().timeout(const Duration(seconds: 3));
+        } catch (_) {}
+        if (token != _loadToken || !await open(candidates[1], first: false)) return;
+      }
       stage = 'resume';
       final resume = _resumeAt;
       _resumeAt = null;
@@ -559,6 +619,7 @@ class PlayerService extends ChangeNotifier {
         } catch (_) {}
       }
       // Пока грузилось, нажали паузу — не включаем.
+      if (token != _loadToken) return;
       if (autoplay && !_pauseRequested) unawaited(_player.play());
       _failedInRow = 0;
       onStarted?.call(t);
@@ -614,34 +675,53 @@ class PlayerService extends ChangeNotifier {
     return firstLine.length > 160 ? '${firstLine.substring(0, 160)}…' : firstLine;
   }
 
-  /// Заранее качаем следующий трек с YouTube, чтобы переход был без паузы.
+  List<Track> _candidates(Track track) {
+    final candidates = playbackSources?.candidates(
+      track,
+      youtubeAllowed: youtubeAllowed(),
+    ) ?? [track];
+    final available = candidates.where((source) =>
+        source.source != TrackSource.youtube || !youtube.isUnavailable(source.uri));
+    return available.isEmpty ? [track] : available.toList();
+  }
+
+  bool _prefetching = false;
+  bool _disposed = false;
+
+  /// Готовим только один следующий трек из очереди.
   void _prefetchNext() {
-    // Два следующих трека готовим заранее, чтобы они включались сразу.
-    for (var i = _index + 1; i <= _index + 2 && i < _queue.length; i++) {
-      final next = _queue[i];
-      if (next.source == TrackSource.youtube) {
-        youtube.cachedAudio(next.uri).ignore();
-      } else if (next.source == TrackSource.soundcloud) {
-        soundcloud.prefetch(next.uri);
-      } else if (next.source == TrackSource.spotify && i == _index + 1) {
-        // Трек из Spotify: заранее находим его копию и начинаем грузить —
-        // особенно важно, если она окажется на YouTube.
-        unawaited(() async {
-          try {
-            final found = await resolveSpotify?.call(next);
-            if (found?.source == TrackSource.youtube) {
-              youtube.cachedAudio(found!.uri).ignore();
-            } else if (found?.source == TrackSource.soundcloud) {
-              soundcloud.prefetch(found!.uri);
-            }
-          } catch (_) {}
-        }());
+    if (_prefetching || _disposed || isOffline?.call() == true) return;
+    final index = _autoNextIndex();
+    if (index == null || index == _index) return;
+    final next = _queue[index];
+    if (offlineAudio?.call(next) != null) return;
+
+    _prefetching = true;
+    final token = _loadToken;
+    unawaited(() async {
+      try {
+        final candidate = _candidates(next).first;
+        final track = candidate.source == TrackSource.spotify
+            ? await resolveSpotify?.call(candidate)
+            : candidate;
+        if (_disposed || token != _loadToken || track == null) return;
+        if (track.source == TrackSource.youtube) {
+          await youtube.cachedAudio(track.uri);
+        } else if (track.source == TrackSource.soundcloud) {
+          await soundcloud.cachedAudio(track.uri);
+        }
+      } catch (_) {
+        // Ошибка предзагрузки не прерывает текущий трек.
+      } finally {
+        _prefetching = false;
+        if (token != _loadToken && !_loading) _prefetchNext();
       }
-    }
+    }());
   }
 
   /// Трек сейчас играет из файла (скачанный, свой, из облака).
   bool _playedFromFile = false;
+  Track? _playingSource;
 
   /// Для этого трека файл уже пересоздавали — второй раз не пробуем.
   String? _fileRetryFor;
@@ -657,24 +737,58 @@ class PlayerService extends ChangeNotifier {
 
   static const _iosUnplayable = {'ogg', 'opus', 'oga', 'webm', 'weba', 'wma', 'ape', 'mka'};
 
-  Future<AudioSource> _sourceFor(Track t) async {
-    final s = await _sourceForInner(t);
-    _playedFromFile = s is UriAudioSource && s.uri.scheme == 'file';
-    return s;
+  void _rememberOpened(Track track, _PlaybackSource resolved) {
+    final audio = resolved.audio;
+    final source = resolved.online;
+    _playingSource = source;
+    _playedFromFile = source == null && audio is UriAudioSource &&
+        audio.uri.scheme == 'file';
+    if (source != null) playbackSources?.opened(track, source);
   }
 
-  Future<AudioSource> _sourceForInner(Track t) async {
-    final online = _preferOnline;
-    _preferOnline = false;
+  Future<_PlaybackSource> _sourceFor(
+    Track track, {
+    required Track candidate,
+    bool skipOffline = false,
+  }) async {
+    Track? online;
+    final audio = await _sourceForInner(
+      track,
+      candidate: candidate,
+      skipOffline: skipOffline,
+      onOnline: (source) => online = source,
+      token: _loadToken,
+    );
+    return (audio: audio, online: online);
+  }
+
+  Future<AudioSource> _sourceForInner(
+    Track t, {
+    required Track candidate,
+    required bool skipOffline,
+    required void Function(Track) onOnline,
+    required int token,
+  }) async {
+    Future<AudioSource> follow(Track found) => _sourceForInner(
+          found,
+          candidate: found,
+          skipOffline: true,
+          onOnline: onOnline,
+          token: token,
+        );
+    final online = skipOffline;
     if (online && t.source == TrackSource.local) {
       final found = await findOnline?.call(t).catchError((_) => null);
-      if (found != null && found.source != TrackSource.local) return _sourceForInner(found);
+      if (found != null && found.source != TrackSource.local) return follow(found);
     }
     final downloaded = online ? null : offlineAudio?.call(t);
     if (downloaded != null && !_unplayableHere(downloaded)) return AudioSource.file(downloaded);
     if (isOffline?.call() == true &&
         !(t.source == TrackSource.local && File(t.uri).existsSync())) {
       throw Exception('нет интернета, а трек не скачан');
+    }
+    if (candidate.source != t.source || candidate.uri != t.uri) {
+      return follow(candidate);
     }
     switch (t.source) {
       case TrackSource.local:
@@ -685,7 +799,7 @@ class PlayerService extends ChangeNotifier {
         if (fromCloud != null) {
           // Формат, который iPhone не играет — ищем такой же трек онлайн.
           final found = await findOnline?.call(t).catchError((_) => null);
-          if (found != null && found.source != TrackSource.local) return _sourceForInner(found);
+          if (found != null && found.source != TrackSource.local) return follow(found);
           throw Exception('iPhone не играет файлы .${fromCloud.split('.').last}, '
               'а онлайн этот трек не нашёлся');
         }
@@ -694,14 +808,16 @@ class PlayerService extends ChangeNotifier {
             ? 'файл не найден: ${t.uri}'
             : 'не удалось скачать файл из облака');
       case TrackSource.url:
+        onOnline(t);
         return AudioSource.uri(Uri.parse(t.uri));
       case TrackSource.youtube:
+        onOnline(t);
         return await youtube.playableSource(t.uri);
       case TrackSource.soundcloud:
+        onOnline(t);
         return AudioSource.file((await soundcloud.cachedAudio(t.uri)).path);
       case TrackSource.spotify:
         // Spotify звук не отдаёт: играем тот же трек с SoundCloud/YouTube.
-        final token = _loadToken;
         final elapsed = Stopwatch()..start();
         final found = await resolveSpotify?.call(t);
         debugPrint('[Playback] spotify matched ${found?.source.name ?? 'nothing'} '
@@ -712,7 +828,7 @@ class PlayerService extends ChangeNotifier {
               : 'нет на SoundCloud. Можно включить YouTube: Настройки → Сеть и YouTube');
         }
         try {
-          return await _sourceFor(found);
+          return await follow(found);
         } catch (_) {
           if (token != _loadToken ||
               found.source != TrackSource.youtube ||
@@ -726,7 +842,7 @@ class PlayerService extends ChangeNotifier {
               (alternate.source == found.source && alternate.uri == found.uri)) {
             rethrow;
           }
-          return _sourceFor(alternate);
+          return follow(alternate);
         }
     }
   }
@@ -1206,6 +1322,7 @@ class PlayerService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     for (final s in _subs) {
       s.cancel();
     }
