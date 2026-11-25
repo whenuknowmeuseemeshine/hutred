@@ -265,7 +265,7 @@ class YoutubeSource {
     Object? lastError;
     // Разные «клиенты» YouTube по-разному отдают видео: пробуем по очереди,
     // пока какой-нибудь не отдаст звук.
-    if (_deadVideos.contains(videoId)) {
+    if (isUnavailable(videoId)) {
       throw Exception('YouTube не отдал звук этого видео');
     }
     // Библиотека уже подводила, а yt-dlp справился — сразу идём к нему,
@@ -364,6 +364,9 @@ class YoutubeSource {
   /// Библиотека не справилась, а yt-dlp — да: до перезапуска качаем через него.
   bool _preferYtDlp = false;
   final Set<String> _deadVideos = {};
+
+  /// Этот ролик уже не удалось открыть в текущем сеансе.
+  bool isUnavailable(String videoId) => _deadVideos.contains(videoId);
 
   static final _clients = [
     YoutubeApiClient.androidVr,
