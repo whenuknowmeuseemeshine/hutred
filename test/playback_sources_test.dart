@@ -37,6 +37,21 @@ void main() {
     expect(uris(), ['soundcloud-id', 'youtube-id', 'spotify-id']);
   });
 
+  test('a SoundCloud track keeps its source ahead of remembered YouTube', () async {
+    SharedPreferences.setMockInitialValues({});
+    final memory = await PlaybackSources.load();
+    memory.rememberVariants([
+      (soundcloud, [youtube]),
+    ]);
+    memory.opened(soundcloud, youtube);
+
+    expect(
+      memory.candidates(soundcloud, youtubeAllowed: true)
+          .map((track) => track.source),
+      [TrackSource.soundcloud, TrackSource.youtube],
+    );
+  });
+
   test('saved YouTube fallback respects the playback setting', () async {
     SharedPreferences.setMockInitialValues({
       'playback_sources_v1': '''
