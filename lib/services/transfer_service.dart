@@ -411,14 +411,22 @@ class TransferService extends ChangeNotifier {
     // или его явно выбрали первым в переносе.
     final yt = settings.youtubeAuto;
     if (playable && searchFirst != 'youtube') {
-      // Ищем везде сразу, а берём по порядку: SoundCloud, Audius, YouTube.
-      // Так YouTube не ждёт, пока переберутся все запросы SoundCloud.
-      Future<Track?> safe(Future<Track?> Function(TransferItem) f) =>
-          f(item).timeout(const Duration(seconds: 25)).catchError((_) => null);
-      final sc = safe(_matchSoundcloud);
-      final au = safe(_matchAudius);
-      final ytf = yt ? safe(_matchYoutube) : null;
-      return await sc ?? await au ?? (ytf == null ? null : await ytf);
+      Future<Track?> safe(Future<Track?> Function(TransferItem) find) async {
+        try {
+          return await find(item).timeout(const Duration(seconds: 25));
+        } catch (_) {
+          return null;
+        }
+      }
+
+      final soundcloudMatch = safe(_matchSoundcloud);
+      final audiusMatch = safe(_matchAudius);
+      if (!yt) return await soundcloudMatch ?? await audiusMatch;
+      return _matchWithFallback([
+        soundcloudMatch,
+        audiusMatch,
+        safe(_matchYoutube),
+      ]);
     }
     final order = switch (searchFirst) {
       'spotify' when !playable => [_matchSpotify, _matchSoundcloud, if (yt) _matchYoutube],
@@ -432,6 +440,40 @@ class TransferService extends ChangeNotifier {
       } catch (_) {}
     }
     return null;
+  }
+
+  /// Даём более приоритетным источникам фору после первого совпадения.
+  Future<Track?> _matchWithFallback(List<Future<Track?>> searches) {
+    final result = Completer<Track?>();
+    final pending = {for (var index = 0; index < searches.length; index++) index};
+    var bestPriority = searches.length;
+    Track? best;
+    Timer? grace;
+
+    void complete() {
+      grace?.cancel();
+      result.complete(best);
+    }
+
+    for (var index = 0; index < searches.length; index++) {
+      final priority = index;
+      unawaited(searches[priority].then((track) {
+        if (result.isCompleted) return;
+        pending.remove(priority);
+        if (track != null && priority < bestPriority) {
+          best = track;
+          bestPriority = priority;
+        }
+
+        if (pending.every((priority) => priority > bestPriority)) {
+          complete();
+        } else if (best != null) {
+          grace ??= Timer(const Duration(milliseconds: 1500), complete);
+        }
+      }));
+    }
+
+    return result.future;
   }
 
   /// Трек из каталога Spotify: точные название, исполнитель и обложка.
