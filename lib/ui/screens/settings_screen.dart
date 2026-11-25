@@ -2314,6 +2314,10 @@ class _GroupPage extends StatelessWidget {
         backgroundColor: background,
         appBar: AppBar(
           backgroundColor: background,
+          leading: !HutredTheme.desktop &&
+                  (ModalRoute.of(context)?.impliesAppBarDismissal ?? false)
+              ? const TooltipVisibility(visible: false, child: BackButton())
+              : null,
           title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
         body: ListView(
