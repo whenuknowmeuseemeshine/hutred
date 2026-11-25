@@ -638,7 +638,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         if (!showTitle) const Spacer(),
         const ReleasesBell(),
         IconButton(
-          tooltip: 'Найти в медиатеке',
+          tooltip: _searchOpen ? 'Закрыть поиск' : 'Найти в медиатеке',
           onPressed: () => setState(() {
             _searchOpen = !_searchOpen;
             if (!_searchOpen) _q = '';
@@ -727,7 +727,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
             delegate: _PhoneLibraryHeader(
               topInset: topInset,
               background: background,
-              wallpaper: wallpaper,
+              wallpaper: _searchOpen ? null : wallpaper,
+              searchOpen: _searchOpen,
+              controlsHeight: (search == null ? 0.0 : 50.0) +
+                  (extra == null ? 0.0 : 50.0),
+              controls: Column(
+                children: [
+                  if (search != null) search,
+                  if (extra != null) SizedBox(height: 50, child: extra),
+                ],
+              ),
               compact: header(compact: true, inset: false),
               expanded: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -750,16 +759,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ),
             ),
           ),
-          if (search != null || extra != null)
-            PinnedHeaderSliver(
-              child: ColoredBox(
-                color: background,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [if (search != null) search, if (extra != null) extra],
-                ),
-              ),
-            ),
         ];
       }
       final bar = Column(mainAxisSize: MainAxisSize.min, children: [
@@ -988,6 +987,9 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
     required this.topInset,
     required this.background,
     required this.wallpaper,
+    required this.searchOpen,
+    required this.controlsHeight,
+    required this.controls,
     required this.expanded,
     required this.compact,
   });
@@ -995,18 +997,21 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
   final double topInset;
   final Color background;
   final String? wallpaper;
+  final bool searchOpen;
+  final double controlsHeight;
+  final Widget controls;
   final Widget expanded;
   final Widget compact;
 
   @override
-  double get minExtent => topInset + 52;
+  double get minExtent => topInset + 52 + controlsHeight;
 
   @override
-  double get maxExtent => minExtent + 88;
+  double get maxExtent => minExtent + (searchOpen ? 0 : 88);
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final collapsed = shrinkOffset >= maxExtent - minExtent - 1;
+    final collapsed = searchOpen || shrinkOffset >= 44;
     final image = wallpaper;
     return Material(
       color: background,
@@ -1033,9 +1038,27 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
               top: topInset,
               left: 0,
               right: 0,
-              height: collapsed ? 52 : maxExtent - topInset,
-              child: collapsed ? Center(child: compact) : expanded,
+              bottom: controlsHeight,
+              child: ClipRect(
+                child: collapsed
+                    ? Align(alignment: Alignment.topCenter,
+                        child: SizedBox(height: 52, child: compact))
+                    : OverflowBox(
+                        alignment: Alignment.topCenter,
+                        minHeight: 140,
+                        maxHeight: 140,
+                        child: expanded,
+                      ),
+              ),
             ),
+            if (controlsHeight > 0)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: controlsHeight,
+                child: ColoredBox(color: background, child: controls),
+              ),
           ],
         ),
       ),
@@ -1047,6 +1070,9 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
       oldDelegate.topInset != topInset ||
       oldDelegate.background != background ||
       oldDelegate.wallpaper != wallpaper ||
+      oldDelegate.searchOpen != searchOpen ||
+      oldDelegate.controlsHeight != controlsHeight ||
+      oldDelegate.controls != controls ||
       oldDelegate.expanded != expanded ||
       oldDelegate.compact != compact;
 }
