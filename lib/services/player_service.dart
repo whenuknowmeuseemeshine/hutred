@@ -61,13 +61,16 @@ class PlayerService extends ChangeNotifier {
         notifyListeners();
       }));
       _subs.add(p.playbackEventStream.listen((_) {}, onError: (Object e) {
-        if (p != _player) return;
+        if (p != _player || _loading) return;
         // Файл открылся, но не играет (битый или формат, который iPhone
         // не понимает, например .ogg/.opus) — выбрасываем копию и пробуем
         // ещё раз: из облака заново или такой же трек с SoundCloud.
         final t = current;
         final source = _playingSource;
-        if (t != null && source != null) playbackSources?.failed(t, source);
+        if (t != null && source != null) {
+          playbackSources?.failed(t, source);
+          if (_recoverStream(t, source, p.position, playing: p.playing)) return;
+        }
         if (t != null && _playedFromFile && _fileRetryFor != t.id) {
           _fileRetryFor = t.id;
           unawaited(() async {
@@ -358,6 +361,8 @@ class PlayerService extends ChangeNotifier {
       _player = incoming;
       _index = j;
       ++_loadToken;
+      _streamRecoveryUsed = false;
+      _exactSourcePlayback = false;
       _rememberOpened(next, resolved);
       unawaited(incoming.play());
       onStarted?.call(next);
@@ -501,10 +506,11 @@ class PlayerService extends ChangeNotifier {
   Future<void> _loadCurrent({
     bool autoplay = true,
     bool exactSource = false,
+    Track? resumeWith,
   }) async {
     var t = current;
     if (t == null) return;
-    if (autoplay) _noteRecent(t);
+    if (autoplay && resumeWith == null) _noteRecent(t);
     // Нажали на трек исполнителя из чёрного списка — не играем, объясняем.
     final banned = blockedArtist?.call(t);
     if (banned != null && t.id == _allowId) {
@@ -517,7 +523,8 @@ class PlayerService extends ChangeNotifier {
     }
     // Скрытые треки пропускаем (кроме того, на который нажали сами).
     final blocked = isBlocked;
-    if (blocked != null && t.id != _allowId && blocked(t)) {
+    if (resumeWith == null && blocked != null &&
+        t.id != _allowId && blocked(t)) {
       var j = _index + 1;
       while (j < _queue.length && blocked(_queue[j])) {
         j++;
@@ -532,6 +539,10 @@ class PlayerService extends ChangeNotifier {
       t = _queue[j];
     }
     _allowId = null;
+    if (resumeWith == null) {
+      _streamRecoveryUsed = false;
+      _exactSourcePlayback = exactSource;
+    }
     final token = ++_loadToken;
     _loading = true;
     _playedFromFile = false;
@@ -552,17 +563,21 @@ class PlayerService extends ChangeNotifier {
     final elapsed = Stopwatch()..start();
     var stage = 'source';
     final selected = t;
-    final candidates = exactSource ? [selected] : _candidates(selected);
+    final candidates = resumeWith != null
+        ? [resumeWith]
+        : exactSource ? [selected] : _candidates(selected);
     final hasFallback = candidates.length > 1;
-    final retryOnline = _preferOnline;
+    final retryOnline = resumeWith != null || _preferOnline;
     _preferOnline = false;
 
     Future<bool> open(Track candidate, {required bool first}) async {
       stage = 'source';
       elapsed.reset();
-      final budget = hasFallback
-          ? Duration(seconds: first ? 8 : 12)
-          : const Duration(minutes: 2);
+      final budget = resumeWith != null
+          ? const Duration(seconds: 12)
+          : hasFallback
+              ? Duration(seconds: first ? 8 : 12)
+              : const Duration(minutes: 2);
       final resolved = await _sourceFor(
         selected,
         candidate: candidate,
@@ -622,7 +637,7 @@ class PlayerService extends ChangeNotifier {
       if (token != _loadToken) return;
       if (autoplay && !_pauseRequested) unawaited(_player.play());
       _failedInRow = 0;
-      onStarted?.call(t);
+      if (resumeWith == null) onStarted?.call(t);
       // Умное перемешивание: держим рекомендации на несколько треков вперёд.
       if (_smart) unawaited(_ensureRecsAhead());
       // Подходит конец очереди — заранее подбираем похожее.
@@ -641,6 +656,7 @@ class PlayerService extends ChangeNotifier {
         // Как в Spotify: недоступный трек пропускаем и играем следующий.
         // Если поставили на паузу — остаёмся на этом треке.
         if (autoplay &&
+            resumeWith == null &&
             !_pauseRequested &&
             _index + 1 < _queue.length &&
             _failedInRow < _queue.length) {
@@ -651,6 +667,7 @@ class PlayerService extends ChangeNotifier {
       }
     } finally {
       if (token == _loadToken) {
+        if (resumeWith != null) _resumeAt = null;
         _loading = false;
         notifyListeners();
       }
@@ -683,6 +700,31 @@ class PlayerService extends ChangeNotifier {
     final available = candidates.where((source) =>
         source.source != TrackSource.youtube || !youtube.isUnavailable(source.uri));
     return available.isEmpty ? [track] : available.toList();
+  }
+
+  bool _streamRecoveryUsed = false;
+  bool _exactSourcePlayback = false;
+
+  bool _recoverStream(Track track, Track source, Duration position,
+      {required bool playing}) {
+    if (_streamRecoveryUsed || _exactSourcePlayback ||
+        !playing || position <= Duration.zero || isOffline?.call() == true) {
+      return false;
+    }
+    for (final candidate in _candidates(track)) {
+      if (candidate.source == TrackSource.spotify ||
+          candidate.source == TrackSource.local ||
+          (candidate.source == source.source && candidate.uri == source.uri)) {
+        continue;
+      }
+      _streamRecoveryUsed = true;
+      _resumeAt = position;
+      debugPrint('[Playback] resuming after ${source.source.name} stopped '
+          'using ${candidate.source.name}');
+      unawaited(_loadCurrent(resumeWith: candidate));
+      return true;
+    }
+    return false;
   }
 
   bool _prefetching = false;
