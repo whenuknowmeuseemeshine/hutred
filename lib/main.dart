@@ -66,6 +66,7 @@ Future<void> main(List<String> args) async {
   final account = AccountService(store: store, settings: settings);
   // Аккаунт решает, чью медиатеку открыть (без входа — локальную).
   await settings.load();
+  await settings.applyPhoneOrientation();
   // Набор значков — по стилю, выбранному при запуске.
   Ic.style = settings.style;
   DpiBypass.splitHello = !settings.dnsOnly;
