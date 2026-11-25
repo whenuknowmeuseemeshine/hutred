@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
@@ -577,6 +578,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     return Scaffold(
+      backgroundColor: !HutredTheme.desktop && HutredStyle.of(context).mono
+          ? Theme.of(context).canvasColor
+          : null,
       appBar: _sel != null ? _selectionBar(tracks, store, offline) : null,
       // Потянуть вниз в самом верху — забрать изменения с других устройств.
       body: RefreshIndicator(
@@ -610,21 +614,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }) {
     final st = HutredStyle.of(context);
     final k = Sk.of(context);
+    final compactOnScroll = st.mono && !HutredTheme.desktop;
+    final topInset = MediaQuery.paddingOf(context).top;
     final downloadedTracks = store.tracks.where(offline.isDownloaded).toList();
 
-    final header = Padding(
-      padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + 8, 4, 6),
+    Widget header({required bool compact, required bool inset, bool showTitle = true}) => Padding(
+      padding: EdgeInsets.fromLTRB(12, inset ? topInset + 8 : 0, 4, 0),
       child: Row(children: [
         const AccountButton(),
         const SizedBox(width: 6),
-        Expanded(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(st.sharp ? 'МЕДИАТЕКА' : 'Медиатека',
-                maxLines: 1, style: st.display(st.glass ? 24 : 30)),
+        if (showTitle)
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                st.sharp ? 'МЕДИАТЕКА' : 'Медиатека',
+                maxLines: 1,
+                style: st.display(compact ? 18 : (st.glass ? 24 : 30)),
+              ),
+            ),
           ),
-        ),
+        if (!showTitle) const Spacer(),
         const ReleasesBell(),
         IconButton(
           tooltip: 'Найти в медиатеке',
@@ -706,11 +717,56 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
 
-    // Шапка (аватар, «Медиатека», фильтры, сортировка) закреплена сверху
-    // и не уезжает при прокрутке.
     List<Widget> top([Widget? extra]) {
+      if (compactOnScroll) {
+        final background = Theme.of(context).canvasColor;
+        final wallpaper = context.watch<SettingsStore>().waveBackground;
+        return [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _PhoneLibraryHeader(
+              topInset: topInset,
+              background: background,
+              wallpaper: wallpaper,
+              compact: header(compact: true, inset: false),
+              expanded: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  header(compact: false, inset: false, showTitle: false),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SizedBox(
+                      height: 44,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text('Медиатека', style: st.display(33)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  chips,
+                ],
+              ),
+            ),
+          ),
+          if (search != null || extra != null)
+            PinnedHeaderSliver(
+              child: ColoredBox(
+                color: background,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [if (search != null) search, if (extra != null) extra],
+                ),
+              ),
+            ),
+        ];
+      }
       final bar = Column(mainAxisSize: MainAxisSize.min, children: [
-        header,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: header(compact: false, inset: true),
+        ),
         if (search != null) search,
         chips,
         const SizedBox(height: 12),
@@ -927,6 +983,74 @@ class _LibraryScreenState extends State<LibraryScreen> {
 }
 
 /// Вкладки медиатеки: подчёркивание (Моно), «таблетка» (Стекло), ячейка акцента (Резкий).
+class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
+  const _PhoneLibraryHeader({
+    required this.topInset,
+    required this.background,
+    required this.wallpaper,
+    required this.expanded,
+    required this.compact,
+  });
+
+  final double topInset;
+  final Color background;
+  final String? wallpaper;
+  final Widget expanded;
+  final Widget compact;
+
+  @override
+  double get minExtent => topInset + 52;
+
+  @override
+  double get maxExtent => minExtent + 88;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final collapsed = shrinkOffset >= maxExtent - minExtent - 1;
+    final image = wallpaper;
+    return Material(
+      color: background,
+      child: ClipRect(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (!collapsed && image != null) ...[
+              Image.file(File(image),
+                  fit: BoxFit.cover, alignment: const Alignment(0, -0.55),
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [const Color(0xB8000000), background],
+                  ),
+                ),
+              ),
+            ],
+            Positioned(
+              top: topInset,
+              left: 0,
+              right: 0,
+              height: collapsed ? 52 : maxExtent - topInset,
+              child: collapsed ? Center(child: compact) : expanded,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PhoneLibraryHeader oldDelegate) =>
+      oldDelegate.topInset != topInset ||
+      oldDelegate.background != background ||
+      oldDelegate.wallpaper != wallpaper ||
+      oldDelegate.expanded != expanded ||
+      oldDelegate.compact != compact;
+}
+
 class _LibTabs extends StatelessWidget {
   const _LibTabs({required this.selected, required this.onSelect, required this.counts});
   final _Tab selected;
