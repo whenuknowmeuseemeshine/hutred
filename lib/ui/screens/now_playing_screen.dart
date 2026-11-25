@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,6 +19,10 @@ import '../widgets/mini_player.dart';
 import '../widgets/track_tile.dart';
 import '../theme.dart';
 import '../icons.dart';
+
+bool get _usesSwipeToCollapse =>
+    defaultTargetPlatform == TargetPlatform.iOS ||
+    defaultTargetPlatform == TargetPlatform.android;
 
 /// Полноэкранный плеер: обложка, текст-караоке и очередь.
 class NowPlayingScreen extends StatelessWidget {
@@ -74,7 +79,12 @@ class NowPlayingScreen extends StatelessWidget {
                   if (box.maxWidth >= 900) {
                     return style.sharp ? const _SharpWide() : const _WideLayout();
                   }
-                  return style.glass ? const _GlassNarrow() : _NarrowLayout(tint: tint);
+                  final layout = style.glass
+                      ? const _GlassNarrow()
+                      : _NarrowLayout(tint: tint);
+                  return _usesSwipeToCollapse
+                      ? _SwipeToCollapse(child: layout)
+                      : layout;
                 },
               ),
             ),
@@ -86,6 +96,74 @@ class NowPlayingScreen extends StatelessWidget {
     // Фон — из цвета обложки, как в больших стриминговых плеерах.
     if (!settings.tintFromCover) return page(Theme.of(context).colorScheme.primary);
     return CoverColorBuilder(track: track, builder: (context, c) => page(c));
+  }
+}
+
+class _SwipeToCollapse extends StatefulWidget {
+  const _SwipeToCollapse({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SwipeToCollapse> createState() => _SwipeToCollapseState();
+}
+
+class _SwipeToCollapseState extends State<_SwipeToCollapse> {
+  static const _dismissDistance = 84.0;
+  double? _scrollPull;
+  double _headerPull = 0;
+  bool _closing = false;
+
+  void _collapse() {
+    if (_closing || ModalRoute.of(context)?.isCurrent != true) return;
+    _closing = true;
+    Navigator.of(context).pop();
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    // Ignore nested scrollables such as the lyrics panel.
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    final metrics = notification.metrics;
+    final atTop = metrics.pixels <= metrics.minScrollExtent;
+    if (notification is ScrollStartNotification) {
+      _scrollPull = atTop && notification.dragDetails != null ? 0.0 : null;
+    } else if (notification is ScrollEndNotification || !atTop) {
+      _scrollPull = null;
+    } else if (_scrollPull case final double pull) {
+      // Bouncing physics moves the list, while clamping reports overscroll.
+      final delta = switch (notification) {
+        ScrollUpdateNotification n => n.dragDetails?.primaryDelta,
+        OverscrollNotification n => n.dragDetails?.primaryDelta,
+        _ => null,
+      };
+      if (delta != null) {
+        final distance = (pull + delta).clamp(0.0, double.infinity).toDouble();
+        _scrollPull = distance;
+        if (distance >= _dismissDistance) _collapse();
+      }
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      excludeFromSemantics: true,
+      // The scroll view handles its own drags. This covers the fixed top bar.
+      onVerticalDragStart: (_) => _headerPull = 0,
+      onVerticalDragUpdate: (details) {
+        _headerPull += details.primaryDelta!;
+        if (_headerPull >= _dismissDistance) _collapse();
+      },
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: widget.child,
+      ),
+    );
   }
 }
 
@@ -238,6 +316,9 @@ class _NarrowLayout extends StatelessWidget {
         const _TopBar(),
         Expanded(
           child: ListView(
+            physics: _usesSwipeToCollapse
+                ? const AlwaysScrollableScrollPhysics()
+                : null,
             padding: const EdgeInsets.only(bottom: 32),
             children: [
               const _Cover(),
@@ -729,6 +810,9 @@ class _GlassNarrowState extends State<_GlassNarrow> {
     final liked = saved?.favorite ?? false;
 
     return ListView(
+      physics: _usesSwipeToCollapse
+          ? const AlwaysScrollableScrollPhysics()
+          : null,
       padding: const EdgeInsets.fromLTRB(22, 4, 22, 32),
       children: [
         Row(
