@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Готовый набор фоновых цветов.
@@ -94,6 +95,7 @@ class SettingsStore extends ChangeNotifier {
   String _spotifyId = '';
   String _spotifySecret = '';
   bool _tintFromCover = false;
+  bool _allowPhoneRotation = false;
   bool _cloudFiles = true;
   bool _spotifyCheck = true;
   bool _autoFavorite = true;
@@ -322,6 +324,33 @@ class SettingsStore extends ChangeNotifier {
 
   /// Менять превью YouTube (16:9, часто с надписями) на обложку с Genius.
   bool get replaceYoutubeCovers => _replaceYoutubeCovers;
+
+  static bool get supportsPhoneRotation {
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
+    final display = WidgetsBinding.instance.platformDispatcher.implicitView?.display;
+    return display != null &&
+        display.size.shortestSide / display.devicePixelRatio < 600;
+  }
+
+  bool get allowPhoneRotation => _allowPhoneRotation;
+
+  set allowPhoneRotation(bool value) {
+    if (_allowPhoneRotation == value) return;
+    _allowPhoneRotation = value;
+    unawaited(applyPhoneOrientation());
+    unawaited(_save());
+  }
+
+  Future<void> applyPhoneOrientation() async {
+    if (!supportsPhoneRotation) return;
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      if (_allowPhoneRotation) ...const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ],
+    ]);
+  }
 
   /// Подкрашивать экран плеера под цвет обложки.
   bool get tintFromCover => _tintFromCover;
@@ -718,6 +747,7 @@ class SettingsStore extends ChangeNotifier {
       _spotifyId = j['spotifyId'] as String? ?? '';
       _spotifySecret = j['spotifySecret'] as String? ?? '';
       _tintFromCover = j['tintFromCover'] as bool? ?? false;
+      _allowPhoneRotation = j['allowPhoneRotation'] as bool? ?? false;
       _cloudFiles = j['cloudFiles'] as bool? ?? true;
       _spotifyCheck = j['spotifyCheck'] as bool? ?? true;
       _autoFavorite = j['autoFavorite'] as bool? ?? true;
@@ -785,6 +815,7 @@ class SettingsStore extends ChangeNotifier {
         'geniusCovers': _geniusCovers,
         'replaceYoutubeCovers': _replaceYoutubeCovers,
         'tintFromCover': _tintFromCover,
+        'allowPhoneRotation': _allowPhoneRotation,
         'cloudFiles': _cloudFiles,
         'spotifyCheck': _spotifyCheck,
         'autoFavorite': _autoFavorite,
