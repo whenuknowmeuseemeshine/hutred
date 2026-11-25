@@ -2293,8 +2293,15 @@ class _GroupPage extends StatelessWidget {
   final String title;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(title)),
+  Widget build(BuildContext context) {
+    final phoneMono = !HutredTheme.desktop && HutredStyle.of(context).mono;
+    final background = phoneMono ? Theme.of(context).canvasColor : null;
+    return Scaffold(
+        backgroundColor: background,
+        appBar: AppBar(
+          backgroundColor: background,
+          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 110),
           children: [
@@ -2308,6 +2315,7 @@ class _GroupPage extends StatelessWidget {
           ],
         ),
       );
+  }
 }
 
 
