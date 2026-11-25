@@ -119,8 +119,8 @@ class PlaybackSources {
     final preferred = _lastGood[key];
     final variants = _alternatives[key] ?? const <_Source>[];
     final ordered = {
-      if (preferred != null) preferred,
       if (track.source != TrackSource.spotify) primary,
+      if (preferred != null) preferred,
       ...variants,
       primary,
     };
