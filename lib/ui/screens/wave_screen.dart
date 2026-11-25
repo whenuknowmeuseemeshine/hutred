@@ -11,11 +11,13 @@ import '../../services/wave_service.dart';
 import '../shell_nav.dart';
 import '../theme.dart';
 import '../widgets/controls.dart';
+import '../widgets/cover_color.dart';
 import '../widgets/style_bits.dart';
 import '../widgets/track_tile.dart';
 import '../../models/track.dart';
 import '../widgets/artwork.dart';
 import 'now_playing_screen.dart';
+import 'queue_screen.dart';
 import 'search_screen.dart';
 import '../icons.dart';
 
@@ -188,11 +190,16 @@ class WaveScreen extends StatelessWidget {
         },
       );
 
-    final sharp = HutredStyle.of(context).sharp;
+    final style = HutredStyle.of(context);
+    final sharp = style.sharp;
+    final desktopMono = Platform.isWindows && style.mono;
+    final waveBody = desktopMono
+        ? const _DesktopMonoWave()
+        : (sharp ? const _SharpWave() : content);
     return Scaffold(
       extendBodyBehindAppBar: bg != null,
       appBar: AppBar(
-        title: sharp ? null : const Text('Моя волна'),
+        title: sharp || desktopMono ? null : const Text('Моя волна'),
         backgroundColor: bg != null ? Colors.transparent : null,
         actions: [
           // Вкладка «Поиск» скрыта (на телефоне по умолчанию) — поиск здесь.
@@ -208,7 +215,7 @@ class WaveScreen extends StatelessWidget {
         ],
       ),
       body: bg == null
-          ? (sharp ? const _SharpWave() : content)
+          ? waveBody
           : Stack(
               fit: StackFit.expand,
               children: [
@@ -223,9 +230,241 @@ class WaveScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                SafeArea(child: sharp ? const _SharpWave() : content),
+                SafeArea(child: waveBody),
               ],
             ),
+    );
+  }
+}
+
+class _DesktopMonoWave extends StatelessWidget {
+  const _DesktopMonoWave();
+
+  @override
+  Widget build(BuildContext context) {
+    final wave = context.watch<WaveService>();
+    final player = context.watch<PlayerService>();
+    final colors = Theme.of(context).colorScheme;
+    final track = player.current;
+    final waveTrack = wave.isWaveTrack(track) ? track : null;
+    final playing = waveTrack != null && player.playing;
+    final action = FilledButton.icon(
+      onPressed: wave.loading
+          ? null
+          : () {
+              if (waveTrack == null) {
+                wave.start();
+              } else {
+                player.togglePlay();
+              }
+            },
+      icon: wave.loading
+          ? const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(playing ? Ic.pause_rounded : Ic.play_arrow_rounded),
+      label: Text(switch ((wave.loading, waveTrack, playing)) {
+        (true, _, _) => 'Подбираем музыку…',
+        (_, null, _) => 'Запустить волну',
+        (_, _, true) => 'Пауза',
+        _ => 'Продолжить',
+      }),
+    );
+
+    final hero = waveTrack == null
+        ? _MonoWavePanel(
+            accent: colors.primary,
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Моя волна', style: HutredStyle.of(context).display(44)),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Подборка по любимым и недавно прослушанным трекам.',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 24),
+                  action,
+                ],
+              ),
+            ),
+          )
+        : CoverColorBuilder(
+            track: waveTrack,
+            builder: (context, accent) => _MonoWavePanel(
+              accent: accent,
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final art = SizedBox(
+                    width: min(box.maxWidth, 280.0),
+                    child: Semantics(
+                      button: true,
+                      label: 'Открыть плеер',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => NowPlayingScreen.open(context),
+                        child: Artwork(track: waveTrack, radius: 8),
+                      ),
+                    ),
+                  );
+                  final details = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      StyleCaption(wave.radioLabel ?? 'Моя волна'),
+                      const SizedBox(height: 12),
+                      Text(
+                        waveTrack.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: HutredStyle.of(context).display(32),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        waveTrack.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: colors.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 24),
+                      action,
+                    ],
+                  );
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: box.maxWidth >= 540
+                        ? Row(
+                            children: [
+                              art,
+                              const SizedBox(width: 24),
+                              Expanded(child: details),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [art, const SizedBox(height: 20), details],
+                          ),
+                  );
+                },
+              ),
+            ),
+          );
+    final main = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        hero,
+        const SizedBox(height: 18),
+        const _ModeChips(),
+        if (wave.error case final error?) ...[
+          const SizedBox(height: 12),
+          Text(error, style: TextStyle(color: colors.error)),
+        ],
+        if (wave.dislikedCount > 0 || (wave.active && waveTrack == null))
+          Wrap(
+            spacing: 8,
+            children: [
+              if (wave.dislikedCount > 0)
+                TextButton(
+                  onPressed: wave.resetDislikes,
+                  child: Text('Сбросить дизлайки (${wave.dislikedCount})'),
+                ),
+              if (wave.active && waveTrack == null)
+                TextButton(
+                  onPressed: wave.stop,
+                  child: const Text('Выключить волну'),
+                ),
+            ],
+          ),
+      ],
+    );
+    final next = player.queue.skip(player.index + 1).take(5).toList();
+    final queue = waveTrack == null
+        ? null
+        : StylePanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Flexible(child: StyleCaption('Дальше в волне')),
+                    TextButton(
+                      onPressed: () => showQueue(context),
+                      child: const Text('Очередь'),
+                    ),
+                  ],
+                ),
+                if (next.isEmpty)
+                  Text(
+                    'Следующие треки ещё подбираются.',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                for (final (offset, item) in next.indexed)
+                  TrackTile(
+                    track: item,
+                    onTap: () => player.jumpTo(player.index + 1 + offset),
+                  ),
+              ],
+            ),
+          );
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 36),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1280),
+            child: queue == null
+                ? ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 820),
+                    child: main,
+                  )
+                : box.maxWidth >= 980
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: main),
+                          const SizedBox(width: 24),
+                          SizedBox(width: 350, child: queue),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [main, const SizedBox(height: 24), queue],
+                      ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MonoWavePanel extends StatelessWidget {
+  const _MonoWavePanel({required this.accent, required this.child});
+
+  final Color accent;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(HutredStyle.of(context).cardRadius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        border: Border.all(color: colors.outlineVariant),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(accent.withValues(alpha: 0.24), colors.surface),
+            colors.surface,
+          ],
+        ),
+      ),
+      child: child,
     );
   }
 }
