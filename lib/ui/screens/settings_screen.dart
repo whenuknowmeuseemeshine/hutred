@@ -560,6 +560,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final st = HutredStyle.of(context);
     final accent = Theme.of(context).colorScheme.primary;
     final shown = [for (final g in _groups) if (g.$4.any(sections.containsKey)) g];
+    if (st.mono && !HutredTheme.desktop) return _phoneGroups(context, shown);
     return [
       const Padding(
         padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -634,6 +635,100 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ]),
+        ),
+      ),
+      const _Footer(),
+    ];
+  }
+
+  List<Widget> _phoneGroups(
+    BuildContext context,
+    List<(String, IconData, String, List<String>)> groups,
+  ) {
+    final settings = context.watch<SettingsStore>();
+    final colors = Theme.of(context).colorScheme;
+    final wallpaper = settings.waveBackground;
+    final appearance = groups.firstWhere((group) => group.$1 == 'Внешний вид');
+    final music = {
+      'Воспроизведение', 'Медиатека и волна', 'Тексты и обложки',
+    };
+
+    Widget groupTile((String, IconData, String, List<String>) group) {
+      return ListTile(
+        leading: Icon(group.$2, size: 20),
+        title: Text(group.$1),
+        subtitle: Text(group.$3, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: Icon(Ic.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => _GroupPage(title: group.$1),
+        )),
+      );
+    }
+
+    Widget panel({required Widget child}) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: StylePanel(padding: EdgeInsets.zero, child: child),
+    );
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 8),
+      child: StyleCaption(text),
+    );
+
+    return [
+      panel(child: const _AccountTile()),
+      const SizedBox(height: 10),
+      panel(
+        child: ListTile(
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(7),
+            child: SizedBox(
+              width: 51,
+              height: 42,
+              child: wallpaper == null
+                  ? ColoredBox(
+                      color: colors.surfaceContainerHighest,
+                      child: Icon(appearance.$2, size: 20),
+                    )
+                  : Image.file(
+                      File(wallpaper),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Icon(appearance.$2, size: 20),
+                    ),
+            ),
+          ),
+          title: const Text('Оформление'),
+          subtitle: Text(wallpaper == null ? 'Моно · фон темы' : 'Моно · свой фон'),
+          trailing: Icon(Ic.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => _GroupPage(title: appearance.$1),
+          )),
+        ),
+      ),
+      heading('Музыка'),
+      panel(
+        child: Column(
+          children: [
+            for (final group in groups.where((group) => music.contains(group.$1)))
+              groupTile(group),
+          ],
+        ),
+      ),
+      heading('Подключение и данные'),
+      panel(
+        child: Column(
+          children: [
+            for (final group in groups.where((group) =>
+                group.$1 != appearance.$1 && !music.contains(group.$1)))
+              groupTile(group),
+            ListTile(
+              leading: Icon(Ic.swap_horiz_rounded, size: 20),
+              title: const Text('Перенос музыки'),
+              subtitle: const Text('Spotify, Яндекс, YouTube, папка'),
+              trailing: Icon(Ic.chevron_right),
+              onTap: () => Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => navPage('transfer'))),
+            ),
+          ],
         ),
       ),
       const _Footer(),
@@ -782,9 +877,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     context.watch<SettingsStore>();
     context.watch<AccountService>();
     if (MediaQuery.sizeOf(context).width >= 1000) return _twoPane(context);
+    final style = HutredStyle.of(context);
+    final phoneMono = style.mono && !HutredTheme.desktop;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Настройки')),
+      backgroundColor: phoneMono ? Theme.of(context).canvasColor : null,
+      appBar: AppBar(
+        backgroundColor: phoneMono ? Theme.of(context).canvasColor : null,
+        title: Text('Настройки', style: phoneMono ? style.display(30) : null),
+      ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
