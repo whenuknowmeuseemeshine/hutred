@@ -501,7 +501,7 @@ class TransferService extends ChangeNotifier {
     Track? best;
     var bestScore = 0.0;
     for (final t in found.take(8)) {
-      if (!_durationOk(item, t)) continue;
+      if (youtube.isUnavailable(t.uri) || !_durationOk(item, t)) continue;
       final score = GeniusService.similar(item.title, t.title) * 2 +
           (item.artist.isEmpty
               ? 1
@@ -557,17 +557,20 @@ class TransferService extends ChangeNotifier {
       final saved = _spotifyMatches[t.uri];
       if (saved != null) {
         final src = TrackSource.values.asNameMap()[saved['source']];
+        final uri = saved['uri'];
         // Старые ошибочные записи «Spotify → Spotify» пропускаем.
-        // Старое совпадение на YouTube не берём, пока YouTube выключен.
+        // Совпадение на YouTube пригодно, пока источник включён и ролик доступен.
         if (src != null &&
+            uri != null &&
             src != TrackSource.spotify &&
-            (src != TrackSource.youtube || settings.youtubeAuto)) {
+            (src != TrackSource.youtube ||
+                (settings.youtubeAuto && !youtube.isUnavailable(uri)))) {
           return Track(
             id: t.id,
             title: t.title,
             artist: t.artist,
             source: src,
-            uri: saved['uri']!,
+            uri: uri,
             addedAt: t.addedAt,
           );
         }
