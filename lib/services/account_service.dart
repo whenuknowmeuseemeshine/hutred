@@ -132,6 +132,9 @@ class AccountService extends ChangeNotifier {
         unawaited(syncNow());
         unawaited(refreshFollowed());
       }
+    }, onError: (Object error) {
+      // Сбой сети при обновлении токена не означает выход из аккаунта.
+      debugPrint('[Аккаунт] ошибка авторизации: ${error.runtimeType}');
     });
     store.addListener(_onLocalChange);
     store.addListener(_schedulePublish);
@@ -169,18 +172,20 @@ class AccountService extends ChangeNotifier {
     });
   }
 
-  /// Восстанавливает сохранённую сессию, если приложение её потеряло.
-  /// true — восстанавливать нечего или уже вошли.
+  /// Обновляет просроченную сессию или восстанавливает её из хранилища.
+  /// true — сессия действительна или восстанавливать нечего.
   Future<bool> recoverSession() async {
     if (!_ready) return false;
-    if (signedIn) return true;
+    final session = _db.auth.currentSession;
+    if (session != null && !session.isExpired) return true;
     try {
+      if (session != null) {
+        await _db.auth.refreshSession();
+        return signedIn;
+      }
       final prefs = await SharedPreferences.getInstance();
-      final key = prefs
-          .getKeys()
-          .where((k) => k.startsWith('sb-') && k.endsWith('-auth-token'))
-          .firstOrNull;
-      final json = key == null ? null : prefs.getString(key);
+      final project = Uri.parse(HutredConfig.supabaseUrl).host.split('.').first;
+      final json = prefs.getString('sb-$project-auth-token');
       if (json == null || json.isEmpty) return true;
       await _db.auth.recoverSession(json);
       debugPrint('[Аккаунт] сессия восстановлена');
@@ -955,6 +960,8 @@ class AccountService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _initRetry?.cancel();
+    _recoverTimer?.cancel();
     _pushTimer?.cancel();
     _pullTimer?.cancel();
     _authSub?.cancel();
