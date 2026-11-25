@@ -119,7 +119,8 @@ class SettingsStore extends ChangeNotifier {
   bool _likesMigrated = false;
   String _audioQuality = 'best';
   bool _wifiOnly = false;
-  int _cacheLimitMb = 0;
+  static const _defaultCacheLimitMb = 500;
+  int _cacheLimitMb = _defaultCacheLimitMb;
   bool _discordTime = true;
   bool _discordButton = true;
   bool _discordHideOnPause = false;
@@ -771,7 +772,7 @@ class SettingsStore extends ChangeNotifier {
       _likesMigrated = j['likesMigrated'] as bool? ?? false;
       _audioQuality = j['audioQuality'] as String? ?? 'best';
       _wifiOnly = j['wifiOnly'] as bool? ?? false;
-      _cacheLimitMb = (j['cacheLimitMb'] as num?)?.toInt() ?? 0;
+      _cacheLimitMb = (j['cacheLimitMb'] as num?)?.toInt() ?? _defaultCacheLimitMb;
       _discordTime = j['discordTime'] as bool? ?? true;
       _discordButton = j['discordButton'] as bool? ?? true;
       _discordHideOnPause = j['discordHideOnPause'] as bool? ?? false;
