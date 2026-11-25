@@ -347,9 +347,11 @@ class SoundcloudSource {
   }
 
   Future<File?> _downloadDirect(String trackId, Directory dir) async {
-    final streams = await _resolveStreams(trackId);
+    final elapsed = Stopwatch()..start();
     Object? lastError;
-    for (final st in streams) {
+    await for (final st in _resolveStreams(trackId)) {
+      debugPrint('[Playback] soundcloud stream link ready in '
+          '${elapsed.elapsedMilliseconds} ms');
       final file =
           File('${dir.path}${Platform.pathSeparator}$trackId.${st.ext}');
       final part = File('${file.path}.part');
@@ -369,6 +371,8 @@ class SoundcloudSource {
           throw Exception('SoundCloud отдал слишком маленький файл');
         }
         await part.rename(file.path);
+        debugPrint('[Playback] soundcloud cache file ready in '
+            '${elapsed.elapsedMilliseconds} ms');
         return file;
       } catch (e) {
         lastError = e;
@@ -501,9 +505,9 @@ class SoundcloudSource {
     }
   }
 
-  /// Ссылки на потоки трека, от лучшего к худшему.
-  Future<List<({Uri url, bool hls, String ext})>> _resolveStreams(
-      String trackId) async {
+  /// Ссылки на потоки трека, от лучшего к худшему, по мере необходимости.
+  Stream<({Uri url, bool hls, String ext})> _resolveStreams(
+      String trackId) async* {
     final data = await _getJson('/tracks/$trackId', {});
     if (data is! Map) throw Exception('Трек удалён с SoundCloud');
     if (data['policy'] == 'BLOCK') {
@@ -536,31 +540,36 @@ class SoundcloudSource {
     }
 
     final auth = data['track_authorization'] as String?;
-    final out = <({Uri url, bool hls, String ext})>[];
+    final id = await _getClientId();
+    var found = false;
     for (final t in usable) {
-      final id = await _getClientId();
-      final uri = Uri.parse(t['url'] as String).replace(queryParameters: {
-        'client_id': id,
-        if (auth != null) 'track_authorization': auth,
-      });
-      final res = await _client
-          .get(uri, headers: _headers)
-          .timeout(const Duration(seconds: 12));
-      if (res.statusCode != 200) {
-        debugPrint('[SoundCloud] $trackId: ссылка на поток, код ${res.statusCode}');
-        continue;
+      try {
+        final uri = Uri.parse(t['url'] as String).replace(queryParameters: {
+          'client_id': id,
+          if (auth != null) 'track_authorization': auth,
+        });
+        final res = await _client
+            .get(uri, headers: _headers)
+            .timeout(const Duration(seconds: 12));
+        if (res.statusCode != 200) {
+          debugPrint('[SoundCloud] $trackId: ссылка на поток, код ${res.statusCode}');
+          continue;
+        }
+        final url = (jsonDecode(res.body) as Map)['url'] as String?;
+        if (url == null) continue;
+        final streamUri = Uri.parse(url);
+        final mime = mimeOf(t);
+        found = true;
+        yield (
+          url: streamUri,
+          hls: protocolOf(t) == 'hls',
+          ext: mime.contains('mpeg') ? 'mp3' : 'm4a',
+        );
+      } catch (e) {
+        debugPrint('[SoundCloud] $trackId: ссылка на поток: ${e.runtimeType}');
       }
-      final url = (jsonDecode(res.body) as Map)['url'] as String?;
-      if (url == null) continue;
-      final mime = mimeOf(t);
-      out.add((
-        url: Uri.parse(url),
-        hls: protocolOf(t) == 'hls',
-        ext: mime.contains('mpeg') ? 'mp3' : 'm4a',
-      ));
     }
-    if (out.isEmpty) throw Exception('SoundCloud не отдал ссылку на поток');
-    return out;
+    if (!found) throw Exception('SoundCloud не отдал ссылку на поток');
   }
 
   List<Track> _toTracks(List? items) =>
