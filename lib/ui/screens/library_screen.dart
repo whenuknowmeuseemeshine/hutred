@@ -578,9 +578,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     return Scaffold(
-      backgroundColor: !HutredTheme.desktop && HutredStyle.of(context).mono
-          ? Theme.of(context).canvasColor
-          : null,
+      backgroundColor: HutredTheme.desktop ? null : Theme.of(context).canvasColor,
       appBar: _sel != null ? _selectionBar(tracks, store, offline) : null,
       // Потянуть вниз в самом верху — забрать изменения с других устройств.
       body: RefreshIndicator(
@@ -614,7 +612,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }) {
     final st = HutredStyle.of(context);
     final k = Sk.of(context);
-    final compactOnScroll = st.mono && !HutredTheme.desktop;
+    final compactOnScroll = !HutredTheme.desktop;
     final topInset = MediaQuery.paddingOf(context).top;
     final downloadedTracks = store.tracks.where(offline.isDownloaded).toList();
 
@@ -727,6 +725,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             delegate: _PhoneLibraryHeader(
               topInset: topInset,
               background: background,
+              glass: st.glass,
               wallpaper: _searchOpen ? null : wallpaper,
               searchOpen: _searchOpen,
               controlsHeight: (search == null ? 0.0 : 50.0) +
@@ -749,7 +748,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: Text('Медиатека', style: st.display(33)),
+                        child: Text(st.sharp ? 'МЕДИАТЕКА' : 'Медиатека',
+                            style: st.display(33)),
                       ),
                     ),
                   ),
@@ -981,11 +981,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 }
 
-/// Вкладки медиатеки: подчёркивание (Моно), «таблетка» (Стекло), ячейка акцента (Резкий).
 class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
   const _PhoneLibraryHeader({
     required this.topInset,
     required this.background,
+    required this.glass,
     required this.wallpaper,
     required this.searchOpen,
     required this.controlsHeight,
@@ -996,6 +996,7 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
 
   final double topInset;
   final Color background;
+  final bool glass;
   final String? wallpaper;
   final bool searchOpen;
   final double controlsHeight;
@@ -1013,23 +1014,33 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final collapsed = searchOpen || shrinkOffset >= 44;
     final image = wallpaper;
+    final surface = glass
+        ? Color.alphaBlend(const Color(0x9B12363D), background)
+        : background;
     return Material(
-      color: background,
+      color: surface,
       child: ClipRect(
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (!collapsed && image != null) ...[
-              Image.file(File(image),
-                  fit: BoxFit.cover, alignment: const Alignment(0, -0.55),
+            if (image != null && (!collapsed || glass)) ...[
+              ImageFiltered(
+                enabled: glass && collapsed,
+                imageFilter: ui.ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Image.file(
+                  File(image),
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0, -0.55),
                   gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [const Color(0xB8000000), background],
+                    colors: [glass ? const Color(0xB3123038) : const Color(0xB8000000), surface],
                   ),
                 ),
               ),
@@ -1057,7 +1068,7 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
                 right: 0,
                 bottom: 0,
                 height: controlsHeight,
-                child: ColoredBox(color: background, child: controls),
+                child: ColoredBox(color: surface, child: controls),
               ),
           ],
         ),
@@ -1069,6 +1080,7 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _PhoneLibraryHeader oldDelegate) =>
       oldDelegate.topInset != topInset ||
       oldDelegate.background != background ||
+      oldDelegate.glass != glass ||
       oldDelegate.wallpaper != wallpaper ||
       oldDelegate.searchOpen != searchOpen ||
       oldDelegate.controlsHeight != controlsHeight ||
@@ -1077,6 +1089,7 @@ class _PhoneLibraryHeader extends SliverPersistentHeaderDelegate {
       oldDelegate.compact != compact;
 }
 
+/// Вкладки медиатеки: подчёркивание (Моно), «таблетка» (Стекло), ячейка акцента (Резкий).
 class _LibTabs extends StatelessWidget {
   const _LibTabs({required this.selected, required this.onSelect, required this.counts});
   final _Tab selected;

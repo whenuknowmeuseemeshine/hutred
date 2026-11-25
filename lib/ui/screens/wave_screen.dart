@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -32,8 +33,11 @@ class WaveScreen extends StatelessWidget {
     final onWave = wave.isWaveTrack(current);
     final accent = Theme.of(context).colorScheme.primary;
     final style = HutredStyle.of(context);
-    final phoneMono = !HutredTheme.desktop && style.mono;
+    final phoneLayout = !HutredTheme.desktop;
     final background = Theme.of(context).canvasColor;
+    final orbColor = phoneLayout && style.glass
+        ? Color.lerp(accent, const Color(0xFFB9F1E9), 0.72)!
+        : accent;
 
     final bg = context.watch<SettingsStore>().waveBackground;
 
@@ -43,7 +47,7 @@ class WaveScreen extends StatelessWidget {
           final size = wideLayout
               ? min(box.maxHeight * 0.5, 320.0)
               : min(box.maxWidth - 48,
-                  min(box.maxHeight * 0.48, phoneMono ? 285.0 : 340.0));
+                  min(box.maxHeight * 0.48, phoneLayout ? 285.0 : 340.0));
           if (wideLayout) {
             // Компьютер по макету: слева круг и режимы, справа что играет и дальше.
             return SingleChildScrollView(
@@ -121,15 +125,46 @@ class WaveScreen extends StatelessWidget {
               ),
             );
           }
+          final label = onWave
+              ? (phoneLayout && !player.playing ? 'Продолжить волну' : 'Волна играет')
+              : (phoneLayout ? 'Запустить волну' : 'Бесконечный поток под твой вкус');
+          final controls = Column(
+            crossAxisAlignment: phoneLayout && style.sharp
+                ? CrossAxisAlignment.stretch
+                : CrossAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                textAlign: phoneLayout && style.sharp ? TextAlign.start : TextAlign.center,
+                style: style.display(24).copyWith(
+                  color: phoneLayout && style.sharp ? accent : null,
+                ),
+              ),
+              if (!phoneLayout) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Подбирается по трекам с ♥ и тем, что ты часто слушаешь. '
+                  'Лайк делает похожее чаще, дизлайк убирает трек навсегда.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: HutredTheme.muted, height: 1.4),
+                ),
+              ],
+              const SizedBox(height: 16),
+              _ModeChips(center: true, twoColumns: phoneLayout),
+            ],
+          );
           return SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(24, 8, 24, phoneMono ? 24 : 120),
+            padding: EdgeInsets.fromLTRB(24, 8, 24, phoneLayout ? 24 : 120),
             child: Column(
               children: [
-                SizedBox(height: phoneMono ? 30 : 12),
+                SizedBox(height: phoneLayout ? 30 : 12),
                 _WaveOrb(
                   size: size,
-                  color: accent,
-                  glow: HutredStyle.of(context).glass,
+                  color: orbColor,
+                  glow: style.glass,
+                  buttonColor: phoneLayout && !style.mono
+                      ? (style.glass ? const Color(0xFFE7FCF8) : accent)
+                      : Colors.white,
                   playing: onWave && player.playing,
                   loading: wave.loading,
                   onTap: () {
@@ -145,24 +180,31 @@ class WaveScreen extends StatelessWidget {
                       : Ic.play_arrow_rounded,
                 ),
                 const SizedBox(height: 24),
-                Text(
-                  onWave
-                      ? (phoneMono && !player.playing ? 'Продолжить волну' : 'Волна играет')
-                      : (phoneMono ? 'Запустить волну' : 'Бесконечный поток под твой вкус'),
-                  textAlign: TextAlign.center,
-                  style: HutredStyle.of(context).display(24),
-                ),
-                if (!phoneMono) ...[
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Подбирается по трекам с ♥ и тем, что ты часто слушаешь. '
-                    'Лайк делает похожее чаще, дизлайк убирает трек навсегда.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: HutredTheme.muted, height: 1.4),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                _ModeChips(center: true, twoColumns: phoneMono),
+                if (phoneLayout && style.glass)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(style.cardRadius),
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xC2153038),
+                          border: Border.all(color: const Color(0x44B9F1E9)),
+                          borderRadius: BorderRadius.circular(style.cardRadius),
+                        ),
+                        child: controls,
+                      ),
+                    ),
+                  )
+                else if (phoneLayout && style.sharp)
+                  DecoratedBox(
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: Color(0x48FFFFFF))),
+                    ),
+                    child: Padding(padding: const EdgeInsets.only(top: 12), child: controls),
+                  )
+                else
+                  controls,
                 if (wave.error != null) ...[
                   const SizedBox(height: 16),
                   Text(wave.error!,
@@ -172,8 +214,9 @@ class WaveScreen extends StatelessWidget {
                 if (onWave) ...[
                   const SizedBox(height: 28),
                   _NowOnWave(),
+                  if (phoneLayout && style.sharp) const _UpNext(limit: 8),
                 ],
-                SizedBox(height: phoneMono ? 12 : 28),
+                SizedBox(height: phoneLayout ? 12 : 28),
                 if (store.favorites.isEmpty)
                   const Text(
                     'Совет: поставь ♥ нескольким любимым трекам — волна станет точнее.',
@@ -196,11 +239,14 @@ class WaveScreen extends StatelessWidget {
         },
       );
 
-    final sharp = style.sharp;
+    final sharpDesktop = style.sharp && !phoneLayout;
+    final waveBody = sharpDesktop ? const _SharpWave() : content;
     return Scaffold(
       extendBodyBehindAppBar: bg != null,
       appBar: AppBar(
-        title: sharp ? null : const Text('Моя волна'),
+        title: sharpDesktop
+            ? null
+            : Text(style.sharp ? 'МОЯ ВОЛНА' : 'Моя волна'),
         backgroundColor: bg != null ? Colors.transparent : null,
         actions: [
           // Вкладка «Поиск» скрыта (на телефоне по умолчанию) — поиск здесь.
@@ -216,7 +262,7 @@ class WaveScreen extends StatelessWidget {
         ],
       ),
       body: bg == null
-          ? (sharp ? const _SharpWave() : content)
+          ? waveBody
           : Stack(
               fit: StackFit.expand,
               children: [
@@ -224,7 +270,7 @@ class WaveScreen extends StatelessWidget {
                 Image.file(
                   File(bg),
                   fit: BoxFit.cover,
-                  alignment: phoneMono ? Alignment.topCenter : Alignment.center,
+                  alignment: phoneLayout ? Alignment.topCenter : Alignment.center,
                   gaplessPlayback: true,
                   errorBuilder: (_, __, ___) => ColoredBox(color: background),
                 ),
@@ -233,21 +279,21 @@ class WaveScreen extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: phoneMono
+                      colors: phoneLayout
                           ? [
                               background,
-                              const Color(0x33000000),
+                              style.glass ? const Color(0x55102B38) : const Color(0x33000000),
                               Colors.transparent,
                               background.withValues(alpha: 0.72),
                               background.withValues(alpha: 0.9),
                               background,
                             ]
                           : const [Color(0x66000000), Color(0x99000000), Color(0xCC000000)],
-                      stops: phoneMono ? const [0, 0.21, 0.43, 0.67, 0.88, 1] : null,
+                      stops: phoneLayout ? const [0, 0.21, 0.43, 0.67, 0.88, 1] : null,
                     ),
                   ),
                 ),
-                SafeArea(child: sharp ? const _SharpWave() : content),
+                SafeArea(child: waveBody),
               ],
             ),
     );
@@ -334,10 +380,12 @@ class _WaveOrb extends StatefulWidget {
     required this.onTap,
     required this.icon,
     this.glow = false,
+    this.buttonColor = Colors.white,
   });
 
   /// «Стекло»: светящийся шар.
   final bool glow;
+  final Color buttonColor;
   final double size;
   final Color color;
   final bool playing;
@@ -362,6 +410,9 @@ class _WaveOrbState extends State<_WaveOrb> with SingleTickerProviderStateMixin 
   @override
   Widget build(BuildContext context) {
     final reduce = MediaQuery.of(context).disableAnimations;
+    final buttonForeground = widget.buttonColor == Colors.white
+        ? Colors.black
+        : HutredTheme.onAccent(widget.buttonColor);
     return Semantics(
       button: true,
       label: widget.playing ? 'Пауза' : 'Запустить волну',
@@ -394,18 +445,18 @@ class _WaveOrbState extends State<_WaveOrb> with SingleTickerProviderStateMixin 
                 child: Container(
                   width: widget.size * 0.28,
                   height: widget.size * 0.28,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
+                  decoration: BoxDecoration(
+                    color: widget.buttonColor,
                     shape: BoxShape.circle,
                   ),
                   child: widget.loading
-                      ? const Padding(
-                          padding: EdgeInsets.all(22),
+                      ? Padding(
+                          padding: EdgeInsets.all(widget.size * 0.075),
                           child: CircularProgressIndicator(
-                              strokeWidth: 3, color: Colors.black),
+                              strokeWidth: 3, color: buttonForeground),
                         )
                       : SwapIcon(widget.icon,
-                          size: widget.size * 0.16, color: Colors.black),
+                          size: widget.size * 0.16, color: buttonForeground),
                 ),
               ),
             ),
@@ -754,12 +805,13 @@ class _ModeChips extends StatelessWidget {
 
 /// «Дальше в волне»: следующие треки очереди.
 class _UpNext extends StatelessWidget {
-  const _UpNext();
+  const _UpNext({this.limit = 5});
+  final int limit;
 
   @override
   Widget build(BuildContext context) {
     final player = context.watch<PlayerService>();
-    final next = player.queue.skip(player.index + 1).take(5).toList();
+    final next = player.queue.skip(player.index + 1).take(limit).toList();
     if (next.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

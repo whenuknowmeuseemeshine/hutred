@@ -256,6 +256,8 @@ class _LookSections extends StatelessWidget {
       style,
       accent,
       bg,
+      if (SettingsStore.supportsPhoneRotation)
+        card([const _PhoneRotationTile()]),
       tabs,
       Align(
         alignment: Alignment.centerLeft,
@@ -269,6 +271,21 @@ class _LookSections extends StatelessWidget {
         ),
       ),
     ]);
+  }
+}
+
+class _PhoneRotationTile extends StatelessWidget {
+  const _PhoneRotationTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<SettingsStore>();
+    return SwitchListTile(
+      title: const Text('Разрешить поворот'),
+      subtitle: const Text('Поворачивать интерфейс вместе с телефоном'),
+      value: settings.allowPhoneRotation,
+      onChanged: (value) => settings.allowPhoneRotation = value,
+    );
   }
 }
 

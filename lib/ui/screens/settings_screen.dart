@@ -50,7 +50,7 @@ class SettingsScreen extends StatefulWidget {
 /// Слова, по которым находится раздел в поиске (кроме его названия).
 const _sectionKeywords = {
   'Аккаунт': 'вход войти логин аватар аватарка почта пароль облако синхронизация файлы',
-  'Стиль': 'стиль тема оформление дизайн шрифт моно стекло резкий вид масштаб размер крупнее полный экран',
+  'Стиль': 'стиль тема оформление дизайн шрифт моно стекло резкий вид масштаб размер крупнее полный экран поворот ориентация',
   'Акцентный цвет': 'цвет тема оформление акцент',
   'Фон': 'фон цвет тема оформление обои плеер подкрашивать волна картинка gif',
   'Медиатека': 'любимые избранное лайк добавленные исполнители волна',
@@ -148,6 +148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
+          if (SettingsStore.supportsPhoneRotation) const _PhoneRotationTile(),
           const _Section('Акцентный цвет'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -560,7 +561,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final st = HutredStyle.of(context);
     final accent = Theme.of(context).colorScheme.primary;
     final shown = [for (final g in _groups) if (g.$4.any(sections.containsKey)) g];
-    if (st.mono && !HutredTheme.desktop) return _phoneGroups(context, shown);
+    if (!HutredTheme.desktop) return _phoneGroups(context, shown);
     return [
       const Padding(
         padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -647,6 +648,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) {
     final settings = context.watch<SettingsStore>();
     final colors = Theme.of(context).colorScheme;
+    final style = HutredStyle.of(context);
+    final styleLabel = style.glass ? 'Стекло' : style.sharp ? 'Резкий' : 'Моно';
     final wallpaper = settings.waveBackground;
     final appearance = groups.firstWhere((group) => group.$1 == 'Внешний вид');
     final music = {
@@ -655,7 +658,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     Widget groupTile((String, IconData, String, List<String>) group) {
       return ListTile(
-        leading: Icon(group.$2, size: 20),
+        leading: Icon(group.$2, size: 20, color: style.sharp ? colors.primary : null),
         title: Text(group.$1),
         subtitle: Text(group.$3, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: Icon(Ic.chevron_right),
@@ -697,7 +700,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           title: const Text('Оформление'),
-          subtitle: Text(wallpaper == null ? 'Моно · фон темы' : 'Моно · свой фон'),
+          subtitle: Text('$styleLabel · ${wallpaper == null ? 'фон темы' : 'свой фон'}'),
           trailing: Icon(Ic.chevron_right),
           onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => _GroupPage(title: appearance.$1),
@@ -878,13 +881,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     context.watch<AccountService>();
     if (MediaQuery.sizeOf(context).width >= 1000) return _twoPane(context);
     final style = HutredStyle.of(context);
-    final phoneMono = style.mono && !HutredTheme.desktop;
+    final phoneLayout = !HutredTheme.desktop;
+    final background = phoneLayout
+        ? (style.glass
+            ? Color.alphaBlend(const Color(0x6B12363D), Theme.of(context).canvasColor)
+            : Theme.of(context).canvasColor)
+        : null;
 
     return Scaffold(
-      backgroundColor: phoneMono ? Theme.of(context).canvasColor : null,
+      backgroundColor: background,
       appBar: AppBar(
-        backgroundColor: phoneMono ? Theme.of(context).canvasColor : null,
-        title: Text('Настройки', style: phoneMono ? style.display(30) : null),
+        backgroundColor: background,
+        title: Text(
+          phoneLayout && style.sharp ? 'НАСТРОЙКИ' : 'Настройки',
+          style: phoneLayout ? style.display(30) : null,
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
@@ -2294,12 +2305,19 @@ class _GroupPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final phoneMono = !HutredTheme.desktop && HutredStyle.of(context).mono;
-    final background = phoneMono ? Theme.of(context).canvasColor : null;
+    final style = HutredStyle.of(context);
+    final canvas = Theme.of(context).canvasColor;
+    final background = HutredTheme.desktop
+        ? null
+        : style.glass ? Color.alphaBlend(const Color(0x6B12363D), canvas) : canvas;
     return Scaffold(
         backgroundColor: background,
         appBar: AppBar(
           backgroundColor: background,
+          leading: !HutredTheme.desktop &&
+                  (ModalRoute.of(context)?.impliesAppBarDismissal ?? false)
+              ? const TooltipVisibility(visible: false, child: BackButton())
+              : null,
           title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
         body: ListView(

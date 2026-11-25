@@ -20,8 +20,24 @@ class AccountScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final acc = context.watch<AccountService>();
+    final mobile = !HutredTheme.desktop;
+    final canvas = Theme.of(context).canvasColor;
+    final background = mobile
+        ? HutredStyle.of(context).glass
+            ? Color.alphaBlend(const Color(0x6B12363D), canvas)
+            : canvas
+        : null;
+    final showBack =
+        mobile && (ModalRoute.of(context)?.impliesAppBarDismissal ?? false);
     return Scaffold(
-      appBar: AppBar(title: acc.signedIn ? null : const Text('Аккаунт')),
+      backgroundColor: background,
+      appBar: AppBar(
+        backgroundColor: background,
+        leading: showBack
+            ? const TooltipVisibility(visible: false, child: BackButton())
+            : null,
+        title: acc.signedIn ? null : const Text('Аккаунт'),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: acc.signedIn ? 1100 : 440),

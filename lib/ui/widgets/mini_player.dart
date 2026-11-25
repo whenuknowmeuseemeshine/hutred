@@ -131,7 +131,7 @@ class MiniPlayer extends StatelessWidget {
                       icon: Icon(Ic.skip_previous_rounded),
                     ),
                   const DevicesButton(),
-                  if (!phoneMono) LikeButtons(track: track),
+                  if (HutredTheme.desktop) LikeButtons(track: track),
                   player.loading
                       ? const Padding(
                           padding: EdgeInsets.all(12),

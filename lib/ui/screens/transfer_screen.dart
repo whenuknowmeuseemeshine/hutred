@@ -127,10 +127,13 @@ class _TransferScreenState extends State<TransferScreen> {
       padding: EdgeInsets.fromLTRB(canPop ? 4 : 16, top + 6, 16, 6),
       child: Row(children: [
         if (canPop)
-          IconButton(
-            tooltip: 'Назад',
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: const Icon(Icons.arrow_back_rounded),
+          TooltipVisibility(
+            visible: HutredTheme.desktop,
+            child: IconButton(
+              tooltip: 'Назад',
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
           ),
         Expanded(
           child: FittedBox(
@@ -440,7 +443,15 @@ class _TransferScreenState extends State<TransferScreen> {
       ]);
     }
 
+    final canvas = Theme.of(context).canvasColor;
+    final background = canPop && !HutredTheme.desktop
+        ? st.glass
+            ? Color.alphaBlend(const Color(0x6B12363D), canvas)
+            : canvas
+        : null;
+
     return Scaffold(
+      backgroundColor: background,
       body: Column(children: [
         header,
         Expanded(
