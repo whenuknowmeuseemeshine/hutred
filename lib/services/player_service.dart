@@ -691,13 +691,30 @@ class PlayerService extends ChangeNotifier {
         return AudioSource.file((await soundcloud.cachedAudio(t.uri)).path);
       case TrackSource.spotify:
         // Spotify звук не отдаёт: играем тот же трек с SoundCloud/YouTube.
+        final token = _loadToken;
         final found = await resolveSpotify?.call(t);
         if (found == null || found.source == TrackSource.spotify) {
           throw Exception(youtubeAllowed()
               ? 'не нашёл этот трек на SoundCloud и YouTube'
               : 'нет на SoundCloud. Можно включить YouTube: Настройки → Сеть и YouTube');
         }
-        return _sourceFor(found);
+        try {
+          return await _sourceFor(found);
+        } catch (_) {
+          if (token != _loadToken ||
+              found.source != TrackSource.youtube ||
+              !youtube.isUnavailable(found.uri)) {
+            rethrow;
+          }
+          final alternate = await resolveSpotify?.call(t);
+          if (token != _loadToken ||
+              alternate == null ||
+              alternate.source == TrackSource.spotify ||
+              (alternate.source == found.source && alternate.uri == found.uri)) {
+            rethrow;
+          }
+          return _sourceFor(alternate);
+        }
     }
   }
 
