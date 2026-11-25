@@ -32,6 +32,7 @@ import 'services/media_session.dart';
 import 'services/offline_service.dart';
 import 'services/lyrics_service.dart';
 import 'services/player_service.dart';
+import 'services/playback_sources.dart';
 import 'services/settings_store.dart';
 import 'services/soundcloud_source.dart';
 import 'services/spotify_service.dart';
@@ -142,6 +143,7 @@ Future<void> main(List<String> args) async {
       }
     },
   );
+  player.playbackSources = await PlaybackSources.load();
   // Громкость с прошлого запуска.
   await player.setVolume(settings.volume, remember: false);
   player.crossfadeSeconds = () => settings.crossfade ? settings.crossfadeSec : 0;
