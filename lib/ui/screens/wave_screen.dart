@@ -31,6 +31,9 @@ class WaveScreen extends StatelessWidget {
     final current = player.current;
     final onWave = wave.isWaveTrack(current);
     final accent = Theme.of(context).colorScheme.primary;
+    final style = HutredStyle.of(context);
+    final phoneMono = !HutredTheme.desktop && style.mono;
+    final background = Theme.of(context).canvasColor;
 
     final bg = context.watch<SettingsStore>().waveBackground;
 
@@ -39,7 +42,8 @@ class WaveScreen extends StatelessWidget {
           final wideLayout = box.maxWidth >= 900;
           final size = wideLayout
               ? min(box.maxHeight * 0.5, 320.0)
-              : min(box.maxWidth - 48, min(box.maxHeight * 0.48, 340.0));
+              : min(box.maxWidth - 48,
+                  min(box.maxHeight * 0.48, phoneMono ? 285.0 : 340.0));
           if (wideLayout) {
             // Компьютер по макету: слева круг и режимы, справа что играет и дальше.
             return SingleChildScrollView(
@@ -118,10 +122,10 @@ class WaveScreen extends StatelessWidget {
             );
           }
           return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+            padding: EdgeInsets.fromLTRB(24, 8, 24, phoneMono ? 24 : 120),
             child: Column(
               children: [
-                const SizedBox(height: 12),
+                SizedBox(height: phoneMono ? 30 : 12),
                 _WaveOrb(
                   size: size,
                   color: accent,
@@ -142,19 +146,23 @@ class WaveScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  onWave ? 'Волна играет' : 'Бесконечный поток под твой вкус',
+                  onWave
+                      ? (phoneMono && !player.playing ? 'Продолжить волну' : 'Волна играет')
+                      : (phoneMono ? 'Запустить волну' : 'Бесконечный поток под твой вкус'),
                   textAlign: TextAlign.center,
                   style: HutredStyle.of(context).display(24),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Подбирается по трекам с ♥ и тем, что ты часто слушаешь. '
-                  'Лайк делает похожее чаще, дизлайк убирает трек навсегда.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: HutredTheme.muted, height: 1.4),
-                ),
+                if (!phoneMono) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Подбирается по трекам с ♥ и тем, что ты часто слушаешь. '
+                    'Лайк делает похожее чаще, дизлайк убирает трек навсегда.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: HutredTheme.muted, height: 1.4),
+                  ),
+                ],
                 const SizedBox(height: 16),
-                const _ModeChips(center: true),
+                _ModeChips(center: true, twoColumns: phoneMono),
                 if (wave.error != null) ...[
                   const SizedBox(height: 16),
                   Text(wave.error!,
@@ -165,7 +173,7 @@ class WaveScreen extends StatelessWidget {
                   const SizedBox(height: 28),
                   _NowOnWave(),
                 ],
-                const SizedBox(height: 28),
+                SizedBox(height: phoneMono ? 12 : 28),
                 if (store.favorites.isEmpty)
                   const Text(
                     'Совет: поставь ♥ нескольким любимым трекам — волна станет точнее.',
@@ -188,7 +196,7 @@ class WaveScreen extends StatelessWidget {
         },
       );
 
-    final sharp = HutredStyle.of(context).sharp;
+    final sharp = style.sharp;
     return Scaffold(
       extendBodyBehindAppBar: bg != null,
       appBar: AppBar(
@@ -213,13 +221,29 @@ class WaveScreen extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 // GIF анимируется сам; затемняем, чтобы читался текст.
-                Image.file(File(bg), fit: BoxFit.cover, gaplessPlayback: true),
-                const DecoratedBox(
+                Image.file(
+                  File(bg),
+                  fit: BoxFit.cover,
+                  alignment: phoneMono ? Alignment.topCenter : Alignment.center,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => ColoredBox(color: background),
+                ),
+                DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Color(0x66000000), Color(0x99000000), Color(0xCC000000)],
+                      colors: phoneMono
+                          ? [
+                              background,
+                              const Color(0x33000000),
+                              Colors.transparent,
+                              background.withValues(alpha: 0.72),
+                              background.withValues(alpha: 0.9),
+                              background,
+                            ]
+                          : const [Color(0x66000000), Color(0x99000000), Color(0xCC000000)],
+                      stops: phoneMono ? const [0, 0.21, 0.43, 0.67, 0.88, 1] : null,
                     ),
                   ),
                 ),
@@ -688,8 +712,9 @@ List<(String, String?, Future<void> Function())> waveModes(
 
 /// Ряд режимов волны фишками.
 class _ModeChips extends StatelessWidget {
-  const _ModeChips({this.center = false});
+  const _ModeChips({this.center = false, this.twoColumns = false});
   final bool center;
+  final bool twoColumns;
 
   @override
   Widget build(BuildContext context) {
@@ -699,18 +724,30 @@ class _ModeChips extends StatelessWidget {
     final onWave = wave.isWaveTrack(player.current);
     final recent = List.of(store.tracks)..sort((a, b) => b.addedAt.compareTo(a.addedAt));
     final active = onWave ? wave.radioLabel : '-';
+    final chips = [
+      for (final (label, key, run) in waveModes(wave, store.favorites, recent))
+        StyleChip(
+          label: label,
+          selected: active == key,
+          onTap: wave.loading ? null : run,
+        ),
+    ];
+    if (twoColumns && MediaQuery.textScalerOf(context).scale(13) <= 16) {
+      return LayoutBuilder(builder: (_, constraints) {
+        final width = (constraints.maxWidth - 8) / 2;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: [for (final chip in chips) SizedBox(width: width, child: chip)],
+        );
+      });
+    }
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       alignment: center ? WrapAlignment.center : WrapAlignment.start,
-      children: [
-        for (final (label, key, run) in waveModes(wave, store.favorites, recent))
-          StyleChip(
-            label: label,
-            selected: active == key,
-            onTap: wave.loading ? null : run,
-          ),
-      ],
+      children: chips,
     );
   }
 }

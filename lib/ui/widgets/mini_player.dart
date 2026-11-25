@@ -40,6 +40,7 @@ class MiniPlayer extends StatelessWidget {
 
     final style = HutredStyle.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final phoneMono = style.mono && !HutredTheme.desktop;
     // Мини-плеер — отдельная плашка над нижним меню (у «Резкого» — без скруглений).
     final radius = BorderRadius.circular(style.sharp ? 0 : style.glass ? 18 : 10);
     final progress = StreamBuilder<Duration>(
@@ -62,7 +63,10 @@ class MiniPlayer extends StatelessWidget {
           ? const Color(0xFF0C3B3D).withValues(alpha: 0.72)
           : style.sharp
               ? scheme.surface
-              : Color.alphaBlend(tint.withValues(alpha: 0.18), scheme.surfaceContainerHighest),
+              : Color.alphaBlend(
+                  tint.withValues(alpha: phoneMono ? 0.12 : 0.18),
+                  phoneMono ? scheme.surface : scheme.surfaceContainerHighest,
+                ),
       shape: style.sharp
           ? const Border(top: BorderSide(color: Color(0xFF222222)))
           : RoundedRectangleBorder(
@@ -127,7 +131,7 @@ class MiniPlayer extends StatelessWidget {
                       icon: Icon(Ic.skip_previous_rounded),
                     ),
                   const DevicesButton(),
-                  LikeButtons(track: track),
+                  if (!phoneMono) LikeButtons(track: track),
                   player.loading
                       ? const Padding(
                           padding: EdgeInsets.all(12),
