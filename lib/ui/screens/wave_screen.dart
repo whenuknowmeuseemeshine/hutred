@@ -122,7 +122,7 @@ class WaveScreen extends StatelessWidget {
             );
           }
           return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+            padding: EdgeInsets.fromLTRB(24, 8, 24, phoneMono ? 24 : 120),
             child: Column(
               children: [
                 SizedBox(height: phoneMono ? 30 : 12),
@@ -173,7 +173,7 @@ class WaveScreen extends StatelessWidget {
                   const SizedBox(height: 28),
                   _NowOnWave(),
                 ],
-                const SizedBox(height: 28),
+                SizedBox(height: phoneMono ? 12 : 28),
                 if (store.favorites.isEmpty)
                   const Text(
                     'Совет: поставь ♥ нескольким любимым трекам — волна станет точнее.',
@@ -234,9 +234,16 @@ class WaveScreen extends StatelessWidget {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: phoneMono
-                          ? [background, const Color(0x14000000), Colors.transparent, background, background]
+                          ? [
+                              background,
+                              const Color(0x33000000),
+                              Colors.transparent,
+                              background.withValues(alpha: 0.72),
+                              background.withValues(alpha: 0.9),
+                              background,
+                            ]
                           : const [Color(0x66000000), Color(0x99000000), Color(0xCC000000)],
-                      stops: phoneMono ? const [0, 0.20, 0.43, 0.69, 1] : null,
+                      stops: phoneMono ? const [0, 0.21, 0.43, 0.67, 0.88, 1] : null,
                     ),
                   ),
                 ),
