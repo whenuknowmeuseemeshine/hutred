@@ -531,18 +531,26 @@ class PlayerService extends ChangeNotifier {
       await _player.setVolume(_userVolume);
     } catch (_) {}
     if (token != _loadToken) return;
+    final elapsed = Stopwatch()..start();
+    var stage = 'source';
     try {
       final source = await _sourceFor(t)
           .timeout(const Duration(minutes: 2), onTimeout: () {
         throw Exception('источник не ответил за 2 минуты');
       });
       if (token != _loadToken) return;
+      debugPrint('[Playback] ${t.source.name} source ready in '
+          '${elapsed.elapsedMilliseconds} ms (${source.runtimeType})');
+      stage = 'open';
+      elapsed.reset();
       if (eqSupported && _eqOn) unawaited(_applyEq());
       await _player.setAudioSource(source).timeout(
           const Duration(seconds: 12), onTimeout: () {
         throw Exception('плеер не смог открыть поток');
       });
       if (token != _loadToken) return;
+      debugPrint('[Playback] player opened source in ${elapsed.elapsedMilliseconds} ms');
+      stage = 'resume';
       final resume = _resumeAt;
       _resumeAt = null;
       if (resume != null) {
@@ -565,6 +573,8 @@ class PlayerService extends ChangeNotifier {
       // Загрузку прервал следующий трек — это нормально.
     } catch (e) {
       if (token == _loadToken) {
+        debugPrint('[Playback] ${t.source.name} $stage failed after '
+            '${elapsed.elapsedMilliseconds} ms (${e.runtimeType})');
         _error = 'Не удалось включить «${t.title}»: ${_shortError(e)}';
         _failedInRow++;
         // Как в Spotify: недоступный трек пропускаем и играем следующий.
@@ -692,7 +702,10 @@ class PlayerService extends ChangeNotifier {
       case TrackSource.spotify:
         // Spotify звук не отдаёт: играем тот же трек с SoundCloud/YouTube.
         final token = _loadToken;
+        final elapsed = Stopwatch()..start();
         final found = await resolveSpotify?.call(t);
+        debugPrint('[Playback] spotify matched ${found?.source.name ?? 'nothing'} '
+            'after ${elapsed.elapsedMilliseconds} ms');
         if (found == null || found.source == TrackSource.spotify) {
           throw Exception(youtubeAllowed()
               ? 'не нашёл этот трек на SoundCloud и YouTube'
