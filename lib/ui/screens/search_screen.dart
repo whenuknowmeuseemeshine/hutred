@@ -369,6 +369,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: _SearchHero(
                   results: groups.map((group) => group.first).toList(),
                   labels: _labels,
+                  onUseTrack: (track) {
+                    final group = groups.firstWhere((group) => group.first.$2 == track);
+                    player.playbackSources?.rememberVariants([
+                      (track, group.map((entry) => entry.$2)),
+                    ]);
+                  },
                 ),
               ),
             ),
@@ -551,6 +557,12 @@ class _SearchScreenState extends State<SearchScreen> {
     }).toList();
     final queue = rows.map((row) => row.display).toList();
 
+    void rememberQueue() => player.playbackSources?.rememberVariants([
+      for (final row in rows)
+        if (row.group.length > 1)
+          (row.display, row.group.map((entry) => entry.$2)),
+    ]);
+
     Widget status(Widget child) => SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -584,16 +596,23 @@ class _SearchScreenState extends State<SearchScreen> {
           final row = rows[i];
           return TrackTile(
             track: row.display,
-            onTap: () => player.playTracks(queue, start: i),
+            onTap: () {
+              rememberQueue();
+              player.playTracks(queue, start: i);
+            },
             trailingAction: Row(mainAxisSize: MainAxisSize.min, children: [
               if (row.group.length > 1)
                 PopupMenuButton<Track>(
                   tooltip: 'Версии трека',
                   icon: Icon(Ic.expand_more),
-                  onSelected: (track) => player.playTracks(
-                    [...queue.take(i), track, ...queue.skip(i + 1)],
-                    start: i,
-                  ),
+                  onSelected: (track) {
+                    rememberQueue();
+                    player.playTracks(
+                      [...queue.take(i), track, ...queue.skip(i + 1)],
+                      start: i,
+                      exactSource: true,
+                    );
+                  },
                   itemBuilder: (_) => [
                     for (final (key, track) in row.group)
                       PopupMenuItem(
@@ -610,7 +629,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 onPressed: row.saved
                     ? null
                     : () {
-                        AppActions.ensureInLibrary(context, row.display);
+                        final saved = AppActions.ensureInLibrary(context, row.display);
+                        player.playbackSources?.rememberVariants([
+                          (saved, row.group.map((entry) => entry.$2)),
+                        ]);
                         AppActions.toast(context, 'Добавлено: «${row.display.title}»');
                       },
                 icon: Icon(row.saved ? Ic.check_circle : Ic.add_circle_outline,
@@ -765,9 +787,14 @@ class _SearchHint extends StatelessWidget {
 /// Верх результатов по макету: «Лучший результат» (исполнитель первого
 /// трека, с джемом по нему), рядом — первые треки, ниже — исполнители.
 class _SearchHero extends StatelessWidget {
-  const _SearchHero({required this.results, required this.labels});
+  const _SearchHero({
+    required this.results,
+    required this.labels,
+    required this.onUseTrack,
+  });
   final List<(String, Track)> results;
   final Map<String, String> labels;
+  final void Function(Track) onUseTrack;
 
   @override
   Widget build(BuildContext context) {
@@ -859,9 +886,13 @@ class _SearchHero extends StatelessWidget {
             final saved = store.findBySource(t.source, t.uri);
             return InkWell(
               borderRadius: BorderRadius.circular(st.radius),
-              onTap: () => player.playTracks(
+              onTap: () {
+                onUseTrack(t);
+                player.playTracks(
                   top.map((r) => store.findBySource(r.$2.source, r.$2.uri) ?? r.$2).toList(),
-                  start: i),
+                  start: i,
+                );
+              },
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
                 child: Row(children: [
@@ -885,6 +916,7 @@ class _SearchHero extends StatelessWidget {
                     onPressed: saved == null
                         ? () {
                             AppActions.ensureInLibrary(context, t);
+                            onUseTrack(t);
                             AppActions.toast(context, 'Добавлено: «${t.title}»');
                           }
                         : null,
