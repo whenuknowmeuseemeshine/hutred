@@ -623,7 +623,7 @@ class PlayerService extends ChangeNotifier {
           : hasFallback
               ? Duration(seconds: first ? 8 : 12)
               : const Duration(minutes: 2);
-      final resolved = await _sourceFor(
+      var resolved = await _sourceFor(
         selected,
         candidate: candidate,
         skipOffline: retryOnline || !first,
@@ -646,10 +646,17 @@ class PlayerService extends ChangeNotifier {
         );
       } catch (_) {
         final source = resolved.online;
-        if (token == _loadToken && source != null) {
-          playbackSources?.failed(selected, source);
+        if (token != _loadToken) return false;
+        if (source?.source == TrackSource.youtube && resolved.audio is GrowingFileAudioSource &&
+            !(hasFallback && first)) {
+          final file = await youtube.cachedAudio(source!.uri).timeout(const Duration(minutes: 2));
+          if (token != _loadToken) return false;
+          resolved = (audio: AudioSource.file(file.path), online: source);
+          await p.setAudioSource(resolved.audio).timeout(const Duration(seconds: 12));
+        } else {
+          if (source != null) playbackSources?.failed(selected, source);
+          rethrow;
         }
-        rethrow;
       }
       if (token != _loadToken) return false;
       _rememberOpened(selected, resolved);
@@ -961,9 +968,8 @@ class PlayerService extends ChangeNotifier {
         return AudioSource.uri(Uri.parse(t.uri));
       case TrackSource.youtube:
         onOnline(t);
-        // На Windows libmpv получает готовый файл: обрыв фоновой загрузки
-        // не может превратиться в EOF или ошибку прокси посреди трека.
-        if (Platform.isWindows || completeYoutube) {
+        // При восстановлении оборванного потока дожидаемся готового файла.
+        if (completeYoutube) {
           return AudioSource.file((await youtube.cachedAudio(t.uri)).path);
         }
         return await youtube.playableSource(t.uri);
@@ -1063,22 +1069,23 @@ class PlayerService extends ChangeNotifier {
 
   /// Пауза: как в Spotify, звук не обрывается, а быстро затихает.
   Future<void> pause() async {
-    if (!_player.playing) return;
+    if (!playing) return;
     final loadToken = _loadToken;
+    final t = ++_fadeToken;
     _intent = false;
     notifyListeners();
     await _killOther();
-    if (loadToken != _loadToken) return;
+    if (loadToken != _loadToken || t != _fadeToken) return;
     final p = _player;
     if (fadeOnPause()) {
-      final t = ++_fadeToken;
       final done = await _ramp(p, const Duration(milliseconds: 500),
           token: t, fadeOutFrom: p.volume);
       if (!done) return; // Пока затихало, снова нажали «играть».
     }
     await p.pause();
-    if (loadToken != _loadToken) return;
+    if (loadToken != _loadToken || t != _fadeToken) return;
     await p.setVolume(_userVolume);
+    if (loadToken != _loadToken || t != _fadeToken) return;
     _intent = null;
     notifyListeners();
     unawaited(_saveState());
@@ -1089,19 +1096,22 @@ class PlayerService extends ChangeNotifier {
     if (canRetry) return retry();
     final p = _player;
     final loadToken = _loadToken;
-    _intent = null;
+    final t = ++_fadeToken;
+    _intent = true;
+    notifyListeners();
     if (fadeOnPause()) {
-      final t = ++_fadeToken;
       await p.setVolume(0);
       if (loadToken != _loadToken || t != _fadeToken) return;
       _startPlayer(p, loadToken);
       await _ramp(p, const Duration(milliseconds: 300), token: t);
     } else {
-      final t = ++_fadeToken;
       await p.setVolume(_userVolume);
       if (loadToken != _loadToken || t != _fadeToken) return;
       _startPlayer(p, loadToken);
     }
+    if (loadToken != _loadToken || t != _fadeToken) return;
+    _intent = null;
+    notifyListeners();
   }
 
   Future<void> next() async {

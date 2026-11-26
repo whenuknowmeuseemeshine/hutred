@@ -423,14 +423,15 @@ class _WindowsVisualActivityState extends State<_WindowsVisualActivity>
     super.initState();
     final binding = WidgetsBinding.instance;
     _active = binding.lifecycleState == null ||
-        binding.lifecycleState == AppLifecycleState.resumed;
+        binding.lifecycleState == AppLifecycleState.resumed ||
+        binding.lifecycleState == AppLifecycleState.inactive;
     context.read<PlayerService>().setVisualsActive(_active);
     binding.addObserver(this);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final active = state == AppLifecycleState.resumed;
+    final active = state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
     if (active == _active) return;
     context.read<PlayerService>().setVisualsActive(active);
     setState(() => _active = active);

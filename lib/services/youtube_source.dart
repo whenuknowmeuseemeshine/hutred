@@ -289,10 +289,6 @@ class YoutubeSource {
     if (_preferYtDlp) {
       final fast = await _viaYtDlpStream(videoId, pathFor);
       if (fast != null) return fast;
-      final quick = await YtDlp.download(
-          'https://www.youtube.com/watch?v=$videoId', dir, videoId,
-          cookiesBrowser: cookiesBrowser?.call() ?? '');
-      if (quick != null) return quick;
     }
     // Спрашиваем всех «клиентов» YouTube сразу и берём первый ответ —
     // раньше перебирали по очереди, и на неудачных уходило до минуты.
@@ -315,7 +311,8 @@ class YoutubeSource {
     final solverYt = await _solverClient();
     if (solverYt != null) {
       try {
-        final manifest = await solverYt.videos.streams.getManifest(videoId);
+        final manifest = await solverYt.videos.streams.getManifest(videoId)
+            .timeout(const Duration(seconds: 12));
         return await _saveBest(videoId, manifest, solverYt, pathFor);
       } catch (e) {
         lastError = e;
@@ -324,15 +321,13 @@ class YoutubeSource {
     }
     // На ПК — yt-dlp. Сначала просим у него только ссылку и качаем сами
     // кусками: играть начинает сразу, а не после загрузки всего файла.
-    final streamed = await _viaYtDlpStream(videoId, pathFor);
+    final streamed = _preferYtDlp ? null : await _viaYtDlpStream(videoId, pathFor);
     if (streamed != null) {
       _preferYtDlp = true;
       return streamed;
     }
     // Самый надёжный вариант на ПК: yt-dlp, если он установлен.
-    final viaYtDlp = _preferYtDlp
-        ? null
-        : await YtDlp.download('https://www.youtube.com/watch?v=$videoId', dir, videoId,
+    final viaYtDlp = await YtDlp.download('https://www.youtube.com/watch?v=$videoId', dir, videoId,
             cookiesBrowser: cookiesBrowser?.call() ?? '');
     if (viaYtDlp != null) {
       _preferYtDlp = true;
@@ -390,8 +385,7 @@ class YoutubeSource {
     return done.future;
   }
 
-  /// Библиотека не справилась, а yt-dlp — да: до перезапуска качаем через него.
-  bool _preferYtDlp = false;
+  bool _preferYtDlp = YtDlp.hasBundled;
   final Map<String, DateTime> _deadVideos = {};
 
   /// Недавно все запросы к манифесту вернули, что видео недоступно.
@@ -517,16 +511,19 @@ class YoutubeSource {
     final live = LiveDownload(file: part, totalBytes: totalBytes, contentType: contentType);
     final sink = part.openWrite();
     sink.done.ignore();
-    if (totalBytes > 0 && !Platform.isWindows) _live[videoId] = live;
+    if (totalBytes > 0) _live[videoId] = live;
     try {
       try {
         await write(sink);
       } finally {
         await sink.close();
       }
-      if (await part.length() == 0) throw Exception('YouTube отдал пустой файл');
+      final length = await part.length();
+      if (length == 0 || (totalBytes > 0 && length != totalBytes)) {
+        throw Exception('YouTube оборвал загрузку трека');
+      }
       // Готовое имя становится видно другим запросам только после записи.
-      if (Platform.isWindows) {
+      if (totalBytes <= 0 && Platform.isWindows) {
         await part.rename(file.path);
       } else {
         await part.copy(staging.path);
@@ -570,7 +567,9 @@ class YoutubeSource {
     const chunk = 512 * 1024;
     const workers = 4;
     final base = pos.bytes;
-    final n = (total - base + chunk - 1) ~/ chunk;
+    if (base >= total) return;
+    final firstChunk = min(base == 0 ? 256 * 1024 : chunk, total - base);
+    final n = 1 + (total - base - firstChunk + chunk - 1) ~/ chunk;
     final results = List.generate(n, (_) => Completer<Uint8List>());
     for (final c in results) {
       c.future.ignore();
@@ -581,8 +580,8 @@ class YoutubeSource {
       while (!failed) {
         final i = next++;
         if (i >= n) return;
-        final from = base + i * chunk;
-        final to = min(total, from + chunk) - 1;
+        final from = i == 0 ? base : base + firstChunk + (i - 1) * chunk;
+        final to = min(total, from + (i == 0 ? firstChunk : chunk)) - 1;
         try {
           results[i].complete(await _range(url, from, to, headers: headers));
         } catch (e) {
@@ -910,6 +909,13 @@ class GrowingFileAudioSource extends StreamAudioSource {
       }
     } finally {
       await raf.close();
+      if (Platform.isWindows && live.done) {
+        try {
+          await live.file.delete();
+        } on FileSystemException {
+          // Другой запрос ещё читает файл или загрузчик уже удалил его.
+        }
+      }
     }
   }
 }
