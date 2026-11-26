@@ -247,7 +247,7 @@ class _LookSections extends StatelessWidget {
         labeled('Вкладки', const _TabsGrid(columns: 2), top: true)
       else ...[
         Text(HutredTheme.desktop ? 'Вкладки' : 'Нижнее меню', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-        Text('Перетащи, чтобы поменять порядок. Выключенные — в «Настройках»', style: k.small),
+        Text('Тяни за значок слева, чтобы поменять порядок. Выключенные — в «Настройках»', style: k.small),
         const _TabsGrid(columns: 1),
       ],
     ]);
@@ -398,17 +398,34 @@ class _TabsGrid extends StatelessWidget {
     Widget tile(int i, {bool dragging = false}) {
       final id = order[i];
       final hidden = s.isTabHidden(id);
+      final label = navTabs[id]!.label;
+      final handle = SizedBox(
+        width: 28,
+        height: double.infinity,
+        child: Icon(Icons.drag_indicator_rounded, size: 18, color: k.muted),
+      );
       return Opacity(
         opacity: hidden && !dragging ? 0.55 : 1,
         child: Container(
           height: columns == 1 ? 46 : 40,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.only(left: 5, right: 10),
           decoration: BoxDecoration(color: k.inner, borderRadius: BorderRadius.circular(k.sharp ? 0 : 10)),
           child: Row(children: [
-            Icon(Icons.drag_indicator_rounded, size: 18, color: k.muted),
-            const SizedBox(width: 8),
+            if (dragging)
+              handle
+            else
+              Tooltip(
+                message: 'Переместить «$label»',
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.grab,
+                  child: columns == 1
+                      ? ReorderableDragStartListener(index: i, child: handle)
+                      : handle,
+                ),
+              ),
+            const SizedBox(width: 3),
             Expanded(
-              child: Text(navTabs[id]!.label,
+              child: Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: columns == 1 ? 15 : 14, fontWeight: FontWeight.w600)),
@@ -435,7 +452,7 @@ class _TabsGrid extends StatelessWidget {
             Padding(
               key: ValueKey(order[i]),
               padding: const EdgeInsets.only(bottom: 6),
-              child: ReorderableDelayedDragStartListener(index: i, child: tile(i)),
+              child: tile(i),
             ),
         ],
       );
@@ -936,6 +953,14 @@ class _PlayPage extends StatelessWidget {
 
     return SkGap(gap: 20, children: [
       SkCols(equal: true, children: [crossfade, fade]),
+      if (Platform.isWindows)
+        SkCard(
+          child: SkHead(
+            title: 'Игровой режим',
+            sub: 'Отключает анимации интерфейса и синхронизацию текста трека.',
+            trailing: SkToggle(value: s.gameMode, onChanged: (v) => s.gameMode = v),
+          ),
+        ),
       SkCard(
         child: SkHead(
           title: 'Похожее после плейлиста',
@@ -2201,7 +2226,6 @@ class _DesktopOptsState extends State<_DesktopOpts> {
             filled: false,
             divider: true,
             title: 'Запускать вместе с Windows',
-            sub: 'Тихо стартует в трее',
             trailing: SkToggle(
               value: _autostart ?? false,
               onChanged: _autostart == null

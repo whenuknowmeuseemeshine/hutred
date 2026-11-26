@@ -2225,7 +2225,6 @@ class _UpdatesTilesState extends State<_UpdatesTiles> {
           SwitchListTile(
             secondary: Icon(Ic.power_settings_new),
             title: const Text('Запускать вместе с Windows'),
-            subtitle: const Text('Hutred тихо стартует в трее при включении компьютера'),
             value: _autostart ?? false,
             onChanged: _autostart == null
                 ? null

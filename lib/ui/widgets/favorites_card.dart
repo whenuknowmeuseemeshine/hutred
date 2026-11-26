@@ -217,17 +217,22 @@ class _EqBarsState extends State<_EqBars> with SingleTickerProviderStateMixin {
       AnimationController(vsync: this, duration: const Duration(seconds: 4));
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.live) _c.repeat();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimation();
   }
 
   @override
   void didUpdateWidget(_EqBars old) {
     super.didUpdateWidget(old);
-    if (widget.live && !_c.isAnimating) {
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    final animate = widget.live && !MediaQuery.disableAnimationsOf(context);
+    if (animate && !_c.isAnimating) {
       _c.repeat();
-    } else if (!widget.live && _c.isAnimating) {
+    } else if (!animate && _c.isAnimating) {
       _c.stop();
     }
   }

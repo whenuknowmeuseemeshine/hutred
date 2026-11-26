@@ -495,16 +495,21 @@ class _BarsState extends State<_Bars> with SingleTickerProviderStateMixin {
       AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.playing) _c.repeat(reverse: true);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimation();
   }
 
   @override
   void didUpdateWidget(covariant _Bars old) {
     super.didUpdateWidget(old);
-    if (widget.playing && !_c.isAnimating) _c.repeat(reverse: true);
-    if (!widget.playing && _c.isAnimating) _c.stop();
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    final animate = widget.playing && !MediaQuery.disableAnimationsOf(context);
+    if (animate && !_c.isAnimating) _c.repeat(reverse: true);
+    if (!animate && _c.isAnimating) _c.stop();
   }
 
   @override

@@ -399,7 +399,15 @@ class _WaveOrb extends StatefulWidget {
 
 class _WaveOrbState extends State<_WaveOrb> with SingleTickerProviderStateMixin {
   late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(seconds: 6))..repeat();
+      AnimationController(vsync: this, duration: const Duration(seconds: 6));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animate = !MediaQuery.disableAnimationsOf(context);
+    if (animate && !_c.isAnimating) _c.repeat();
+    if (!animate && _c.isAnimating) _c.stop();
+  }
 
   @override
   void dispose() {

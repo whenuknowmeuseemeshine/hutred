@@ -660,16 +660,21 @@ class _EqualizerBarsState extends State<EqualizerBars>
   static const _phases = [0.0, 1.3, 2.6, 0.7];
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.playing) _c.repeat();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimation();
   }
 
   @override
   void didUpdateWidget(EqualizerBars old) {
     super.didUpdateWidget(old);
-    if (widget.playing && !_c.isAnimating) _c.repeat();
-    if (!widget.playing && _c.isAnimating) _c.stop();
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    final animate = widget.playing && !MediaQuery.disableAnimationsOf(context);
+    if (animate && !_c.isAnimating) _c.repeat();
+    if (!animate && _c.isAnimating) _c.stop();
   }
 
   @override

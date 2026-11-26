@@ -108,6 +108,7 @@ class SettingsStore extends ChangeNotifier {
   bool _crossfade = false;
   int _crossfadeSec = 6;
   bool _fadePause = true;
+  bool _gameMode = false;
   bool _guest = false;
   bool _dnsOnly = false;
   bool _shareOnline = true;
@@ -445,6 +446,13 @@ class SettingsStore extends ChangeNotifier {
     _save();
   }
 
+  bool get gameMode => _gameMode;
+  set gameMode(bool v) {
+    if (_gameMode == v) return;
+    _gameMode = v;
+    _save();
+  }
+
   /// Крестик прячет окно в трей, музыка продолжает играть.
   bool get closeToTray => _closeToTray;
   set closeToTray(bool v) {
@@ -761,6 +769,7 @@ class SettingsStore extends ChangeNotifier {
       _crossfade = j['crossfade'] as bool? ?? false;
       _crossfadeSec = ((j['crossfadeSec'] as num?)?.toInt() ?? 6).clamp(1, 12);
       _fadePause = j['fadePause'] as bool? ?? true;
+      _gameMode = j['gameMode'] as bool? ?? false;
       _guest = j['guest'] as bool? ?? false;
       _dnsOnly = j['dnsOnly'] as bool? ?? false;
       _shareOnline = j['shareOnline'] as bool? ?? true;
@@ -829,6 +838,7 @@ class SettingsStore extends ChangeNotifier {
         'crossfade': _crossfade,
         'crossfadeSec': _crossfadeSec,
         'fadePause': _fadePause,
+        'gameMode': _gameMode,
         'guest': _guest,
         'dnsOnly': _dnsOnly,
         'shareOnline': _shareOnline,

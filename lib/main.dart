@@ -480,6 +480,7 @@ class HutredApp extends StatelessWidget {
             data: mq.copyWith(
               padding: mq.padding.copyWith(top: mq.padding.top + h),
               viewPadding: mq.viewPadding.copyWith(top: mq.viewPadding.top + h),
+              disableAnimations: mq.disableAnimations || settings.gameMode,
             ),
             child: child!,
           ),

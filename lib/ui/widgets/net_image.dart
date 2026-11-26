@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -9,11 +8,12 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../services/dpi_bypass.dart';
 
-/// Картинка из сети. На компьютере — обычная загрузка Flutter (она там
-/// работает надёжно), на телефоне — своя: с кэшем на диске и повтором,
-/// потому что iOS рвёт соединения, пока приложение в фоне.
-ImageProvider netImage(String url) {
-  if (kIsWeb || !(Platform.isIOS || Platform.isAndroid)) return NetworkImage(url);
+/// На телефонах и для обложек в Windows используем дисковый кэш и повтор загрузки.
+ImageProvider netImage(String url, {bool cacheOnWindows = false}) {
+  if (kIsWeb || !(Platform.isIOS || Platform.isAndroid ||
+      (Platform.isWindows && cacheOnWindows))) {
+    return NetworkImage(url);
+  }
   return NetArt(url);
 }
 
@@ -28,18 +28,31 @@ class NetArt extends ImageProvider<NetArt> {
 
   @override
   ImageStreamCompleter loadImage(NetArt key, ImageDecoderCallback decode) =>
-      MultiFrameImageStreamCompleter(codec: _load(decode), scale: scale, debugLabel: url);
+      MultiFrameImageStreamCompleter(codec: _load(key, decode), scale: scale, debugLabel: url);
 
-  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
+  Future<ui.Codec> _load(NetArt key, ImageDecoderCallback decode) async {
+    try {
+      return await _decodeCover(decode);
+    } catch (_) {
+      scheduleMicrotask(() => PaintingBinding.instance.imageCache.evict(key));
+      rethrow;
+    }
+  }
+
+  Future<ui.Codec> _decodeCover(ImageDecoderCallback decode) async {
     final got = await ArtCache.get(url);
     try {
       return await decode(await ui.ImmutableBuffer.fromUint8List(got.bytes));
     } catch (_) {
-      // Испорченный файл в кэше — выбрасываем и качаем заново.
-      if (!got.fromDisk) rethrow;
       await ArtCache.forget(url);
+      if (!got.fromDisk) rethrow;
       final fresh = await ArtCache.get(url);
-      return decode(await ui.ImmutableBuffer.fromUint8List(fresh.bytes));
+      try {
+        return await decode(await ui.ImmutableBuffer.fromUint8List(fresh.bytes));
+      } catch (_) {
+        await ArtCache.forget(url);
+        rethrow;
+      }
     }
   }
 
@@ -59,6 +72,8 @@ class ArtCache {
   static int _running = 0;
   static final _waiting = <Completer<void>>[];
   static const _maxParallel = 8;
+  static const _maxCacheBytes = 128 * 1024 * 1024;
+  static DateTime? _nextTrim;
 
   static Future<Directory?> _folder() => _dir ??= () async {
         try {
@@ -127,7 +142,14 @@ class ArtCache {
     await _slot();
     try {
       final b = await _download(url);
-      if (file != null) unawaited(_save(file, b));
+      if (file != null) {
+        await _save(file, b);
+        final now = DateTime.now();
+        if (_nextTrim?.isAfter(now) != true) {
+          _nextTrim = now.add(const Duration(minutes: 30));
+          unawaited(_trim(file.parent));
+        }
+      }
       return (bytes: b, fromDisk: false);
     } finally {
       _release();
@@ -139,9 +161,36 @@ class ArtCache {
   static Future<void> _save(File file, Uint8List b) async {
     try {
       final part = File('${file.path}.part');
-      await part.writeAsBytes(b, flush: true);
+      await part.writeAsBytes(b);
       await part.rename(file.path);
     } catch (_) {}
+  }
+
+  static Future<void> _trim(Directory dir) async {
+    try {
+      final entries = <({File file, FileStat stat})>[];
+      var bytes = 0;
+      await for (final file in dir.list(followLinks: false)) {
+        if (file is! File || file.path.endsWith('.part')) continue;
+        final stat = await file.stat();
+        if (stat.type != FileSystemEntityType.file) continue;
+        entries.add((file: file, stat: stat));
+        bytes += stat.size;
+      }
+      if (bytes <= _maxCacheBytes) return;
+      entries.sort((a, b) => a.stat.modified.compareTo(b.stat.modified));
+      for (final entry in entries) {
+        if (bytes <= _maxCacheBytes) break;
+        try {
+          await entry.file.delete();
+          bytes -= entry.stat.size;
+        } on FileSystemException {
+          // Файл мог исчезнуть после проверки или быть открыт другим процессом.
+        }
+      }
+    } on FileSystemException {
+      // Временная папка может стать недоступна во время очистки.
+    }
   }
 
   static Future<void> _slot() async {
@@ -164,26 +213,38 @@ class ArtCache {
 
   /// Для «Проверки связи»: скачать картинку одним способом и описать итог.
   static Future<String> probe(String url, {required bool direct}) async {
-    final b = await _fetch(Uri.parse(url), direct: direct).timeout(const Duration(seconds: 20));
+    final b = await _fetch(Uri.parse(url), direct: direct);
     return 'картинка ${(b.length / 1024).toStringAsFixed(0)} КБ';
   }
 
-  static Future<Uint8List> _fetch(Uri uri, {required bool direct}) async {
+  static Future<Uint8List> _fetch(
+    Uri uri, {
+    required bool direct,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     if (direct) c.findProxy = (_) => 'DIRECT';
-    try {
+    Future<Uint8List> read() async {
       final req = await c.getUrl(uri);
       final res = await req.close();
       if (res.statusCode != 200) {
-        await res.drain<void>().catchError((_) {});
-        throw HttpException('HTTP ${res.statusCode}', uri: uri);
+        throw NetworkImageLoadException(statusCode: res.statusCode, uri: uri);
       }
       final b = await consolidateHttpClientResponseBytes(res);
       if (!looksLikeImage(b)) throw HttpException('не картинка', uri: uri);
       return b;
+    }
+    try {
+      return await read().timeout(timeout);
     } finally {
       c.close(force: true);
     }
+  }
+
+  static bool _permanentFailure(Object error) {
+    if (error is! NetworkImageLoadException) return false;
+    final status = error.statusCode;
+    return status >= 400 && status < 500 && status != 408 && status != 429;
   }
 
   static Future<Uint8List> _download(String url) async {
@@ -193,25 +254,27 @@ class ArtCache {
     // а через обход сотня картинок разом идёт тяжело.
     if (DpiBypass.enabled && DpiBypass.mayGoDirect) {
       try {
-        return await _fetch(uri, direct: true).timeout(const Duration(seconds: 10));
+        return await _fetch(uri, direct: true, timeout: const Duration(seconds: 10));
       } catch (e) {
-        if (e is HttpException && e.message.startsWith('HTTP 4')) rethrow;
+        if (_permanentFailure(e)) rethrow;
       }
     }
     try {
       // Обычным путём (через обход/VPN, если включены).
-      return await _fetch(uri, direct: false).timeout(const Duration(seconds: 20));
+      return await _fetch(uri, direct: false);
     } catch (e) {
       // Ответ сервера «нет такой картинки» — повторять бесполезно.
-      if (e is HttpException && e.message.startsWith('HTTP 4')) rethrow;
+      if (_permanentFailure(e)) rethrow;
       // Прокси обхода мог умереть, пока приложение было в фоне.
       await DpiBypass.ensureAlive();
       if (DpiBypass.mayGoDirect) {
         try {
-          return await _fetch(uri, direct: true).timeout(const Duration(seconds: 20));
-        } catch (_) {}
+          return await _fetch(uri, direct: true);
+        } catch (e) {
+          if (_permanentFailure(e)) rethrow;
+        }
       }
-      return _fetch(uri, direct: false).timeout(const Duration(seconds: 20));
+      return _fetch(uri, direct: false);
     }
   }
 }

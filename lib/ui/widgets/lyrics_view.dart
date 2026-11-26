@@ -404,6 +404,8 @@ class _LyricsPanelState extends State<LyricsPanel> {
     final raw = _rawLyrics();
     final lyrics = _lyricsFor(raw);
     final player = context.read<PlayerService>();
+    final gameMode = Platform.isWindows &&
+        context.select<SettingsStore, bool>((s) => s.gameMode);
 
     Widget body;
     if (_loading) {
@@ -446,6 +448,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
         key: ValueKey(widget.track.id),
         lyrics: lyrics,
         sourceLabel: _origin()?.label,
+        gameMode: gameMode,
         offset: Duration(milliseconds: _offsetMs()),
         position: player.smoothPositionStream,
         initialPosition: player.position,
@@ -459,7 +462,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
     return Stack(
       children: [
         Positioned.fill(child: body),
-        if (lyrics != null && lyrics.synced && !_loading && _origin() != null)
+        if (!gameMode && lyrics != null && lyrics.synced && !_loading && _origin() != null)
           Positioned(
             top: 14,
             left: 24,
@@ -605,6 +608,7 @@ class KaraokeView extends StatefulWidget {
     super.key,
     required this.lyrics,
     this.sourceLabel,
+    this.gameMode = false,
     this.offset = Duration.zero,
     required this.position,
     required this.initialPosition,
@@ -613,6 +617,7 @@ class KaraokeView extends StatefulWidget {
 
   final Lyrics lyrics;
   final String? sourceLabel;
+  final bool gameMode;
 
   /// Сдвиг текста: + — строки загораются раньше.
   final Duration offset;
@@ -649,6 +654,8 @@ class _KaraokeViewState extends State<KaraokeView> {
     super.didUpdateWidget(old);
     if (old.lyrics != widget.lyrics) {
       _keys = List.generate(widget.lyrics.lines.length, (_) => GlobalKey());
+    }
+    if (old.lyrics != widget.lyrics || old.gameMode != widget.gameMode) {
       _current = -2;
       _detached = false;
     }
@@ -701,14 +708,17 @@ class _KaraokeViewState extends State<KaraokeView> {
       color: Colors.white,
     );
 
-    if (!lyrics.synced) {
+    if (!lyrics.synced || widget.gameMode) {
+      final source = widget.sourceLabel;
       return ListView(
         padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
         children: [
           Text(
-              widget.sourceLabel == null
-                  ? 'Текст без таймингов'
-                  : 'Текст без таймингов · ${widget.sourceLabel}',
+              widget.gameMode && lyrics.synced
+                  ? 'Синхронизация текста выключена в игровом режиме'
+                  : source == null
+                      ? 'Текст без таймингов'
+                      : 'Текст без таймингов · $source',
               style: const TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 16),
           for (final l in lyrics.lines)

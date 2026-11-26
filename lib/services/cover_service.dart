@@ -35,17 +35,24 @@ class CoverService {
 
   String? _lastId;
   final Set<String> _inFlight = {};
+  final _retryAfter = <String, DateTime>{};
 
   void _onPlayerChanged() {
     final cur = player.current;
-    if (cur == null || cur.id == _lastId) return;
-    _lastId = cur.id;
+    if (cur?.id == _lastId) return;
+    _lastId = cur?.id;
+    if (cur == null) return;
     if (!settings.geniusCovers) return;
     final t = store.byId(cur.id);
-    if (t == null || t.coverChecked) return;
-    final wants = t.artworkUrl == null ||
-        (t.source == TrackSource.youtube && settings.replaceYoutubeCovers);
-    if (wants) fetchFor(t);
+    if (t == null) return;
+    final wants = (t.artworkUrl?.trim().isEmpty ?? true) ||
+        (!t.coverChecked && t.source == TrackSource.youtube && settings.replaceYoutubeCovers);
+    if (!wants) return;
+    final now = DateTime.now();
+    _retryAfter.removeWhere((_, until) => !until.isAfter(now));
+    if (_retryAfter.containsKey(t.id)) return;
+    _retryAfter[t.id] = now.add(const Duration(minutes: 15));
+    fetchFor(t);
   }
 
   /// Ищет трек и обновляет у него обложку, а также название, исполнителя
@@ -181,6 +188,7 @@ class CoverService {
         });
       }
 
+      if (art == null) return null;
       final current = store.byId(t.id);
       if (current == null) return from;
       final newTitle = (title ?? '').trim();
@@ -193,7 +201,7 @@ class CoverService {
           current.lyricsSource == 'custom' ||
           current.lyricsSource == 'ai';
       final updated = current.copyWith(
-        artworkUrl: art ?? current.artworkUrl,
+        artworkUrl: art,
         coverChecked: true,
         title: renamed ? newTitle : null,
         artist: renamed ? newArtist : null,

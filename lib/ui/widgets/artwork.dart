@@ -18,7 +18,7 @@ ImageProvider artworkProvider(String url) {
   // Если файла уже нет (переустановка, очистка) — берём из сети.
   final saved = OfflineService.instance?.coverForUrl(url);
   if (saved != null && _fileOk(saved)) return FileImage(File(saved));
-  return netImage(url);
+  return netImage(url, cacheOnWindows: true);
 }
 
 /// Обложка трека: картинка из источника или узор, сгенерированный по названию.
@@ -37,9 +37,9 @@ class Artwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = track?.artworkUrl;
+    final url = track?.artworkUrl?.trim();
     final fallback = _Generated(track: track);
-    Widget child = url == null
+    Widget child = url == null || url.isEmpty
         ? fallback
         : Image(
             image: artworkProvider(url),
