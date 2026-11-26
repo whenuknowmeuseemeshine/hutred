@@ -25,16 +25,16 @@ class MiniPlayer extends StatelessWidget {
     final player = context.watch<PlayerService>();
     final store = context.watch<LibraryStore>();
     final sync = context.watch<DeviceSync>();
-    final wide0 = MediaQuery.sizeOf(context).width >= 800;
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 800;
     // Здесь тихо, а музыка играет на другом моём устройстве — показываем пульт.
-    if (sync.remoteMode) return wide0 ? const RemoteBar() : const RemoteMini();
+    if (sync.remoteMode) return wide ? const RemoteBar() : const RemoteMini();
     final current = player.current;
     if (current == null) return const SizedBox.shrink();
     final track = store.byId(current.id) ?? current;
     final tint = context.watch<SettingsStore>().tintFromCover
         ? Artwork.tint(track)
         : Theme.of(context).colorScheme.primary;
-    final wide = MediaQuery.sizeOf(context).width >= 800;
     // На компьютере — широкая панель в три части, как в настольных плеерах.
     if (wide) return PlayerBar(track: track);
 
@@ -124,14 +124,8 @@ class MiniPlayer extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (wide)
-                    IconButton(
-                      tooltip: 'Предыдущий',
-                      onPressed: player.previous,
-                      icon: Icon(Ic.skip_previous_rounded),
-                    ),
                   const DevicesButton(),
-                  if (HutredTheme.desktop) LikeButtons(track: track),
+                  if (HutredTheme.desktop && width >= 380) LikeButtons(track: track),
                   player.loading
                       ? const Padding(
                           padding: EdgeInsets.all(12),

@@ -427,9 +427,11 @@ class RemoteBar extends StatelessWidget {
             flex: 3,
             child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               const DevicesButton(),
-              SizedBox(
-                width: 150,
-                child: _VolumeSlider(value: a.volume, onChanged: (v) => sync.command(a.id, 'volume', v: v)),
+              Flexible(
+                child: SizedBox(
+                  width: 150,
+                  child: _VolumeSlider(value: a.volume, onChanged: (v) => sync.command(a.id, 'volume', v: v)),
+                ),
               ),
             ]),
           ),

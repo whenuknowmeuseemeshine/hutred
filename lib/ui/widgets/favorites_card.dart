@@ -123,7 +123,6 @@ class FavoritesCard extends StatelessWidget {
         onTap: onOpen,
         borderRadius: BorderRadius.circular(r),
         child: Ink(
-          height: height,
           decoration: BoxDecoration(
             color: st.sharp
                 ? Colors.transparent
@@ -148,42 +147,47 @@ class FavoritesCard extends StatelessWidget {
                 width: compact ? 150 : 300,
                 child: _EqBars(live: live, accent: accent, sharp: st.sharp),
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(compact ? 16 : 28, compact ? 16 : 26,
-                    compact ? 16 : 28, compact ? 16 : 26),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    heart,
-                    const Spacer(),
-                    Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(st.sharp ? 'ЛЮБИМЫЕ ТРЕКИ' : 'Любимые треки',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: st.display(compact ? 24 : 40)),
-                            const SizedBox(height: 4),
-                            Text(subtitle,
-                                style: st.sharp
-                                    ? st.caption(color: HutredTheme.muted)
-                                    : const TextStyle(color: HutredTheme.muted, fontSize: 14)),
-                            if (!compact) ...[
-                              const SizedBox(height: 12),
-                              Wrap(spacing: 6, runSpacing: 6, children: [
-                                for (final c in chips) chip(c),
-                              ]),
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: height),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(compact ? 16 : 28, compact ? 16 : 26,
+                      compact ? 16 : 28, compact ? 16 : 26),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      heart,
+                      const SizedBox(height: 8),
+                      Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(st.sharp ? 'ЛЮБИМЫЕ ТРЕКИ' : 'Любимые треки',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: st.display(compact ? 24 : 40)),
+                              const SizedBox(height: 4),
+                              Text(subtitle,
+                                  style: st.sharp
+                                      ? st.caption(color: HutredTheme.muted)
+                                      : const TextStyle(color: HutredTheme.muted, fontSize: 14)),
+                              if (!compact) ...[
+                                const SizedBox(height: 12),
+                                Wrap(spacing: 6, runSpacing: 6, children: [
+                                  for (final c in chips) chip(c),
+                                ]),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      playBtn,
-                    ]),
-                  ],
+                        const SizedBox(width: 12),
+                        playBtn,
+                      ]),
+                    ],
+                  ),
                 ),
               ),
             ]),

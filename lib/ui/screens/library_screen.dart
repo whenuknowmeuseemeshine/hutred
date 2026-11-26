@@ -88,72 +88,94 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final all = picked.length == visible.length && visible.isNotEmpty;
     final allFav = picked.isNotEmpty && picked.every((t) => t.favorite);
     final none = picked.isEmpty;
+    final actions = <IconButton>[
+      IconButton(
+        tooltip: all ? 'Снять выбор со всех' : 'Выбрать все',
+        onPressed: () => setState(() {
+          if (all) {
+            _sel!.clear();
+          } else {
+            _sel!.addAll(visible.map((t) => t.id));
+          }
+        }),
+        icon: Icon(all ? Ic.deselect : Ic.select_all),
+      ),
+      IconButton(
+        tooltip: allFav ? 'Убрать из любимых' : 'В любимые',
+        onPressed: none
+            ? null
+            : () {
+                store.setFavorite(picked.map((t) => t.id), !allFav);
+                AppActions.toast(context,
+                    allFav ? 'Убрано из любимых' : 'В любимых: ${tracksWord(picked.length)}');
+              },
+        icon: Icon(allFav ? Ic.favorite : Ic.favorite_border),
+      ),
+      if (context.read<SettingsStore>().hasSpotifyKeys)
+        IconButton(
+          tooltip: 'Сведения из Spotify: точные название, исполнитель, альбом и обложка',
+          onPressed: none ? null : () => _spotifyFix(picked),
+          icon: Icon(Ic.graphic_eq),
+        ),
+      IconButton(
+        tooltip: 'Добавить в плейлист',
+        onPressed: none ? null : () => AppActions.addManyToPlaylistDialog(context, picked),
+        icon: Icon(Ic.playlist_add),
+      ),
+      IconButton(
+        tooltip: 'Скачать',
+        onPressed: none
+            ? null
+            : () {
+                offline.downloadAll(picked);
+                AppActions.toast(context, 'Скачиваю: ${tracksWord(picked.length)}');
+              },
+        icon: Icon(Ic.download_outlined),
+      ),
+      IconButton(
+        tooltip: 'Удалить из медиатеки',
+        onPressed: none
+            ? null
+            : () async {
+                final ok = await AppActions.confirm(context,
+                    title: 'Удалить ${tracksWord(picked.length)}?',
+                    body: 'Они пропадут из медиатеки и всех плейлистов. '
+                        'Файлы на диске останутся.');
+                if (!ok) return;
+                store.removeTracks(picked.map((t) => t.id));
+                setState(() => _sel = null);
+              },
+        icon: Icon(Ic.delete_outline),
+      ),
+    ];
     return AppBar(
       leading: IconButton(
         tooltip: 'Отменить выбор',
         onPressed: () => setState(() => _sel = null),
         icon: Icon(Ic.close),
       ),
-      title: Text(none ? 'Выбери треки' : 'Выбрано: ${picked.length}'),
+      title: Text(none ? 'Выбери треки' : 'Выбрано: ${picked.length}',
+          maxLines: 1, overflow: TextOverflow.ellipsis),
       actions: [
-        IconButton(
-          tooltip: all ? 'Снять выбор со всех' : 'Выбрать все',
-          onPressed: () => setState(() {
-            if (all) {
-              _sel!.clear();
-            } else {
-              _sel!.addAll(visible.map((t) => t.id));
-            }
-          }),
-          icon: Icon(all ? Ic.deselect : Ic.select_all),
-        ),
-        IconButton(
-          tooltip: allFav ? 'Убрать из любимых' : 'В любимые',
-          onPressed: none
-              ? null
-              : () {
-                  store.setFavorite(picked.map((t) => t.id), !allFav);
-                  AppActions.toast(context,
-                      allFav ? 'Убрано из любимых' : 'В любимых: ${tracksWord(picked.length)}');
-                },
-          icon: Icon(allFav ? Ic.favorite : Ic.favorite_border),
-        ),
-        if (context.read<SettingsStore>().hasSpotifyKeys)
-          IconButton(
-            tooltip: 'Сведения из Spotify: точные название, исполнитель, альбом и обложка',
-            onPressed: none ? null : () => _spotifyFix(picked),
-            icon: Icon(Ic.graphic_eq),
+        if (MediaQuery.sizeOf(context).width < 520) ...[
+          actions.first,
+          PopupMenuButton<VoidCallback>(
+            tooltip: 'Действия с выбранными треками',
+            onSelected: (run) => run(),
+            itemBuilder: (_) => [
+              for (final action in actions.skip(1))
+                PopupMenuItem(
+                  value: action.onPressed,
+                  enabled: action.onPressed != null,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: action.icon,
+                    title: Text(action.tooltip!),
+                  ),
+                ),
+            ],
           ),
-        IconButton(
-          tooltip: 'Добавить в плейлист',
-          onPressed: none ? null : () => AppActions.addManyToPlaylistDialog(context, picked),
-          icon: Icon(Ic.playlist_add),
-        ),
-        IconButton(
-          tooltip: 'Скачать',
-          onPressed: none
-              ? null
-              : () {
-                  offline.downloadAll(picked);
-                  AppActions.toast(context, 'Скачиваю: ${tracksWord(picked.length)}');
-                },
-          icon: Icon(Ic.download_outlined),
-        ),
-        IconButton(
-          tooltip: 'Удалить из медиатеки',
-          onPressed: none
-              ? null
-              : () async {
-                  final ok = await AppActions.confirm(context,
-                      title: 'Удалить ${tracksWord(picked.length)}?',
-                      body: 'Они пропадут из медиатеки и всех плейлистов. '
-                          'Файлы на диске останутся.');
-                  if (!ok) return;
-                  store.removeTracks(picked.map((t) => t.id));
-                  setState(() => _sel = null);
-                },
-          icon: Icon(Ic.delete_outline),
-        ),
+        ] else ...actions,
         const SizedBox(width: 8),
       ],
     );
@@ -212,7 +234,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
           children: [
             Icon(icon, size: 16),
             const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
             const SizedBox(width: 4),
             Icon(Ic.expand_more, size: 18),
           ],
@@ -273,8 +299,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
             const SizedBox(width: 12),
           ],
           Expanded(
+            flex: 3,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(st.sharp ? 'МЕДИАТЕКА' : 'Медиатека', style: st.display(wide ? 46 : 28)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(st.sharp ? 'МЕДИАТЕКА' : 'Медиатека', style: st.display(wide ? 46 : 28)),
+              ),
               if (wide) ...[
                 const SizedBox(height: 4),
                 Text(
@@ -290,12 +321,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
           if (!wide) const AccountButton(),
           if (wide) const ReleasesBell(),
           if (wide && (_tab == _Tab.tracks || _tab == _Tab.downloaded))
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterField(
-                width: 260,
-                hint: 'Найти в медиатеке',
-                onChanged: (v) => setState(() => _q = v.trim()),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterField(
+                    width: 260,
+                    hint: 'Найти в медиатеке',
+                    onChanged: (v) => setState(() => _q = v.trim()),
+                  ),
+                ),
               ),
             ),
           if (favs.isNotEmpty && (_tab == _Tab.tracks || _tab == _Tab.downloaded))
@@ -358,7 +395,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
       hero = Padding(
         padding: EdgeInsets.fromLTRB(pad.left, 0, pad.right, 22),
-        child: wide && often.isNotEmpty
+        child: LayoutBuilder(builder: (context, box) => wide &&
+                box.maxWidth >= 760 && often.isNotEmpty
             ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 SizedBox(width: 520, child: card),
                 const SizedBox(width: 20),
@@ -370,7 +408,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   const SizedBox(height: 16),
                   _Often(title: oftenTitle, tracks: often, all: favs, strip: true),
                 ],
-              ]),
+              ])),
       );
     }
 
@@ -869,39 +907,49 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final sortRow = Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 4, 2),
       child: Row(children: [
-        PopupMenuButton<_Sort>(
-          tooltip: 'Сортировка',
-          position: PopupMenuPosition.under,
-          onSelected: (v) => setState(() => _sort = v),
-          itemBuilder: (_) => [
-            for (final e in _sortLabels.entries) _item(e.key, e.value.$2, e.value.$1, _sort == e.key),
-          ],
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(_sortLabels[_sort]!.$2, size: 16),
-              const SizedBox(width: 6),
-              Text(k.sharp ? _sortLabels[_sort]!.$1.toUpperCase() : _sortLabels[_sort]!.$1,
-                  style: (k.sharp ? st.caption(size: 12) : const TextStyle(fontSize: 13))
-                      .copyWith(fontWeight: FontWeight.w600, color: k.text)),
-            ]),
-          ),
-        ),
-        const Spacer(),
-        if (sources.length > 1)
-          PopupMenuButton<int>(
-            tooltip: 'Откуда трек',
+        Expanded(
+          flex: 3,
+          child: PopupMenuButton<_Sort>(
+            tooltip: 'Сортировка',
             position: PopupMenuPosition.under,
-            onSelected: (v) => setState(() => _source = v < 0 ? null : TrackSource.values[v]),
+            onSelected: (v) => setState(() => _sort = v),
             itemBuilder: (_) => [
-              _item(-1, Ic.library_music_outlined, 'Все источники', _source == null),
-              for (final src in sources)
-                _item(src.index, Ic.library_music_outlined, sourceLabel(src), _source == src),
+              for (final e in _sortLabels.entries) _item(e.key, e.value.$2, e.value.$1, _sort == e.key),
             ],
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              child: Text(_source == null ? 'Все источники' : sourceLabel(_source!),
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: muted)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_sortLabels[_sort]!.$2, size: 16),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(k.sharp ? _sortLabels[_sort]!.$1.toUpperCase() : _sortLabels[_sort]!.$1,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: (k.sharp ? st.caption(size: 12) : const TextStyle(fontSize: 13))
+                          .copyWith(fontWeight: FontWeight.w600, color: k.text)),
+                ),
+              ]),
+            ),
+          ),
+        ),
+        if (sources.length > 1)
+          Expanded(
+            flex: 2,
+            child: PopupMenuButton<int>(
+              tooltip: 'Откуда трек',
+              position: PopupMenuPosition.under,
+              onSelected: (v) => setState(() => _source = v < 0 ? null : TrackSource.values[v]),
+              itemBuilder: (_) => [
+                _item(-1, Ic.library_music_outlined, 'Все источники', _source == null),
+                for (final src in sources)
+                  _item(src.index, Ic.library_music_outlined, sourceLabel(src), _source == src),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Text(_source == null ? 'Все источники' : sourceLabel(_source!),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: muted)),
+              ),
             ),
           ),
         IconButton(

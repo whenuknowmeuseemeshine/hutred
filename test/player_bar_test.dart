@@ -11,6 +11,7 @@ import 'package:hutred/services/wave_service.dart';
 import 'package:hutred/services/youtube_source.dart';
 import 'package:hutred/ui/theme.dart';
 import 'package:hutred/ui/widgets/controls.dart';
+import 'package:hutred/ui/widgets/devices.dart';
 import 'package:hutred/ui/widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 
@@ -19,15 +20,29 @@ class _ConnectedDevices extends DeviceSync {
 
   @override
   bool get online => true;
+
+  RemoteDevice? remoteDevice;
+
+  @override
+  RemoteDevice? get active => remoteDevice;
+}
+
+class _PreviewPlayer extends PlayerService {
+  _PreviewPlayer({required super.youtube, required super.soundcloud});
+
+  Track? previewTrack;
+
+  @override
+  Track? get current => previewTrack;
 }
 
 void main() {
-  testWidgets('desktop player fits all controls from the minimum width', (tester) async {
+  testWidgets('desktop player and remote controls fit narrow panels', (tester) async {
     final settings = SettingsStore();
     final store = LibraryStore();
     final account = AccountService(store: store);
     final soundcloud = SoundcloudSource();
-    final player = PlayerService(youtube: YoutubeSource(), soundcloud: soundcloud);
+    final player = _PreviewPlayer(youtube: YoutubeSource(), soundcloud: soundcloud);
     final devices = _ConnectedDevices(account: account, player: player);
     final wave = WaveService(store: store, player: player, soundcloud: soundcloud);
     addTearDown(() {
@@ -47,17 +62,14 @@ void main() {
       addedAt: DateTime(2026),
     );
 
-    for (final style in ['mono', 'glass', 'sharp']) {
-      // At an 800 px window the glass rail and its margins leave 688 px.
-      for (final width in [688.0, 800.0, 1020.0, 1440.0, 1920.0]) {
-        tester.view.devicePixelRatio = 1;
-        tester.view.physicalSize = Size(width, 600);
-        final bar = PlayerBar(track: track);
-        await tester.pumpWidget(MultiProvider(
+    Future<void> show(Widget bar, double width, String style) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 600);
+      await tester.pumpWidget(MultiProvider(
           providers: [
             ChangeNotifierProvider.value(value: settings),
             ChangeNotifierProvider.value(value: store),
-            ChangeNotifierProvider.value(value: player),
+            ChangeNotifierProvider<PlayerService>.value(value: player),
             ChangeNotifierProvider<DeviceSync>.value(value: devices),
             ChangeNotifierProvider.value(value: wave),
           ],
@@ -66,7 +78,13 @@ void main() {
             themeAnimationDuration: Duration.zero,
             home: Scaffold(body: Center(child: bar)),
           ),
-        ));
+      ));
+    }
+
+    for (final style in ['mono', 'glass', 'sharp']) {
+      // At an 800 px window the glass rail and its margins leave 688 px.
+      for (final width in [688.0, 800.0, 1020.0, 1440.0, 1920.0]) {
+        await show(PlayerBar(track: track), width, style);
         expect(tester.takeException(), isNull, reason: '$style at $width');
         final mute = tester.getRect(find.byTooltip('Выключить звук'));
         expect(mute.right, lessThan(width));
@@ -81,6 +99,25 @@ void main() {
         expect(seek.width, lessThanOrEqualTo(560));
       }
     }
+
+    devices.remoteDevice = RemoteDevice(
+      id: 'remote', name: 'Телефон', kind: 'phone', playing: false, track: track,
+      posMs: 0, durMs: 170000, at: DateTime(2026), volume: 0.5,
+    );
+    await show(const RemoteBar(), 640, 'mono');
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Где слушать').hitTestable(), findsOneWidget);
+    final remoteVolume = tester.getRect(find.byType(Slider).last);
+    expect(remoteVolume.right, lessThanOrEqualTo(640));
+    expect(remoteVolume.width, greaterThan(100));
+
+    devices.remoteDevice = null;
+    player.previewTrack = track;
+    await show(const MiniPlayer(), 320, 'mono');
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Играть').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('Следующий').hitTestable(), findsOneWidget);
+    expect(tester.getSize(find.text(track.title)).width, greaterThan(50));
     await tester.pumpWidget(const SizedBox.shrink());
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();

@@ -116,7 +116,7 @@ class StyleButton extends StatelessWidget {
     final shape = st.sharp ? const RoundedRectangleBorder() : const StadiumBorder();
     final child = Row(mainAxisSize: MainAxisSize.min, children: [
       if (icon != null) ...[Icon(icon, size: 17), const SizedBox(width: 8)],
-      Text(label),
+      Flexible(child: Text(label)),
     ]);
     const pad = EdgeInsets.symmetric(horizontal: 18, vertical: 14);
     if (primary) {
