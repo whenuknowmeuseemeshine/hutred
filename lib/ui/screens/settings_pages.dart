@@ -1697,7 +1697,7 @@ class _DiscordPage extends StatelessWidget {
             borderRadius: BorderRadius.circular(k.ri),
           ),
           child: StreamBuilder<Duration>(
-            stream: player.positionStream,
+            stream: player.visualPositionStream,
             builder: (context, _) {
               final pos = player.position;
               final dur = player.duration ?? Duration.zero;

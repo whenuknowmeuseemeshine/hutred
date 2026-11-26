@@ -154,12 +154,16 @@ class _HomeShellState extends State<HomeShell> {
       index: _tab,
       children: [
         for (final id in order)
-          _TabBackground(
-            // На «Волне» свой, чёткий фон; на остальных — размытый.
-            imagePath: id == 'wave' ? null : bg,
-            child: Navigator(
-              key: _navKeys[id],
-              onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => _page(id)),
+          TickerMode(
+            key: ValueKey(id),
+            enabled: id == _current,
+            child: _TabBackground(
+              // На «Волне» свой, чёткий фон; на остальных — размытый.
+              imagePath: id == 'wave' ? null : bg,
+              child: Navigator(
+                key: _navKeys[id],
+                onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => _page(id)),
+              ),
             ),
           ),
       ],

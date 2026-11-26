@@ -650,7 +650,7 @@ class _SharpWave extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: StreamBuilder<Duration>(
-                      stream: player.positionStream,
+                      stream: player.visualPositionStream,
                       builder: (context, snap) {
                         final d = player.duration?.inMilliseconds ?? 0;
                         final p = snap.data?.inMilliseconds ?? 0;

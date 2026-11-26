@@ -46,54 +46,28 @@ class PlayerService extends ChangeNotifier {
     for (final p in [_a, _b]) {
       _subs.add(p.playerStateStream.listen((s) {
         if (p != _player) return;
-        if (s.processingState == ProcessingState.completed && !_completing) {
+        if (s.processingState == ProcessingState.completed &&
+            !_loading && !_needsPlaybackRetry && !_completing) {
           _completing = true;
           _onCompleted().whenComplete(() => _completing = false);
         }
+        _updateKaraokeTimer();
         notifyListeners();
       }));
       _subs.add(p.durationStream.listen((d) {
-        if (p != _player) return;
+        if (p != _player || _loading || _needsPlaybackRetry) return;
         final t = current;
         if (d != null && t != null && t.durationMs == null) {
           onDurationKnown?.call(t, d);
         }
         notifyListeners();
       }));
-      _subs.add(p.playbackEventStream.listen((_) {}, onError: (Object e) {
-        if (p != _player || _loading) return;
-        // Файл открылся, но не играет (битый или формат, который iPhone
-        // не понимает, например .ogg/.opus) — выбрасываем копию и пробуем
-        // ещё раз: из облака заново или такой же трек с SoundCloud.
-        final t = current;
-        final source = _playingSource;
-        if (t != null && source != null) {
-          playbackSources?.failed(t, source);
-          if (_recoverStream(t, source, p.position, playing: p.playing)) return;
-        }
-        if (t != null && _playedFromFile && _fileRetryFor != t.id) {
-          _fileRetryFor = t.id;
-          unawaited(() async {
-            await forgetFile?.call(t);
-            _preferOnline = true;
-            await _loadCurrent();
-          }());
-          return;
-        }
-        _error = 'Ошибка воспроизведения: ${_shortError(e)}';
-        notifyListeners();
-      }));
+      _subs.add(p.playbackEventStream.listen((_) {},
+          onError: (Object e) => _handlePlaybackError(p, e)));
       _subs.add(p.positionStream.listen((d) {
-        if (p == _player) _pos.add(d);
-      }));
-      _subs.add(p
-          .createPositionStream(
-            steps: 4000,
-            minPeriod: const Duration(milliseconds: 16),
-            maxPeriod: const Duration(milliseconds: 50),
-          )
-          .listen((d) {
-        if (p == _player) _smoothPos.add(d);
+        if (p == _player && !_loading && !_needsPlaybackRetry) {
+          _publishPosition(d, updateKaraoke: _karaokeTimer == null);
+        }
       }));
     }
     _xfTimer = Timer.periodic(const Duration(milliseconds: 250), (_) => _checkCrossfade());
@@ -267,40 +241,46 @@ class PlayerService extends ChangeNotifier {
   AudioPlayer get _other => identical(_player, _a) ? _b : _a;
 
   final _pos = StreamController<Duration>.broadcast();
-  final _smoothPos = StreamController<Duration>.broadcast();
+  final _visualPos = StreamController<Duration>.broadcast();
+  late final _smoothPos = StreamController<Duration>.broadcast(
+    onListen: _updateKaraokeTimer,
+    onCancel: _updateKaraokeTimer,
+  );
+  Timer? _karaokeTimer;
+  bool _visualsActive = true;
   Timer? _xfTimer;
   bool _xfRunning = false;
   int _fadeToken = 0;
 
   /// Громкость, которую выбрал пользователь (плавности меняют её временно).
   double _userVolume = 1;
+  double _lastAudibleVolume = 0.5;
 
   /// Плавно меняет громкость плеера. Прерывается, если началась другая плавность.
-  Future<bool> _ramp(AudioPlayer p, double from, double to, Duration d,
-      {int? token}) async {
+  Future<bool> _ramp(AudioPlayer p, Duration d,
+      {required int token, double? fadeOutFrom}) async {
     const steps = 30;
-    final t = token ?? ++_fadeToken;
     for (var i = 1; i <= steps; i++) {
-      if (t != _fadeToken) return false;
+      if (token != _fadeToken) return false;
       final k = i / steps;
       // Громкость на слух логарифмическая: квадратичная кривая звучит ровно,
       // без «провала» в конце затухания.
-      final v = to < from
-          ? to + (from - to) * (1 - k) * (1 - k)
-          : from + (to - from) * k * k;
-      await p.setVolume(v.clamp(0.0, 1.0));
+      final v = fadeOutFrom == null
+          ? _userVolume * k * k
+          : min(_userVolume, fadeOutFrom) * (1 - k) * (1 - k);
+      await p.setVolume(v);
       await Future<void>.delayed(d ~/ steps);
     }
-    return t == _fadeToken;
+    return token == _fadeToken;
   }
 
   /// Новый трек при переходе: громкость растёт по синусу — быстро
   /// становится слышно начало песни, а к концу перехода выходит ровно.
-  Future<bool> _fadeIn(AudioPlayer p, double to, Duration d, int token) async {
+  Future<bool> _fadeIn(AudioPlayer p, Duration d, int token) async {
     const steps = 30;
     for (var i = 1; i <= steps; i++) {
       if (token != _fadeToken) return false;
-      await p.setVolume((to * sin(i / steps * pi / 2)).clamp(0.0, 1.0));
+      await p.setVolume(_userVolume * sin(i / steps * pi / 2));
       await Future<void>.delayed(d ~/ steps);
     }
     return token == _fadeToken;
@@ -311,10 +291,14 @@ class PlayerService extends ChangeNotifier {
     final o = _other;
     if (o.playing || o.processingState != ProcessingState.idle) {
       try {
-        await o.stop();
+        await _silence(o);
       } catch (_) {}
     }
   }
+
+  // На Windows переиспользуем libmpv: stop() уничтожает нативный плеер.
+  Future<void> _silence(AudioPlayer p) =>
+      (Platform.isWindows ? p.pause() : p.stop()).timeout(const Duration(seconds: 3));
 
   /// Следующий трек, который заиграет сам (с учётом скрытых).
   int? _autoNextIndex() {
@@ -331,7 +315,7 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> _checkCrossfade() async {
     final secs = crossfadeSeconds();
-    if (secs <= 0 || _xfRunning || _loading || !_player.playing) return;
+    if (secs <= 0 || _xfRunning || _loading || !playing) return;
     final dur = _player.duration;
     if (dur == null || dur.inSeconds < secs * 2 + 5) return;
     final left = dur - _player.position;
@@ -346,13 +330,13 @@ class PlayerService extends ChangeNotifier {
       final candidate = _candidates(next).first;
       final resolved = await _sourceFor(next, candidate: candidate)
           .timeout(const Duration(seconds: 2));
-      if (token != _loadToken || !_player.playing) return;
+      if (token != _loadToken || !playing) return;
       final incoming = _other;
       await incoming.setVolume(0);
+      if (token != _loadToken || !playing) return;
       await incoming.setAudioSource(resolved.audio)
           .timeout(const Duration(seconds: 4));
-      if (token != _loadToken) {
-        await incoming.stop();
+      if (token != _loadToken || !playing) {
         return;
       }
       final outgoing = _player;
@@ -364,7 +348,7 @@ class PlayerService extends ChangeNotifier {
       _streamRecoveryUsed = false;
       _exactSourcePlayback = false;
       _rememberOpened(next, resolved);
-      unawaited(incoming.play());
+      _startPlayer(incoming, _loadToken);
       onStarted?.call(next);
       notifyListeners();
       if (_smart) unawaited(_ensureRecsAhead());
@@ -377,12 +361,13 @@ class PlayerService extends ChangeNotifier {
       // старого трека заглушался, и казалось, что у песни отрезали кусок.
       final t = ++_fadeToken;
       await Future.wait([
-        _fadeIn(incoming, _userVolume, fadeLen, t),
+        _fadeIn(incoming, fadeLen, t),
         outgoing.processingStateStream
             .firstWhere((s) => s == ProcessingState.completed || s == ProcessingState.idle)
             .timeout(fadeLen + const Duration(seconds: 3), onTimeout: () => ProcessingState.idle),
       ]);
-      await outgoing.stop();
+      if (t != _fadeToken) return;
+      await _silence(outgoing);
       await outgoing.setVolume(_userVolume);
       if (t == _fadeToken) await incoming.setVolume(_userVolume);
     } catch (e) {
@@ -414,6 +399,7 @@ class PlayerService extends ChangeNotifier {
   RepeatSetting _repeat = RepeatSetting.off;
   bool _loading = false;
   bool _completing = false;
+  bool _needsPlaybackRetry = false;
   String? _error;
   int _loadToken = 0;
 
@@ -425,19 +411,70 @@ class PlayerService extends ChangeNotifier {
   RepeatSetting get repeat => _repeat;
   bool get loading => _loading;
   String? get error => _error;
+  bool get canRetry => _needsPlaybackRetry && !_loading;
   /// Кнопки сразу показывают паузу/игру, не дожидаясь конца затухания.
-  bool get playing => _intent ?? _player.playing;
+  bool get playing => !_needsPlaybackRetry && (_intent ?? _player.playing);
   bool? _intent;
   double get volume => _userVolume;
-  Duration get position => _resumeAt ?? _player.position;
-  Duration? get duration => _player.duration ?? current?.duration;
+  Duration get position => _resumeAt ?? (_loading ? Duration.zero : _player.position);
+  Duration? get duration => _loading || _needsPlaybackRetry
+      ? current?.duration
+      : _player.duration ?? current?.duration;
 
   Stream<Duration> get positionStream => _pos.stream;
+  Stream<Duration> get visualPositionStream => _visualPos.stream;
 
   /// Частый поток позиции — для плавной заливки караоке.
   Stream<Duration> get smoothPositionStream => _smoothPos.stream;
 
+  void setVisualsActive(bool active) {
+    if (_disposed || _visualsActive == active) return;
+    _visualsActive = active;
+    _updateKaraokeTimer();
+    if (active) _publishVisualPosition(position);
+  }
+
+  void _updateKaraokeTimer() {
+    if (_disposed || !_visualsActive || !_smoothPos.hasListener || _loading ||
+        !playing || _player.processingState != ProcessingState.ready) {
+      _karaokeTimer?.cancel();
+      _karaokeTimer = null;
+      return;
+    }
+    final interval = Duration(
+      microseconds: ((duration?.inMicroseconds ?? 0) ~/ 4000).clamp(16000, 50000),
+    );
+    _karaokeTimer ??= Timer.periodic(interval, (_) {
+      _smoothPos.add(position);
+    });
+  }
+
+  void _publishVisualPosition(Duration value, {bool updateKaraoke = true}) {
+    if (!_visualsActive) return;
+    _visualPos.add(value);
+    if (updateKaraoke && _smoothPos.hasListener) _smoothPos.add(value);
+  }
+
+  void _publishPosition(Duration value, {bool updateKaraoke = true}) {
+    _pos.add(value);
+    _publishVisualPosition(value, updateKaraoke: updateKaraoke);
+  }
+
   // ---------- Запуск ----------
+
+  Future<void> playTrackFromList(List<Track> tracks, {
+    int start = 0,
+    bool exactSource = false,
+  }) async {
+    if (tracks.isEmpty) return;
+    final target = tracks[start.clamp(0, tracks.length - 1)];
+    final active = current;
+    if (active?.id == target.id && active?.source == target.source &&
+        active?.uri == target.uri && _exactSourcePlayback == exactSource) {
+      return playCurrent();
+    }
+    await playTracks(tracks, start: start, exactSource: exactSource);
+  }
 
   Future<void> playTracks(List<Track> tracks, {
     int start = 0,
@@ -507,6 +544,8 @@ class PlayerService extends ChangeNotifier {
     bool autoplay = true,
     bool exactSource = false,
     Track? resumeWith,
+    bool skipOffline = false,
+    bool autoSkipOnFailure = true,
   }) async {
     var t = current;
     if (t == null) return;
@@ -538,6 +577,7 @@ class PlayerService extends ChangeNotifier {
       _index = j;
       t = _queue[j];
     }
+    final explicitlySelected = _allowId == t.id;
     _allowId = null;
     if (resumeWith == null) {
       _streamRecoveryUsed = false;
@@ -545,19 +585,25 @@ class PlayerService extends ChangeNotifier {
     }
     final token = ++_loadToken;
     _loading = true;
+    _needsPlaybackRetry = false;
+    _intent = null;
     _playedFromFile = false;
     _playingSource = null;
     _pauseRequested = false;
     _error = null;
+    _updateKaraokeTimer();
+    _publishPosition(position);
     notifyListeners();
     // Сразу глушим прошлый трек: если новый не загрузится,
     // старый не должен продолжать играть.
     ++_fadeToken;
+    final p = _player;
     try {
       await _killOther();
-      // После сбоя плеер иногда «залипает», поэтому ждём не дольше 3 секунд.
-      await _player.stop().timeout(const Duration(seconds: 3));
-      await _player.setVolume(_userVolume);
+      if (token != _loadToken) return;
+      await _silence(p);
+      if (token != _loadToken) return;
+      await p.setVolume(_userVolume);
     } catch (_) {}
     if (token != _loadToken) return;
     final elapsed = Stopwatch()..start();
@@ -567,14 +613,13 @@ class PlayerService extends ChangeNotifier {
         ? [resumeWith]
         : exactSource ? [selected] : _candidates(selected);
     final hasFallback = candidates.length > 1;
-    final retryOnline = resumeWith != null || _preferOnline;
-    _preferOnline = false;
+    final retryOnline = resumeWith != null || skipOffline;
 
     Future<bool> open(Track candidate, {required bool first}) async {
       stage = 'source';
       elapsed.reset();
       final budget = resumeWith != null
-          ? const Duration(seconds: 12)
+          ? const Duration(seconds: 30)
           : hasFallback
               ? Duration(seconds: first ? 8 : 12)
               : const Duration(minutes: 2);
@@ -582,6 +627,7 @@ class PlayerService extends ChangeNotifier {
         selected,
         candidate: candidate,
         skipOffline: retryOnline || !first,
+        completeYoutube: resumeWith != null,
       ).timeout(budget, onTimeout: () {
         throw Exception('источник не ответил за ${budget.inSeconds} с');
       });
@@ -592,7 +638,7 @@ class PlayerService extends ChangeNotifier {
         stage = 'open';
         elapsed.reset();
         if (eqSupported && _eqOn) unawaited(_applyEq());
-        await _player.setAudioSource(resolved.audio).timeout(
+        await p.setAudioSource(resolved.audio).timeout(
           hasFallback && first
               ? const Duration(seconds: 5)
               : const Duration(seconds: 12),
@@ -620,22 +666,27 @@ class PlayerService extends ChangeNotifier {
         if (token != _loadToken || !hasFallback) rethrow;
         playbackSources?.failed(selected, candidates.first);
         debugPrint('[Playback] trying another source after $stage failed');
-        try {
-          await _player.stop().timeout(const Duration(seconds: 3));
-        } catch (_) {}
+        if (stage == 'open') {
+          try {
+            await p.stop().timeout(const Duration(seconds: 3));
+          } catch (_) {}
+        }
         if (token != _loadToken || !await open(candidates[1], first: false)) return;
       }
       stage = 'resume';
       final resume = _resumeAt;
-      _resumeAt = null;
       if (resume != null) {
-        try {
-          await _player.seek(resume);
-        } catch (_) {}
+        await p.seek(resume);
       }
       // Пока грузилось, нажали паузу — не включаем.
       if (token != _loadToken) return;
-      if (autoplay && !_pauseRequested) unawaited(_player.play());
+      _resumeAt = null;
+      _publishPosition(p.position);
+      final knownDuration = p.duration;
+      if (knownDuration != null && t.durationMs == null) {
+        onDurationKnown?.call(t, knownDuration);
+      }
+      if (autoplay && !_pauseRequested) _startPlayer(p, token);
       _failedInRow = 0;
       if (resumeWith == null) onStarted?.call(t);
       // Умное перемешивание: держим рекомендации на несколько треков вперёд.
@@ -651,24 +702,27 @@ class PlayerService extends ChangeNotifier {
       if (token == _loadToken) {
         debugPrint('[Playback] ${t.source.name} $stage failed after '
             '${elapsed.elapsedMilliseconds} ms (${e.runtimeType})');
-        _error = 'Не удалось включить «${t.title}»: ${_shortError(e)}';
+        _stopWithError(p, _resumeAt ?? Duration.zero,
+            'Не удалось включить «${t.title}»: ${_shortError(e)}');
         _failedInRow++;
         // Как в Spotify: недоступный трек пропускаем и играем следующий.
         // Если поставили на паузу — остаёмся на этом треке.
         if (autoplay &&
+            autoSkipOnFailure &&
+            !explicitlySelected &&
             resumeWith == null &&
             !_pauseRequested &&
             _index + 1 < _queue.length &&
             _failedInRow < _queue.length) {
           Future.delayed(const Duration(milliseconds: 1500), () {
-            if (token == _loadToken) next();
+            if (token == _loadToken && canRetry && !_pauseRequested) next();
           });
         }
       }
     } finally {
       if (token == _loadToken) {
-        if (resumeWith != null) _resumeAt = null;
         _loading = false;
+        _updateKaraokeTimer();
         notifyListeners();
       }
     }
@@ -688,7 +742,7 @@ class PlayerService extends ChangeNotifier {
     if (text.contains('SocketException') || text.contains('Failed host lookup')) {
       return 'нет подключения к интернету';
     }
-    final firstLine = text.split('\n').first;
+    final firstLine = text.split('\n').first.replaceFirst('Exception: ', '');
     return firstLine.length > 160 ? '${firstLine.substring(0, 160)}…' : firstLine;
   }
 
@@ -705,26 +759,74 @@ class PlayerService extends ChangeNotifier {
   bool _streamRecoveryUsed = false;
   bool _exactSourcePlayback = false;
 
+  void _startPlayer(AudioPlayer p, int token) {
+    unawaited(p.play().catchError((Object e) {
+      if (token == _loadToken) _handlePlaybackError(p, e);
+    }));
+  }
+
+  void _handlePlaybackError(AudioPlayer p, Object e) {
+    if (_disposed || p != _player || _loading || _needsPlaybackRetry) return;
+    final track = current;
+    if (track == null) return;
+    final source = _playingSource;
+    final at = p.position;
+    if (source != null) {
+      playbackSources?.failed(track, source);
+      if (_recoverStream(track, source, at, playing: playing)) return;
+    }
+    if (_playedFromFile && _fileRetryFor != track.id) {
+      _fileRetryFor = track.id;
+      final token = _loadToken;
+      unawaited(() async {
+        try {
+          await forgetFile?.call(track);
+        } catch (e) {
+          debugPrint('[Playback] could not remove invalid copy (${e.runtimeType})');
+        }
+        if (token != _loadToken || _needsPlaybackRetry) return;
+        _resumeAt = at;
+        await _loadCurrent(exactSource: _exactSourcePlayback, skipOffline: true);
+      }());
+      return;
+    }
+    _stopWithError(p, at, 'Ошибка воспроизведения: ${_shortError(e)}');
+  }
+
+  void _stopWithError(AudioPlayer p, Duration at, String message) {
+    ++_fadeToken;
+    _needsPlaybackRetry = true;
+    _resumeAt = at;
+    _error = message;
+    _updateKaraokeTimer();
+    _publishPosition(at);
+    unawaited(p.pause().catchError((Object e) {
+      debugPrint('[Playback] could not pause after failure (${e.runtimeType})');
+    }));
+    notifyListeners();
+    unawaited(_saveState());
+  }
+
   bool _recoverStream(Track track, Track source, Duration position,
       {required bool playing}) {
-    if (_streamRecoveryUsed || _exactSourcePlayback ||
-        !playing || position <= Duration.zero || isOffline?.call() == true) {
+    if (_streamRecoveryUsed || !playing || isOffline?.call() == true) {
       return false;
     }
-    for (final candidate in _candidates(track)) {
-      if (candidate.source == TrackSource.spotify ||
-          candidate.source == TrackSource.local ||
-          (candidate.source == source.source && candidate.uri == source.uri)) {
-        continue;
-      }
-      _streamRecoveryUsed = true;
-      _resumeAt = position;
-      debugPrint('[Playback] resuming after ${source.source.name} stopped '
-          'using ${candidate.source.name}');
-      unawaited(_loadCurrent(resumeWith: candidate));
-      return true;
-    }
-    return false;
+    final alternatives = _exactSourcePlayback ? <Track>[] : _candidates(track);
+    final alternate = alternatives.where((candidate) =>
+        candidate.source != TrackSource.spotify &&
+        candidate.source != TrackSource.local &&
+        (candidate.source != source.source || candidate.uri != source.uri)).firstOrNull;
+    final retrySource = source.source == TrackSource.youtube &&
+            _playingGrowingYoutube
+        ? source : alternate;
+    if (retrySource == null) return false;
+    _streamRecoveryUsed = true;
+    _resumeAt = position;
+    debugPrint('[Playback] resuming after ${source.source.name} stopped '
+        'at ${position.inMilliseconds} ms using ${retrySource.source.name}');
+    unawaited(_loadCurrent(resumeWith: retrySource));
+    return true;
   }
 
   bool _prefetching = false;
@@ -763,13 +865,11 @@ class PlayerService extends ChangeNotifier {
 
   /// Трек сейчас играет из файла (скачанный, свой, из облака).
   bool _playedFromFile = false;
+  bool _playingGrowingYoutube = false;
   Track? _playingSource;
 
   /// Для этого трека файл уже пересоздавали — второй раз не пробуем.
   String? _fileRetryFor;
-
-  /// Следующая загрузка — сразу онлайн-копия (файл не заиграл).
-  bool _preferOnline = false;
 
   /// Убрать скачанную/облачную копию трека (она не играет).
   Future<void> Function(Track t)? forgetFile;
@@ -783,6 +883,7 @@ class PlayerService extends ChangeNotifier {
     final audio = resolved.audio;
     final source = resolved.online;
     _playingSource = source;
+    _playingGrowingYoutube = audio is GrowingFileAudioSource;
     _playedFromFile = source == null && audio is UriAudioSource &&
         audio.uri.scheme == 'file';
     if (source != null) playbackSources?.opened(track, source);
@@ -792,12 +893,14 @@ class PlayerService extends ChangeNotifier {
     Track track, {
     required Track candidate,
     bool skipOffline = false,
+    bool completeYoutube = false,
   }) async {
     Track? online;
     final audio = await _sourceForInner(
       track,
       candidate: candidate,
       skipOffline: skipOffline,
+      completeYoutube: completeYoutube,
       onOnline: (source) => online = source,
       token: _loadToken,
     );
@@ -808,13 +911,16 @@ class PlayerService extends ChangeNotifier {
     Track t, {
     required Track candidate,
     required bool skipOffline,
+    required bool completeYoutube,
     required void Function(Track) onOnline,
     required int token,
   }) async {
+    if (token != _loadToken) throw PlayerInterruptedException('Трек переключён');
     Future<AudioSource> follow(Track found) => _sourceForInner(
           found,
           candidate: found,
           skipOffline: true,
+          completeYoutube: completeYoutube,
           onOnline: onOnline,
           token: token,
         );
@@ -837,6 +943,7 @@ class PlayerService extends ChangeNotifier {
         if (File(t.uri).existsSync()) return AudioSource.file(t.uri);
         // Файла на этом устройстве нет — берём копию из облака.
         final fromCloud = await cloudFile?.call(t);
+        if (token != _loadToken) throw PlayerInterruptedException('Трек переключён');
         if (fromCloud != null && !_unplayableHere(fromCloud)) return AudioSource.file(fromCloud);
         if (fromCloud != null) {
           // Формат, который iPhone не играет — ищем такой же трек онлайн.
@@ -854,6 +961,11 @@ class PlayerService extends ChangeNotifier {
         return AudioSource.uri(Uri.parse(t.uri));
       case TrackSource.youtube:
         onOnline(t);
+        // На Windows libmpv получает готовый файл: обрыв фоновой загрузки
+        // не может превратиться в EOF или ошибку прокси посреди трека.
+        if (Platform.isWindows || completeYoutube) {
+          return AudioSource.file((await youtube.cachedAudio(t.uri)).path);
+        }
         return await youtube.playableSource(t.uri);
       case TrackSource.soundcloud:
         onOnline(t);
@@ -902,6 +1014,14 @@ class PlayerService extends ChangeNotifier {
   /// Возвращает true, если команда отправлена и здесь ничего делать не нужно.
   Future<bool> Function(String cmd, {int? ms, Track? track})? remoteControl;
 
+  Future<void> playCurrent() async {
+    if (current == null || _loading || playing) return;
+    final remote = remoteControl;
+    if (remote != null && await remote('toggle')) return;
+    if (current == null || _loading || playing) return;
+    await _resumeCurrent();
+  }
+
   Future<void> togglePlay() async {
     if (await remoteControl?.call('toggle') ?? false) return;
     if (current == null) return;
@@ -915,30 +1035,49 @@ class PlayerService extends ChangeNotifier {
     if (playing) {
       await pause();
     } else {
-      if (_player.processingState == ProcessingState.completed) {
-        await _player.seek(Duration.zero);
-      }
-      if (_player.processingState == ProcessingState.idle) {
-        await _loadCurrent();
-        return;
-      }
+      await _resumeCurrent();
+    }
+  }
+
+  Future<void> _resumeCurrent() async {
+    if (canRetry) return retry();
+    final p = _player;
+    final token = _loadToken;
+    if (p.processingState == ProcessingState.completed) {
+      await p.seek(Duration.zero);
+    }
+    if (token != _loadToken) return;
+    if (p.processingState == ProcessingState.idle) {
+      await _loadCurrent(exactSource: _exactSourcePlayback);
+    } else {
       await resume();
     }
+  }
+
+  Future<void> retry() async {
+    final track = current;
+    if (!canRetry || track == null) return;
+    _allowId = track.id;
+    await _loadCurrent(exactSource: _exactSourcePlayback, autoSkipOnFailure: false);
   }
 
   /// Пауза: как в Spotify, звук не обрывается, а быстро затихает.
   Future<void> pause() async {
     if (!_player.playing) return;
+    final loadToken = _loadToken;
     _intent = false;
     notifyListeners();
     await _killOther();
+    if (loadToken != _loadToken) return;
     final p = _player;
     if (fadeOnPause()) {
       final t = ++_fadeToken;
-      final done = await _ramp(p, p.volume, 0, const Duration(milliseconds: 500), token: t);
+      final done = await _ramp(p, const Duration(milliseconds: 500),
+          token: t, fadeOutFrom: p.volume);
       if (!done) return; // Пока затихало, снова нажали «играть».
     }
     await p.pause();
+    if (loadToken != _loadToken) return;
     await p.setVolume(_userVolume);
     _intent = null;
     notifyListeners();
@@ -947,17 +1086,21 @@ class PlayerService extends ChangeNotifier {
 
   /// Продолжить: звук плавно нарастает.
   Future<void> resume() async {
+    if (canRetry) return retry();
     final p = _player;
+    final loadToken = _loadToken;
     _intent = null;
     if (fadeOnPause()) {
       final t = ++_fadeToken;
       await p.setVolume(0);
-      unawaited(p.play());
-      await _ramp(p, 0, _userVolume, const Duration(milliseconds: 300), token: t);
+      if (loadToken != _loadToken || t != _fadeToken) return;
+      _startPlayer(p, loadToken);
+      await _ramp(p, const Duration(milliseconds: 300), token: t);
     } else {
-      ++_fadeToken;
+      final t = ++_fadeToken;
       await p.setVolume(_userVolume);
-      unawaited(p.play());
+      if (loadToken != _loadToken || t != _fadeToken) return;
+      _startPlayer(p, loadToken);
     }
   }
 
@@ -1016,7 +1159,7 @@ class PlayerService extends ChangeNotifier {
     if (remoteControl != null) return;
     if (_repeat == RepeatSetting.one) {
       await _player.seek(Duration.zero);
-      unawaited(_player.play());
+      _startPlayer(_player, _loadToken);
     } else {
       await next();
     }
@@ -1030,22 +1173,31 @@ class PlayerService extends ChangeNotifier {
   /// Перемотка без отправки хозяину джема (сама подстройка под него).
   Future<void> syncSeek(Duration d) async {
     // Трек после перезапуска ещё не загружен — просто запоминаем новое место.
-    if (_resumeAt != null && _player.processingState == ProcessingState.idle) {
+    if (_loading || _needsPlaybackRetry ||
+        (_resumeAt != null && _player.processingState == ProcessingState.idle)) {
       _resumeAt = d;
+      _publishPosition(d);
       notifyListeners();
       return;
     }
     await _player.seek(d);
   }
 
+  Future<void> toggleMute() => volume == 0
+      ? setVolume(_lastAudibleVolume)
+      : setVolume(0, remember: false);
+
   Future<void> setVolume(double v, {bool remember = true}) async {
     final value = v.clamp(0.0, 1.0);
     _userVolume = value;
-    ++_fadeToken;
-    await _player.setVolume(value);
-    if (_other.playing) await _other.setVolume(value);
+    if (value > 0) _lastAudibleVolume = value;
+    final volumeUpdates = [
+      _player.setVolume(value),
+      if (_other.playing) _other.setVolume(value),
+    ];
     if (remember) onVolumeChanged?.call(value);
     notifyListeners();
+    await Future.wait(volumeUpdates);
   }
 
   /// Перемешивание по кругу: выкл → перемешать → перемешать с
@@ -1365,14 +1517,18 @@ class PlayerService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    ++_loadToken;
+    ++_fadeToken;
     for (final s in _subs) {
       s.cancel();
     }
     _xfTimer?.cancel();
     _stateTimer?.cancel();
+    _karaokeTimer?.cancel();
     _a.dispose();
     _b.dispose();
     _pos.close();
+    _visualPos.close();
     _smoothPos.close();
     super.dispose();
   }

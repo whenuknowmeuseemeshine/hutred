@@ -598,7 +598,7 @@ class _SearchScreenState extends State<SearchScreen> {
             track: row.display,
             onTap: () {
               rememberQueue();
-              player.playTracks(queue, start: i);
+              player.playTrackFromList(queue, start: i);
             },
             trailingAction: Row(mainAxisSize: MainAxisSize.min, children: [
               if (row.group.length > 1)
@@ -607,7 +607,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   icon: Icon(Ic.expand_more),
                   onSelected: (track) {
                     rememberQueue();
-                    player.playTracks(
+                    player.playTrackFromList(
                       [...queue.take(i), track, ...queue.skip(i + 1)],
                       start: i,
                       exactSource: true,
@@ -888,7 +888,7 @@ class _SearchHero extends StatelessWidget {
               borderRadius: BorderRadius.circular(st.radius),
               onTap: () {
                 onUseTrack(t);
-                player.playTracks(
+                player.playTrackFromList(
                   top.map((r) => store.findBySource(r.$2.source, r.$2.uri) ?? r.$2).toList(),
                   start: i,
                 );

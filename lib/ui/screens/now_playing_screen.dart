@@ -1157,7 +1157,7 @@ class _CoverLyric extends StatelessWidget {
     final player = context.read<PlayerService>();
     final offset = Duration(milliseconds: saved.lyricsOffsetMs);
     return StreamBuilder<Duration>(
-      stream: player.positionStream,
+      stream: player.visualPositionStream,
       builder: (context, snap) {
         final pos = (snap.data ?? Duration.zero) + offset;
         String? line;

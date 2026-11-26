@@ -421,7 +421,7 @@ class _Transport extends StatelessWidget {
       decoration: BoxDecoration(border: Border(top: BorderSide(color: k.line))),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         StreamBuilder<Duration>(
-          stream: player.positionStream,
+          stream: player.visualPositionStream,
           builder: (context, snap) {
             final pos = snap.data ?? player.position;
             final v = total.inMilliseconds <= 0

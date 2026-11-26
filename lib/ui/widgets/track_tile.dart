@@ -136,7 +136,7 @@ class TrackTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: isCurrent ? player.togglePlay : onTap,
+            onTap: isCurrent ? player.playCurrent : onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(children: [
@@ -177,7 +177,7 @@ class TrackTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(style.radius),
         child: InkWell(
           borderRadius: BorderRadius.circular(style.radius),
-          onTap: isCurrent ? player.togglePlay : onTap,
+          onTap: isCurrent ? player.playCurrent : onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             child: Row(children: [
@@ -221,8 +221,7 @@ class TrackTile extends StatelessWidget {
       child: _Hover(builder: (hovered) => Opacity(
         opacity: hidden ? 0.4 : 1,
         child: custom(hovered) ?? ListTile(
-      // Как в Spotify: нажал на играющий трек ещё раз — пауза/продолжить.
-      onTap: isCurrent ? player.togglePlay : onTap,
+      onTap: isCurrent ? player.playCurrent : onTap,
       leading: Stack(
         children: [
           Artwork(track: track, size: 48, radius: 4),

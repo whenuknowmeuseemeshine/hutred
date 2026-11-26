@@ -31,7 +31,7 @@ class _SeekBarState extends State<SeekBar> {
     );
 
     return StreamBuilder<Duration>(
-      stream: player.positionStream,
+      stream: player.visualPositionStream,
       initialData: player.position,
       builder: (context, snap) {
         final pos = snap.data ?? Duration.zero;
@@ -54,17 +54,19 @@ class _SeekBarState extends State<SeekBar> {
                 },
         );
         if (widget.compact) {
+          Widget timestamp(String value, Alignment alignment) => SizedBox(
+            width: 44,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: alignment,
+              child: Text(value, maxLines: 1, style: tabular),
+            ),
+          );
           return Row(
             children: [
-              SizedBox(
-                  width: 44,
-                  child: Text(formatDuration(shown),
-                      textAlign: TextAlign.right, style: tabular)),
+              timestamp(formatDuration(shown), Alignment.centerRight),
               Expanded(child: SizedBox(height: 24, child: slider)),
-              SizedBox(
-                  width: 44,
-                  child: Text(dur == null ? 'эфир' : formatDuration(dur),
-                      style: tabular)),
+              timestamp(dur == null ? 'эфир' : formatDuration(dur), Alignment.centerLeft),
             ],
           );
         }
@@ -193,23 +195,40 @@ class TransportControls extends StatelessWidget {
 }
 
 class VolumeSlider extends StatelessWidget {
-  const VolumeSlider({super.key});
+  const VolumeSlider({super.key, this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final player = context.watch<PlayerService>();
     return Row(
       children: [
-        Icon(
-            player.volume == 0
-                ? Ic.volume_off
-                : player.volume < 0.5
-                    ? Ic.volume_down
-                    : Ic.volume_up,
-            size: 18,
-            color: Colors.white70),
+        SizedBox(
+          width: compact ? 32 : null,
+          child: IconButton(
+            onPressed: player.toggleMute,
+            tooltip: player.volume == 0 ? 'Включить звук' : 'Выключить звук',
+            constraints: const BoxConstraints.tightFor(width: 32, height: 36),
+            padding: EdgeInsets.zero,
+            icon: Icon(
+              player.volume == 0
+                  ? Ic.volume_off
+                  : player.volume < 0.5
+                      ? Ic.volume_down
+                      : Ic.volume_up,
+              size: 18,
+              color: Colors.white70,
+            ),
+          ),
+        ),
         Expanded(
-          child: Slider(value: player.volume, onChanged: player.setVolume),
+          child: Slider(
+            value: player.volume,
+            onChanged: player.setVolume,
+            padding: compact ? const EdgeInsets.symmetric(horizontal: 4) : null,
+            semanticFormatterCallback: (value) => '${(value * 100).round()}%',
+          ),
         ),
       ],
     );

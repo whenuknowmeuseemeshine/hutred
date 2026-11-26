@@ -226,10 +226,24 @@ Future<void> main(List<String> args) async {
   String? lastPlayerError;
   player.addListener(() {
     final e = player.error;
+    if (player.loading) {
+      lastPlayerError = null;
+      return;
+    }
     if (e != null && e != lastPlayerError) {
+      final trackId = player.current?.id;
       hutredMessengerKey.currentState
         ?..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(e), duration: const Duration(seconds: 5)));
+        ..showSnackBar(SnackBar(
+          content: Text(e),
+          duration: const Duration(seconds: 5),
+          action: player.canRetry ? SnackBarAction(
+            label: 'Повторить',
+            onPressed: () {
+              if (player.current?.id == trackId && player.error == e) player.retry();
+            },
+          ) : null,
+        ));
     }
     lastPlayerError = e;
   });
@@ -384,8 +398,53 @@ Future<void> main(List<String> args) async {
       Provider(create: (_) => AiSyncService()),
       Provider(create: (_) => LyricsService(youtube: youtube, genius: genius)),
     ],
-    child: const HutredApp(),
+    child: !kIsWeb && Platform.isWindows
+        ? const _WindowsVisualActivity(child: HutredApp())
+        : const HutredApp(),
   ));
+}
+
+/// Пока активна другая программа, Hutred продолжает играть в фоне.
+class _WindowsVisualActivity extends StatefulWidget {
+  const _WindowsVisualActivity({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_WindowsVisualActivity> createState() => _WindowsVisualActivityState();
+}
+
+class _WindowsVisualActivityState extends State<_WindowsVisualActivity>
+    with WidgetsBindingObserver {
+  late bool _active;
+
+  @override
+  void initState() {
+    super.initState();
+    final binding = WidgetsBinding.instance;
+    _active = binding.lifecycleState == null ||
+        binding.lifecycleState == AppLifecycleState.resumed;
+    context.read<PlayerService>().setVisualsActive(_active);
+    binding.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final active = state == AppLifecycleState.resumed;
+    if (active == _active) return;
+    context.read<PlayerService>().setVisualsActive(active);
+    setState(() => _active = active);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      TickerMode(enabled: _active, child: widget.child);
 }
 
 /// Для сообщений внизу экрана из любого места (например, из плеера).

@@ -215,7 +215,7 @@ class YoutubeSource {
         return await _download(videoId);
       } finally {
         // Ошибку не запоминаем, чтобы можно было попробовать ещё раз.
-        unawaited(Future(() => _downloads.remove(videoId)));
+        _downloads.remove(videoId);
       }
     });
   }
@@ -296,7 +296,8 @@ class YoutubeSource {
     }
     // Спрашиваем всех «клиентов» YouTube сразу и берём первый ответ —
     // раньше перебирали по очереди, и на неудачных уходило до минуты.
-    final got = await _firstManifest(videoId);
+    Object? manifestError;
+    final got = await _firstManifest(videoId, onFailure: (e) => manifestError = e);
     if (got != null) {
       try {
         final file = await _saveBest(videoId, got.$1, _yt, pathFor);
@@ -307,7 +308,7 @@ class YoutubeSource {
         debugPrint('[YouTube] $videoId: $e');
       }
     } else {
-      lastError = _manifestError;
+      lastError = manifestError;
     }
     // Последняя попытка: решатель JS-проверок YouTube через Deno (только ПК,
     // если Deno установлен: https://deno.com).
@@ -337,8 +338,10 @@ class YoutubeSource {
       _preferYtDlp = true;
       return viaYtDlp;
     }
-    // Не мучаем это видео повторно до перезапуска программы.
-    _deadVideos.add(videoId);
+    // Сетевой сбой и обрыв скачивания не делают видео недоступным.
+    if (manifestError is VideoUnavailableException && lastError is VideoUnavailableException) {
+      _deadVideos[videoId] = DateTime.now().add(const Duration(minutes: 1));
+    }
     final why = YtDlp.lastError;
     throw Exception('YouTube не отдал звук'
         '${why == null ? '' : ' (yt-dlp: ${why.length > 160 ? '${why.substring(0, 160)}…' : why})'}'
@@ -346,17 +349,17 @@ class YoutubeSource {
   }
 
   YoutubeApiClient? _goodClient;
-  Object? _manifestError;
 
   /// Первый успешный ответ от любого клиента (тот, что сработал в прошлый
   /// раз, получает полсекунды форы — обычно он и сейчас самый быстрый).
   Future<(StreamManifest, YoutubeApiClient)?> _firstManifest(
     String videoId, {
     bool Function(StreamManifest)? accept,
+    void Function(Object)? onFailure,
   }) async {
     final done = Completer<(StreamManifest, YoutubeApiClient)?>();
     var left = _clients.length;
-    if (accept == null) _manifestError = null;
+    Object? failure;
     for (final client in _clients) {
       () async {
         try {
@@ -372,10 +375,15 @@ class YoutubeSource {
             done.complete((m, client));
           }
         } catch (e) {
-          if (accept == null) _manifestError ??= e;
+          // При смешанных ответах считаем сбой временным.
+          if (failure == null || failure is VideoUnavailableException) failure = e;
         } finally {
           left--;
-          if (left == 0 && !done.isCompleted) done.complete(null);
+          if (left == 0 && !done.isCompleted) {
+            final error = failure;
+            if (error != null) onFailure?.call(error);
+            done.complete(null);
+          }
         }
       }();
     }
@@ -384,10 +392,16 @@ class YoutubeSource {
 
   /// Библиотека не справилась, а yt-dlp — да: до перезапуска качаем через него.
   bool _preferYtDlp = false;
-  final Set<String> _deadVideos = {};
+  final Map<String, DateTime> _deadVideos = {};
 
-  /// Этот ролик уже не удалось открыть в текущем сеансе.
-  bool isUnavailable(String videoId) => _deadVideos.contains(videoId);
+  /// Недавно все запросы к манифесту вернули, что видео недоступно.
+  bool isUnavailable(String videoId) {
+    final until = _deadVideos[videoId];
+    if (until == null) return false;
+    if (until.isAfter(DateTime.now())) return true;
+    _deadVideos.remove(videoId);
+    return false;
+  }
 
   static final _clients = [
     YoutubeApiClient.androidVr,
@@ -433,15 +447,9 @@ class YoutubeSource {
     final file = File(
         pathFor(info.container == StreamContainer.mp4 ? 'm4a' : 'webm'));
 
-    final part = File('${file.path}.part');
-    final live = LiveDownload(
-      file: part,
-      totalBytes: info.size.totalBytes,
-      contentType: info.container == StreamContainer.mp4 ? 'audio/mp4' : 'audio/webm',
-    );
-    _live[videoId] = live;
-    final sink = part.openWrite();
-    try {
+    return _writeLive(videoId, file, info.size.totalBytes,
+        info.container == StreamContainer.mp4 ? 'audio/mp4' : 'audio/webm',
+        (sink) async {
       // Качаем файл в 4 потока кусками по 512 КБ (замедление YouTube
       // у провайдера действует на каждое соединение отдельно), а пишем
       // по порядку — плеер начинает играть с первого куска.
@@ -457,7 +465,8 @@ class YoutubeSource {
             await _parallelGet(src, info.size.totalBytes, sink, pos);
             break;
           } catch (e) {
-            debugPrint('[YouTube] загрузка оборвалась на ${pos.bytes} байтах: $e');
+            debugPrint('[YouTube] загрузка прервалась на ${pos.bytes} байтах '
+                '(${e.runtimeType})');
             // Ссылка протухла или YouTube оборвал соединение: берём свежую
             // ссылку на тот же поток и докачиваем с того же места — файл,
             // который уже играет, не трогаем.
@@ -466,7 +475,11 @@ class YoutubeSource {
             }
             await Future<void>.delayed(Duration(seconds: 1 + attempt));
             final fresh = await _freshUrl(videoId, info);
-            if (fresh != null) src = fresh;
+            if (fresh != null) {
+              src = fresh;
+            } else if (e is _RejectedRange) {
+              rethrow;
+            }
           }
         }
       } else {
@@ -475,28 +488,7 @@ class YoutubeSource {
           await sink.flush();
         }
       }
-    } catch (e) {
-      live.fail(e);
-      _live.remove(videoId);
-      rethrow;
-    } finally {
-      await sink.close();
-    }
-    if (await part.length() == 0) {
-      live.fail(Exception('YouTube отдал пустой файл'));
-      _live.remove(videoId);
-      throw Exception('YouTube отдал пустой файл');
-    }
-    // Не переименовываем: .part может быть открыт плеером (Windows не даст).
-    await part.copy(file.path);
-    live.finish(file);
-    _live.remove(videoId);
-    try {
-      await part.delete();
-    } catch (_) {
-      // Удалим при следующей очистке кэша.
-    }
-    return file;
+    });
   }
 
   Future<File?> _viaYtDlpStream(String videoId, String Function(String ext) pathFor) async {
@@ -505,34 +497,56 @@ class YoutubeSource {
     if (info == null || info.size <= 0) return null;
     final ext = info.ext == 'm4a' || info.ext == 'mp4' ? 'm4a' : info.ext;
     final file = File(pathFor(ext));
-    final part = File('${file.path}.part');
-    final live = LiveDownload(
-      file: part,
-      totalBytes: info.size,
-      contentType: ext == 'm4a' ? 'audio/mp4' : (ext == 'mp3' ? 'audio/mpeg' : 'audio/webm'),
-    );
-    _live[videoId] = live;
-    final sink = part.openWrite();
     try {
-      await _parallelGet(info.url, info.size, sink, _Written(), headers: info.headers);
+      return await _writeLive(videoId, file, info.size,
+          ext == 'm4a' ? 'audio/mp4' : (ext == 'mp3' ? 'audio/mpeg' : 'audio/webm'),
+          (sink) => _parallelGet(info.url, info.size, sink, _Written(), headers: info.headers));
     } catch (e) {
       debugPrint('[YouTube] yt-dlp-ссылка $videoId: $e');
-      live.fail(e);
-      _live.remove(videoId);
-      await sink.close();
-      try {
-        await part.delete();
-      } catch (_) {}
       return null;
     }
-    await sink.close();
-    await part.copy(file.path);
-    live.finish(file);
-    _live.remove(videoId);
+  }
+
+  int _downloadAttempt = 0;
+
+  Future<File> _writeLive(String videoId, File file, int totalBytes,
+      String contentType, Future<void> Function(IOSink) write) async {
+    // Повторная попытка не должна перезаписать файл, который ещё открыт.
+    final part = File('${file.path}.$pid.${_downloadAttempt++}.part');
+    final staging = File('${part.path}.ready.part');
+    final live = LiveDownload(file: part, totalBytes: totalBytes, contentType: contentType);
+    final sink = part.openWrite();
+    sink.done.ignore();
+    if (totalBytes > 0 && !Platform.isWindows) _live[videoId] = live;
     try {
-      await part.delete();
-    } catch (_) {}
-    return file;
+      try {
+        await write(sink);
+      } finally {
+        await sink.close();
+      }
+      if (await part.length() == 0) throw Exception('YouTube отдал пустой файл');
+      // Готовое имя становится видно другим запросам только после записи.
+      if (Platform.isWindows) {
+        await part.rename(file.path);
+      } else {
+        await part.copy(staging.path);
+        await staging.rename(file.path);
+      }
+      live.finish(file);
+      return file;
+    } catch (e) {
+      live.fail(e);
+      rethrow;
+    } finally {
+      _live.remove(videoId);
+      for (final temporary in [part, staging]) {
+        try {
+          await temporary.delete();
+        } on FileSystemException {
+          // Файл уже перемещён или ещё открыт читателем.
+        }
+      }
+    }
   }
 
   /// Свежая ссылка на то же аудио, чтобы продолжить с записанного байта.
@@ -604,15 +618,23 @@ class YoutubeSource {
           req = http.Request(
               'GET', url.replace(queryParameters: {...url.queryParameters, 'range': '$from-$to'}));
         }
-        final res = await _ytHttp.send(req).timeout(const Duration(seconds: 30));
+        final res = await _ytHttp.send(req).timeout(const Duration(seconds: 12));
         if (res.statusCode >= 400) {
+          res.stream.listen(null).cancel().ignore();
+          if (const {401, 403, 404, 410, 416}.contains(res.statusCode)) {
+            throw _RejectedRange(res.statusCode);
+          }
           throw HttpException('YouTube ответил ${res.statusCode}');
         }
-        final bytes = await res.stream.toBytes().timeout(const Duration(seconds: 90));
+        final bytes = await http.ByteStream(
+          res.stream.timeout(const Duration(seconds: 10)),
+        ).toBytes();
         if (bytes.length != to - from + 1) {
           throw HttpException('YouTube отдал ${bytes.length} байт вместо ${to - from + 1}');
         }
         return bytes;
+      } on _RejectedRange {
+        rethrow;
       } catch (e) {
         if (attempt >= 2) rethrow;
         await Future<void>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
@@ -833,6 +855,15 @@ class LiveDownload {
     error = e;
     done = true;
   }
+}
+
+class _RejectedRange implements Exception {
+  const _RejectedRange(this.statusCode);
+
+  final int statusCode;
+
+  @override
+  String toString() => 'YouTube отклонил запрос звука ($statusCode)';
 }
 
 /// Отдаёт плееру файл, который ещё докачивается: если плеер просит

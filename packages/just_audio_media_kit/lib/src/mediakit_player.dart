@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:logging/logging.dart';
@@ -43,9 +44,11 @@ class MediaKitPlayer extends AudioPlayerPlatform {
   Duration? _setPosition;
 
   Media? get _currentMedia {
-    var medias = _player.state.playlist.medias;
-    if (medias.isEmpty) return null;
-    return medias[_player.state.playlist.index];
+    final playlist = _player.state.playlist;
+    final index = playlist.index;
+    return index >= 0 && index < playlist.medias.length
+        ? playlist.medias[index]
+        : null;
   }
 
   MediaKitPlayer(super.id) {
@@ -152,6 +155,12 @@ class MediaKitPlayer extends AudioPlayerPlatform {
       _player.stream.error.listen((error) {
         final errorUri = RegExp(r'Failed to open (.*)\.').firstMatch(error)?[1];
         if (errorUri == null || errorUri == _currentMedia?.uri) {
+          final load = _loadCompleter;
+          if (load != null && !load.isCompleted) {
+            load.completeError(
+              PlatformException(code: '$kErrorCode', message: error),
+            );
+          }
           _processingState = ProcessingStateMessage.idle;
           _errorCode = kErrorCode;
           _errorMessage = error;
@@ -236,39 +245,55 @@ class MediaKitPlayer extends AudioPlayerPlatform {
   Future<LoadResponse> load(LoadRequest request) async {
     _logger.finest('load(${request.toMap()})');
     _mediaOpened = false;
-    _loadCompleter = Completer();
+    _cancelPendingLoad();
+    final load = Completer<Duration?>();
+    // A backend error can arrive before open() returns.
+    load.future.ignore();
+    _loadCompleter = load;
     _currentIndex = request.initialIndex ?? 0;
     _bufferedPosition = Duration.zero;
     _position = Duration.zero;
+    _setPosition = null;
     _duration = null;
     _processingState = ProcessingStateMessage.loading;
     _errorCode = null;
     _errorMessage = null;
     _updatePlaybackEvent();
 
-    if (request.audioSourceMessage is ConcatenatingAudioSourceMessage) {
-      final audioSource =
-          request.audioSourceMessage as ConcatenatingAudioSourceMessage;
-      final playable = Playlist(
-          audioSource.children.map(_convertAudioSourceIntoMediaKit).toList(),
-          index: _currentIndex);
-
+    try {
+      final source = request.audioSourceMessage;
+      final playable = source is ConcatenatingAudioSourceMessage
+          ? Playlist(source.children.map(_convertAudioSourceIntoMediaKit).toList(),
+              index: _currentIndex)
+          : _convertAudioSourceIntoMediaKit(source);
       await _player.open(playable, play: _playing);
-    } else {
-      final playable =
-          _convertAudioSourceIntoMediaKit(request.audioSourceMessage);
-      _logger.finest('playable is ${playable.toString()}');
-      await _player.open(playable, play: _playing);
+      if (identical(_loadCompleter, load) && !load.isCompleted) {
+        _mediaOpened = true;
+        if (request.initialPosition != null) {
+          _setPosition = _position = request.initialPosition!;
+        }
+        final duration = _player.state.duration;
+        if (request.initialPosition == null && !_player.state.buffering &&
+            duration > Duration.zero &&
+            _currentMedia?.start == null) {
+          _updateDuration(duration);
+          _processingState = ProcessingStateMessage.ready;
+          load.complete(_duration);
+        }
+        _updatePlaybackEvent();
+      }
+      return LoadResponse(duration: await load.future);
+    } finally {
+      if (identical(_loadCompleter, load)) _loadCompleter = null;
     }
-    _mediaOpened = true;
+  }
 
-    if (request.initialPosition != null) {
-      _setPosition = _position = request.initialPosition!;
+  void _cancelPendingLoad() {
+    final load = _loadCompleter;
+    _loadCompleter = null;
+    if (load != null && !load.isCompleted) {
+      load.completeError(PlatformException(code: 'abort', message: 'Loading interrupted'));
     }
-
-    _updatePlaybackEvent();
-    final duration = await _loadCompleter?.future;
-    return LoadResponse(duration: duration);
   }
 
   @override
@@ -399,13 +424,11 @@ class MediaKitPlayer extends AudioPlayerPlatform {
   Future<void> release() async {
     _logger.info('releasing player resources');
     _mediaOpened = false;
+    _cancelPendingLoad();
     JustAudioMediaKit.livePlayers.remove(_player);
-    await _player.dispose();
-    // cancel all stream subscriptions
-    for (final StreamSubscription subscription in _streamSubscriptions) {
-      unawaited(subscription.cancel());
-    }
+    await Future.wait(_streamSubscriptions.map((s) => s.cancel()));
     _streamSubscriptions.clear();
+    await _player.dispose();
   }
 
   /// Converts an [AudioSourceMessage] into a [Media] for playback

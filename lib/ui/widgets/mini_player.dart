@@ -44,7 +44,7 @@ class MiniPlayer extends StatelessWidget {
     // Мини-плеер — отдельная плашка над нижним меню (у «Резкого» — без скруглений).
     final radius = BorderRadius.circular(style.sharp ? 0 : style.glass ? 18 : 10);
     final progress = StreamBuilder<Duration>(
-      stream: player.positionStream,
+      stream: player.visualPositionStream,
       builder: (context, snap) {
         final dur = player.duration?.inMilliseconds ?? 0;
         final pos = snap.data?.inMilliseconds ?? 0;
@@ -200,7 +200,6 @@ class PlayerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = context.watch<PlayerService>();
-    final store = context.watch<LibraryStore>();
     final scheme = Theme.of(context).colorScheme;
     final settings = context.watch<SettingsStore>();
 
@@ -229,126 +228,175 @@ class PlayerBar extends StatelessWidget {
                     top: BorderSide(
                         color: Colors.white.withValues(alpha: style.sharp ? 0.14 : 0.07))),
               ),
-        child: Row(
-          children: [
-            // Слева: обложка, название, сердечко.
-            Expanded(
-              flex: 3,
-              child: InkWell(
-                onTap: inFullScreen ? null : () => NowPlayingScreen.open(context),
-                borderRadius: BorderRadius.circular(6),
-                child: Row(
-                  children: [
-                    TrackContextMenu(
-                      track: track,
-                      child: Hero(
-                          tag: 'artwork', child: Artwork(track: track, size: 52, radius: 6)),
-                    ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(track.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 2),
-                          MouseRegion(
-                            cursor: player.error == null ? SystemMouseCursors.click : MouseCursor.defer,
-                            child: GestureDetector(
-                              // На телефоне нажатие на бар открывает плеер, а не исполнителя.
-                              onTap: player.error != null || !HutredTheme.desktop
-                                  ? null
-                                  : () => openArtist(context, track.artist),
-                              child: Text(player.error ?? track.artist,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: player.error != null
-                                          ? scheme.error
-                                          : HutredTheme.muted)),
-                            ),
-                          ),
-                        ],
+        child: LayoutBuilder(builder: (context, box) {
+          // Равные боковины держат перемотку по центру. Оставляем справа
+          // место для кнопок и громкости даже рядом с боковой навигацией.
+          final sideWidth = (box.maxWidth * 0.3).clamp(240.0, double.infinity);
+          return Row(
+            children: [
+              // Слева: обложка, название, сердечко.
+              SizedBox(
+                width: sideWidth,
+                child: InkWell(
+                  onTap: inFullScreen ? null : () => NowPlayingScreen.open(context),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Row(
+                    children: [
+                      TrackContextMenu(
+                        track: track,
+                        child: Hero(
+                            tag: 'artwork', child: Artwork(track: track, size: 52, radius: 6)),
                       ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(track.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            MouseRegion(
+                              cursor: player.error == null ? SystemMouseCursors.click : MouseCursor.defer,
+                              child: GestureDetector(
+                                // На телефоне нажатие на бар открывает плеер, а не исполнителя.
+                                onTap: player.error != null || !HutredTheme.desktop
+                                    ? null
+                                    : () => openArtist(context, track.artist),
+                                child: Text(player.error ?? track.artist,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: player.error != null
+                                            ? scheme.error
+                                            : HutredTheme.muted)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      LikeButtons(track: track, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+              // Центр: кнопки и перемотка.
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          height: 48,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: TransportControls(big: false, compact: true),
+                          ),
+                        ),
+                        SeekBar(compact: true),
+                      ],
                     ),
-                    LikeButtons(track: track, size: 20),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            // Центр: кнопки и перемотка.
-            Expanded(
-              flex: 4,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(height: 48, child: TransportControls(big: false, compact: true)),
-                    SeekBar(compact: true),
-                  ],
-                ),
+              // Справа: текст, очередь, громкость.
+              SizedBox(
+                width: sideWidth,
+                child: LayoutBuilder(builder: (context, box) {
+                  const lyricsLabel = 'Текст';
+                  const coverLabel = 'Обложка';
+                  const queueLabel = 'Очередь';
+                  const volumeWidth = 150.0;
+                  const volumeGap = 4.0;
+                  var panelsWidth = 3 * kMinInteractiveDimension;
+                  if (style.glass) {
+                    final labelStyle = Theme.of(context).textTheme.bodyMedium!
+                        .merge(_PanelToggle.labelStyle);
+                    panelsWidth = 0;
+                    for (final label in [lyricsLabel, coverLabel, queueLabel]) {
+                      panelsWidth += 30 + TextPainter.computeWidth(
+                        text: TextSpan(text: label, style: labelStyle),
+                        textDirection: Directionality.of(context),
+                        textScaler: MediaQuery.textScalerOf(context),
+                      );
+                    }
+                  }
+                  final regularWidth = panelsWidth + kMinInteractiveDimension +
+                      volumeGap + volumeWidth;
+                  final compact = box.maxWidth < regularWidth;
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      // Текст, обложка, очередь: в полноэкранном плеере прячут/показывают
+                      // свою часть, снаружи — открывают плеер с ней.
+                      _PanelToggle(
+                        label: lyricsLabel,
+                        icon: Ic.lyrics_outlined,
+                        compact: compact,
+                        on: settings.fullscreenLyrics && inFullScreen,
+                        onTap: () {
+                          if (inFullScreen) {
+                            settings.fullscreenLyrics = !settings.fullscreenLyrics;
+                          } else {
+                            settings.fullscreenLyrics = true;
+                            NowPlayingScreen.open(context);
+                          }
+                        },
+                      ),
+                      _PanelToggle(
+                        label: coverLabel,
+                        icon: Ic.album_outlined,
+                        compact: compact,
+                        on: settings.fullscreenCover && inFullScreen,
+                        onTap: () {
+                          if (inFullScreen) {
+                            settings.fullscreenCover = !settings.fullscreenCover;
+                          } else {
+                            settings.fullscreenCover = true;
+                            NowPlayingScreen.open(context);
+                          }
+                        },
+                      ),
+                      _PanelToggle(
+                        label: queueLabel,
+                        icon: Ic.queue_music,
+                        compact: compact,
+                        on: settings.queuePanel && inFullScreen,
+                        onTap: () {
+                          if (inFullScreen) {
+                            settings.queuePanel = !settings.queuePanel;
+                          } else {
+                            settings.queuePanel = true;
+                            NowPlayingScreen.open(context);
+                          }
+                        },
+                      ),
+                      if (compact)
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 36),
+                          child: const DevicesButton(),
+                        )
+                      else
+                        const DevicesButton(),
+                      const SizedBox(width: volumeGap),
+                      Flexible(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: volumeWidth),
+                          child: VolumeSlider(compact: compact),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
               ),
-            ),
-            // Справа: текст, очередь, громкость.
-            Expanded(
-              flex: 3,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  // Текст, обложка, очередь: в полноэкранном плеере прячут/показывают
-                  // свою часть, снаружи — открывают плеер с ней.
-                  _PanelToggle(
-                    label: 'Текст',
-                    icon: Ic.lyrics_outlined,
-                    on: settings.fullscreenLyrics && inFullScreen,
-                    onTap: () {
-                      if (inFullScreen) {
-                        settings.fullscreenLyrics = !settings.fullscreenLyrics;
-                      } else {
-                        settings.fullscreenLyrics = true;
-                        NowPlayingScreen.open(context);
-                      }
-                    },
-                  ),
-                  _PanelToggle(
-                    label: 'Обложка',
-                    icon: Ic.album_outlined,
-                    on: settings.fullscreenCover && inFullScreen,
-                    onTap: () {
-                      if (inFullScreen) {
-                        settings.fullscreenCover = !settings.fullscreenCover;
-                      } else {
-                        settings.fullscreenCover = true;
-                        NowPlayingScreen.open(context);
-                      }
-                    },
-                  ),
-                  _PanelToggle(
-                    label: 'Очередь',
-                    icon: Ic.queue_music,
-                    on: settings.queuePanel && inFullScreen,
-                    onTap: () {
-                      if (inFullScreen) {
-                        settings.queuePanel = !settings.queuePanel;
-                      } else {
-                        settings.queuePanel = true;
-                        NowPlayingScreen.open(context);
-                      }
-                    },
-                  ),
-                  const DevicesButton(),
-                  const SizedBox(width: 4),
-                  const SizedBox(width: 150, child: VolumeSlider()),
-                ],
-              ),
-            ),
-          ],
-        ),
+            ],
+          );
+        }),
       ),
     );
     final withStrip = inFullScreen
@@ -368,17 +416,20 @@ class _PanelToggle extends StatelessWidget {
     required this.icon,
     required this.on,
     required this.onTap,
+    required this.compact,
   });
   final String label;
   final IconData icon;
   final bool on;
   final VoidCallback onTap;
+  final bool compact;
+  static const labelStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w700);
 
   @override
   Widget build(BuildContext context) {
     final style = HutredStyle.of(context);
     final accent = Theme.of(context).colorScheme.primary;
-    if (style.glass) {
+    if (style.glass && !compact) {
       return Padding(
         padding: const EdgeInsets.only(right: 6),
         child: Material(
@@ -390,21 +441,20 @@ class _PanelToggle extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Text(label,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                  style: labelStyle.copyWith(
                       color: on ? Colors.white : const Color(0xFFD6D6E2))),
             ),
           ),
         ),
       );
     }
-    return IconButton(
+    final button = IconButton(
       tooltip: on ? 'Скрыть: ${label.toLowerCase()}' : label,
       isSelected: on,
       onPressed: onTap,
       icon: Icon(icon, size: 20),
       selectedIcon: Icon(icon, size: 20, color: accent),
     );
+    return compact ? SizedBox(width: 36, child: button) : button;
   }
 }
