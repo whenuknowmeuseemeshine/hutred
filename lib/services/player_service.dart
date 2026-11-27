@@ -314,6 +314,7 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> _checkCrossfade() async {
+    if (_shuffle && _repeat == RepeatSetting.all && _index == _queue.length - 1) return;
     final secs = crossfadeSeconds();
     if (secs <= 0 || _xfRunning || _loading || !playing) return;
     final dur = _player.duration;
@@ -515,7 +516,7 @@ class PlayerService extends ChangeNotifier {
   /// иначе — включить список.
   Future<void> playOrToggle(List<Track> list, {bool all = false}) async {
     if (isFrom(list)) return togglePlay();
-    return all ? playAll(list) : playTracks(list);
+    return all || _shuffle ? playAll(list) : playTracks(list);
   }
 
   /// «Слушать всё»: если перемешивание включено — начинаем со случайного трека.
@@ -722,7 +723,7 @@ class PlayerService extends ChangeNotifier {
             _index + 1 < _queue.length &&
             _failedInRow < _queue.length) {
           Future.delayed(const Duration(milliseconds: 1500), () {
-            if (token == _loadToken && canRetry && !_pauseRequested) next();
+            if (token == _loadToken && canRetry && !_pauseRequested) next(userSkip: false);
           });
         }
       }
@@ -1114,8 +1115,14 @@ class PlayerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> next() async {
+  void Function(Track)? onEarlySkip;
+
+  Future<void> next({bool userSkip = true}) async {
     if (await remoteControl?.call('next') ?? false) return;
+    final skipped = current;
+    if (userSkip && skipped != null && !canRetry && position < const Duration(seconds: 30)) {
+      onEarlySkip?.call(skipped);
+    }
     _resumeAt = null;
     if (_queue.isEmpty) return;
     // Волна: при быстрых пропусках треки грузятся не до конца, и подкачка после
@@ -1132,6 +1139,11 @@ class PlayerService extends ChangeNotifier {
     if (_index < _queue.length - 1) {
       _index++;
     } else if (_repeat == RepeatSetting.all) {
+      if (_shuffle && _queue.length > 1) {
+        _shuffleRest();
+        final previous = _queue.removeAt(0);
+        _queue.insert(1 + _rand.nextInt(_queue.length), previous);
+      }
       _index = 0;
     } else if (await _autoplayFill()) {
       // Как в Spotify: плейлист кончился — играем похожее.
@@ -1171,7 +1183,7 @@ class PlayerService extends ChangeNotifier {
       await _player.seek(Duration.zero);
       _startPlayer(_player, _loadToken);
     } else {
-      await next();
+      await next(userSkip: false);
     }
   }
 
@@ -1414,7 +1426,7 @@ class PlayerService extends ChangeNotifier {
   /// Каждой группе (исполнителю) — позиции, равномерно разбросанные по
   /// всей длине со случайным сдвигом; потом убираем повторы подряд.
   List<Track> _balancedShuffle(List<Track> tracks, {Track? after}) {
-    if (tracks.length < 3) return tracks..shuffle(_rand);
+    if (tracks.length < 2) return tracks;
     final groups = <String, List<Track>>{};
     for (final t in tracks) {
       groups.putIfAbsent(_artistKey(t), () => []).add(t);

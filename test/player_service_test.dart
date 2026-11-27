@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hutred/models/track.dart';
+import 'package:hutred/services/library_store.dart';
+import 'package:hutred/services/wave_service.dart';
 import 'package:hutred/services/player_service.dart';
 import 'package:hutred/services/soundcloud_source.dart';
 import 'package:hutred/services/youtube_source.dart';
@@ -30,6 +34,40 @@ void main() {
   });
 
   tearDown(() => player.dispose());
+
+  for (final (ms, manual, expected) in [
+    (0, true, true),
+    (29999, true, true),
+    (30000, true, false),
+    (5000, false, false),
+  ]) {
+    test('smart skip at ${ms}ms, manual=$manual', () async {
+      final wave = WaveService(store: LibraryStore(), player: player, soundcloud: SoundcloudSource());
+      final dir = await Directory.systemTemp.createTemp('hutred-smart-skip');
+      addTearDown(() async {
+        for (var attempt = 0;; attempt++) {
+          try {
+            await dir.delete(recursive: true);
+            return;
+          } on FileSystemException {
+            if (attempt == 10) rethrow;
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          }
+        }
+      });
+      final file = File('${dir.path}/state.json');
+      await file.writeAsString(jsonEncode({
+        'queue': [first.toJson(), second.toJson()],
+        'index': 0, 'shuffle': true, 'smart': true,
+        'recommended': [first.id], 'positionMs': ms,
+      }));
+      await player.restoreState(file);
+      player.resolveSpotify = (_) async => null;
+      await player.next(userSkip: manual);
+      expect(wave.wasSkipped(first), expected);
+      expect(wave.wasSkipped(second), isFalse);
+    });
+  }
 
   test('a second tap on the same row does not restart a pending load', () async {
     final pending = Completer<Track?>();

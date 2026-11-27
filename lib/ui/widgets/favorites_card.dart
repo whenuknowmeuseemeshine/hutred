@@ -32,7 +32,7 @@ class FavoritesCard extends StatelessWidget {
       AppActions.toast(context, empty);
       return;
     }
-    await context.read<PlayerService>().playTracks(list);
+    await context.read<PlayerService>().playAll(list);
   }
 
   @override

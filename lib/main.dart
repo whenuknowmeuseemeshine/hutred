@@ -186,7 +186,8 @@ Future<void> main(List<String> args) async {
   // Умное перемешивание берёт похожие треки из «Моей волны».
   player.recommend = (seeds, count) => wave.recommendFrom(seeds, size: count);
   // Скрытые треки и исполнители из чёрного списка не играют.
-  player.isBlocked = wave.isBlocked;
+  player.isBlocked = (track) => wave.isBlocked(track) ||
+      ((player.isRecommended(track) || wave.isWaveTrack(track)) && wave.wasSkipped(track));
   player.blockedArtist = wave.blockedArtistOf;
   // Сервер-посредник: для тех, у кого музыкальные сервисы заблокированы.
   HutredRelay.mode = () => settings.relayMode;

@@ -32,6 +32,7 @@ class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
 
   final _http = http.Client();
   Timer? _timer;
+  Timer? _retryTimer;
 
   int? latestBuild;
   String? latestVersion;
@@ -69,7 +70,7 @@ class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
     unawaited(check());
-    _timer = Timer.periodic(const Duration(hours: 3), (_) => check());
+    _timer = Timer.periodic(const Duration(minutes: 15), (_) => check());
     // Открыли приложение снова (из трея, со свёрнутого, на телефоне —
     // вернулись в него) — проверяем, не вышло ли что-то новое.
     WidgetsBinding.instance.addObserver(this);
@@ -120,6 +121,7 @@ class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
     if (!supported || checking) return;
     _lastCheck = DateTime.now();
     checking = true;
+    _retryTimer?.cancel();
     error = null;
     notifyListeners();
     try {
@@ -142,9 +144,7 @@ class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint('[Обновление] $e');
       // При запуске сеть (или свой VPN) могла ещё не подняться — ещё раз через минуту.
       if (!manual) {
-        Timer(const Duration(minutes: 1), () {
-          if (latestBuild == null) unawaited(check());
-        });
+        _retryTimer = Timer(const Duration(minutes: 1), () => unawaited(check()));
       }
     } finally {
       checking = false;
@@ -156,26 +156,31 @@ class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
     final url = _windowsUrl;
     final b = latestBuild;
     if (url == null || b == null || progress != null || _ready != null) return;
+    progress = 0;
+    notifyListeners();
     try {
       final d = await _dir();
       final file = File('${d.path}${Platform.pathSeparator}Hutred-Setup-$b.exe');
       final part = File('${file.path}.part');
-      progress = 0;
-      notifyListeners();
-      final res = await _http.send(http.Request('GET', Uri.parse(url)));
+      final res = await _http.send(http.Request('GET', Uri.parse(url)))
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) throw Exception('код ${res.statusCode}');
       final total = res.contentLength ?? 0;
       var got = 0;
       final sink = part.openWrite();
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
-        got += chunk.length;
-        if (total > 0) {
-          progress = got / total;
-          notifyListeners();
+      try {
+        await for (final chunk in res.stream.timeout(const Duration(seconds: 30))) {
+          sink.add(chunk);
+          got += chunk.length;
+          if (total > 0) {
+            progress = got / total;
+            notifyListeners();
+          }
         }
+      } finally {
+        await sink.close();
       }
-      await sink.close();
+      if (got == 0 || (total > 0 && got != total)) throw Exception('неполная загрузка');
       await part.rename(file.path);
       _ready = file;
       progress = null;
@@ -242,6 +247,8 @@ class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _timer?.cancel();
+    _retryTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 }

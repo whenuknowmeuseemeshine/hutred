@@ -22,7 +22,9 @@ class WaveService extends ChangeNotifier {
     required this.player,
     required this.soundcloud,
   }) {
-    _watchSkips();
+    player.onEarlySkip = (track) {
+      if (player.isRecommended(track) || isWaveTrack(track)) _onSkipped(track);
+    };
   }
 
   final LibraryStore store;
@@ -38,33 +40,10 @@ class WaveService extends ChangeNotifier {
   /// Исполнитель → сколько раз его быстро пропускали в «Волне».
   final Map<String, int> _skippedArtists = {};
   final Set<String> _skippedTracks = {};
-  Track? _watchTrack;
-  Duration _watchPos = Duration.zero;
-  bool _watching = false;
-
-  void _watchSkips() {
-    if (_watching) return;
-    _watching = true;
-    player.positionStream.listen((p) => _watchPos = p);
-    player.addListener(() {
-      final cur = player.current;
-      final prev = _watchTrack;
-      if (cur?.id == prev?.id) return;
-      if (prev != null && isWaveTrack(prev)) {
-        final dur = prev.duration ?? const Duration(minutes: 3);
-        final early = _watchPos > Duration.zero &&
-            _watchPos < const Duration(seconds: 30) &&
-            _watchPos < dur * 0.5;
-        if (early) _onSkipped(prev);
-      }
-      _watchTrack = cur;
-      _watchPos = Duration.zero;
-    });
-  }
+  bool wasSkipped(Track t) => _skippedTracks.contains(_key(t));
 
   void _onSkipped(Track t) {
-    _skippedTracks.add(_key(t));
-    if (_skippedTracks.length > 1000) _skippedTracks.remove(_skippedTracks.first);
+    if (!_skippedTracks.add(_key(t))) return;
     for (final a in artistsOf(t)) {
       final k = a.toLowerCase();
       _skippedArtists[k] = (_skippedArtists[k] ?? 0) + 1;
@@ -394,7 +373,7 @@ class WaveService extends ChangeNotifier {
     await _save();
     notifyListeners();
     final cur = player.current;
-    if (cur != null && isBlocked(cur)) await player.next();
+    if (cur != null && isBlocked(cur)) await player.next(userSkip: false);
   }
 
   Future<void> unblockArtist(String name) async {
@@ -802,7 +781,7 @@ class WaveService extends ChangeNotifier {
     _dislikedArtists[a] = (_dislikedArtists[a] ?? 0) + 1;
     await _save();
     notifyListeners();
-    if (player.current?.id == t.id) await player.next();
+    if (player.current?.id == t.id) await player.next(userSkip: false);
   }
 
   Future<void> resetDislikes() async {
